@@ -5,7 +5,7 @@
 set -euo pipefail
 repo="$(cd "$(dirname "$0")" && pwd)"
 home="${HERDR_APP_HOME:-$HOME/.config/herdr-app}"
-mods=(usage-limits pane-agent)
+mods=(usage-limits pane-agent alpmeister daypack alp-agents)
 layouts=(alp)
 themes=(alp)
 case "${1:-}" in

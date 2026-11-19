@@ -51,7 +51,7 @@
               "id": "agents",
               "type": "block",
               "content": {
-                "mod": "agents"
+                "mod": "alp-agents"
               },
               "size": {
                 "weight": 1
@@ -87,15 +87,37 @@
       "type": "column",
       "children": [
         {
-          "id": "tabs",
-          "type": "block",
-          "content": {
-            "mod": "tabs"
-          },
+          "id": "topbar",
+          "type": "row",
           "size": {
             "px": 42
           },
-          "window_drag": true
+          "children": [
+            {
+              "id": "tabs",
+              "type": "block",
+              "content": {
+                "mod": "tabs"
+              },
+              "size": {
+                "weight": 1
+              },
+              "window_drag": true
+            },
+            {
+              "id": "daypack-button",
+              "type": "block",
+              "size": {
+                "px": 40
+              },
+              "content": {
+                "mod": "daypack",
+                "props": {
+                  "button": true
+                }
+              }
+            }
+          ]
         },
         {
           "id": "work-body",
@@ -179,6 +201,19 @@
         }
       ],
       "resizable": false
+    },
+    {
+      "id": "daypack",
+      "type": "block",
+      "content": {
+        "mod": "daypack"
+      },
+      "size": {
+        "px": 280
+      },
+      "min": 200,
+      "max": 480,
+      "hidden": true
     }
   ],
   "background": "canvas",

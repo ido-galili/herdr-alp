@@ -1,0 +1,64 @@
+{
+  "repo": "your-org/your-repo",
+  "project": {
+    "owner": "your-org",
+    "number": 1,
+    "statusField": "Status",
+    "iterationField": "Iteration"
+  },
+  "statuses": ["New", "Todo", "Dev Design", "In Development", "Development QA", "In Review", "Done"],
+  "notStarted": ["New", "Todo"],
+  "inFlight": {
+    "statuses": ["Dev Design", "In Development", "Development QA", "In Review"],
+    "excludeTypes": ["Test", "Test Plan"]
+  },
+  "mineHidden": ["New", "Done", "On Hold"],
+  "queries": {
+    "triage": "is:issue is:open type:Bug label:triage",
+    "review": "is:pr draft:false is:open review-requested:@me sort:updated-desc",
+    "mine": "is:issue is:open assignee:@me sort:updated-desc"
+  },
+  "bugs": {
+    "query": "is:issue is:open type:Bug",
+    "priorityField": "Priority",
+    "priorities": ["Blocker", "Critical", "Major", "Minor"]
+  },
+  "spotlight": {
+    "milestones": 2,
+    "labels": ["product-prioritized"],
+    "featureTypes": ["Epic", "Story", "Improvement"],
+    "holdStatus": "On Hold"
+  },
+  "customer": {
+    "labelMatch": "customer"
+  },
+  "nightly": {
+    "workflow": "nightly.yml",
+    "branch": "main",
+    "events": ["schedule", "workflow_dispatch"],
+    "checks": [
+      {
+        "name": "Deploy",
+        "exceptJobs": ["API Tests", "E2E Tests"]
+      },
+      {
+        "name": "Unit tests",
+        "job": "Build",
+        "step": "Unit Tests"
+      },
+      {
+        "name": "API tests",
+        "job": "API Tests"
+      },
+      {
+        "name": "E2E tests",
+        "job": "E2E Tests"
+      }
+    ]
+  },
+  "launch": {
+    "folder": "~/code/your-repo",
+    "issue": "/start-issue {number}",
+    "pr": "/review-pr {number}"
+  }
+}

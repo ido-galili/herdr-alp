@@ -63,6 +63,69 @@ Left to right:
 - Usage limits show `–` until the first answer of any Claude session after the plugin is installed.
 - A layout block has no content-fit size: padding alone can't remove the empty space under the folded cell, so `usage-limits` resizes its own block. It does so only when the fold state changes (render re-runs on every layout change), and the block id in the layout must match its `block` prop.
 
+## Alpmeister
+
+A tab mod, `mods/alpmeister`, for a team lead's start of day. It is not placed by the layout:
+open it with `tab.new {mod: "alpmeister"}`.
+
+- **What you see**, top to bottom on the `canvas` background, 18px padding, cards with 10px
+  radius and a 1px `border`:
+  - A header: two pill tabs, Dashboard and "Daypack · N" (N open focus items), then "Alpmeister"
+    (18px semibold), "updated 4m ago" in `dim` (`working` after 2 hours), and a Refresh text
+    button. Each copy remembers its tab in localStorage.
+  - **Dashboard**, top to bottom:
+    - Four tiles, in one row when the tab is at least 1000px wide, else two by two: open bugs by
+      priority (total, a strip and a chip per priority, counted from the priority issue field),
+      triage bugs, open customer issues (any label whose name contains `customer.labelMatch`,
+      named under the count), and the last nightly run.
+    - The nightly tile: "Success", "Failure" or "Running" for the last run, its local start date
+      and time ("Tue 17 Nov, 06:05"), then one line per
+      `nightly.checks` entry (deploy, unit, API and E2E tests) with an outcome chip. A check
+      matches jobs by name, a step inside them, or every job except some.
+    - The Spotlight card, derived from the issues of the next two milestones. One column per
+      milestone, side by side when wide:
+      - Its open issues with a priority value, a `spotlight.labels` label or a
+        `spotlight.featureTypes` type. Most urgent first, then by feature type.
+      - Each row shows its issue type beside the number, then its priority or label, an epic's
+        "X of Y" sub-issues, its status, and an Unassigned flag. Rows show no due dates.
+      - 8 rows, then "Show N more".
+      - Below the columns, "To discuss": the issues in `spotlight.holdStatus` in either milestone.
+    - The next milestone card: its title (20px) with "1 of 12 closed", a usage-limits style bar
+      (closed share, tick at the time gone since the previous milestone's due date, `working`
+      when behind the tick), a 6px strip of board-status segments, a chip per status, and
+      `Needs you` style flags for unassigned issues and for `notStarted` issues (New, Todo by
+      default) in the last 7 days.
+  - Team in flight, full width: the board's open issues in the configured statuses, grouped in
+    board order, with toggles for the next milestone and the current iteration, 5 rows per group with "Show N more". Flagged rows first: a row outside the
+    current iteration gets a warning chip naming its iteration or "No iteration". Chips for
+    assignee, milestone, days in status and each linked PR's review state.
+  - **Daypack.** Today's focus across the top: a todo input, then Todos, PRs and Issues, each
+    under a heading with its open count. A row: checkbox, number, title, the issue's board
+    status or the PR's review decision (Approved, Changes Requested, In Review, or Merged or
+    Closed), days since it was added (from the next day), a Claude button, Remove. Items stay
+    until removed. Below it, two columns:
+    - The PRs that need your attention (author, age, checks, Pin, Review), then My PRs: your
+      open, non-draft PRs (`queries.myPrs`) with the review decision, checks and age (Pin,
+      Review).
+    - Your issues grouped by status, current iteration only by default (Pin, Start).
+- **How it behaves:** a click on a row opens it on GitHub. Pin adds the row to today's focus. A
+  pinned issue or PR checks itself once it closes or merges; each refresh reads every pick's
+  state, board status and review decision, checked or not, and keeps them on the item. Review and Start open, when configured, a tab running
+  `claude` with the configured command, in the space you are in. The tab starts in the live
+  folder of that space's first tab (its first pane's `cwd`) when it is `launch.folder` or inside
+  it, such as a worktree, else in `launch.folder`.
+  The Daypack's Claude buttons do the same. It fetches when the tab opens and on Refresh only.
+- **Built from:** `config.js` (settings), `queries.js` (one GraphQL document for everything but
+  the nightly run), `data.js` (`gh api graphql`, `gh api` for workflow runs and jobs),
+  `focus.js` (the focus file, written with `writeTextFile` over the last read version),
+  `project.js`, `in-flight.js`, `my-day.js`, `focus-list.js`, `ui.js`, and `main.js`.
+- **Watch out:** issue search cannot filter on a board field, so in-flight items come from the
+  project's own `items(query:)` filter. GitHub milestones have no start date. The runtime has no
+  locale data, so dates are formatted by hand. Without a `mod.json` with `"place": "none"`, Herdr
+  docks a copy of the mod into the shown layout the first time it sees the folder.
+- **Done when:** `herdr-app check` passes, and the milestone headline, triage count, team PR
+  count and in-flight groups match the same queries run with `gh`.
+
 ## Done when
 
 - `herdr-app check` passes for `mods/usage-limits` and `mods/pane-agent`, and `herdr-app do layout.switch '{"name":"alp"}'` returns ok with no errors in `herdr-app status`.
@@ -70,3 +133,29 @@ Left to right:
 - Changing the file's `agent` to anything else hides the chips within 3 seconds.
 - The sidebar shows Session and Weekly percentages and reset times matching `limits.json`, and folding the sidebar shows the rail cell with the same space above and below it as the unfolded rows (the `limits` block at 82px), back to 96px when unfolded.
 - Exiting Claude empties the terminal's file and its chips disappear.
+
+## Daypack
+
+- **What:** what you carry through the day, in a column on the window's right edge, beside the
+  terminals as the left sidebar is. It holds today's Lineup items. A Daypack button at the right
+  end of the tab bar shows or hides it.
+- **Where:** `mods/daypack/`, placed twice by the `alp` layout:
+  - the `daypack-button` block, 40px, beside the `tabs` block in a `topbar` row, with
+    `props: { button: true }`;
+  - the `daypack` block, the root row's last child: 280px, 200 to 480px, hidden at first.
+- **How it looks:**
+  - The button is the backpack icon alone (`backpack.svg`, lucide) in a 26px square, like the
+    tab bar's + button. The icon is `accent` while any item is open. The button is `selected`
+    while the sidebar shows, and runs `layout.toggle`.
+  - The sidebar is `chrome`: a 42px "Daypack" header with the open count and a close button
+    (`layout.hide`), then a "LINEUP" group
+    with the items in sections by kind (Todos, PRs, Issues), each headed by its open count.
+    A row holds the item's checkbox, title and number. A click on a title opens it on GitHub.
+  - An issue or PR row ends with the Claude button: it opens a Claude tab running the `launch`
+    command from Alpmeister's settings, as Alpmeister's Start and Review buttons do. The button
+    shows only when that command is set.
+- **State:**
+  - The layout keeps whether the sidebar shows, as it does for the left sidebar.
+  - It reads and writes `~/.local/state/alp/focus.json`, the file Alpmeister keeps. Mods cannot
+    import across folders, so `focus-file.js` is its own reader of that format.
+  - Each side sets `shared("alp.focusStamp")` after a write, and the other reloads the file.
