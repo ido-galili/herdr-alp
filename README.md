@@ -85,7 +85,7 @@ works the herd. The `alpmeister` mod is that view for a team lead, opened as a t
 herdr-app do tab.new '{"mod":"alpmeister","name":"Alpmeister"}'
 ```
 
-It has two tabs.
+It has three tabs: Dashboard, Herds and Daypack.
 
 - **Dashboard:** four tiles (open bugs by priority, triage bugs, open customer issues, the last
   nightly run), the spotlight on the next two milestones, the next milestone (X of Y
@@ -94,7 +94,17 @@ It has two tabs.
 - **Daypack:** today's focus (pinned rows and typed todos, carried over the next day), your
   review requests with a Review button, your open PRs, and your issues with a Start button. Both buttons
   open a Claude Code tab running the command set in `launch`, and show only when it is set.
-- **Refresh:** when the tab opens and from its Refresh button only. The "updated" time turns
+- **Herds:** your Claude Code sessions and how they are linked. A session that messaged others
+  (`SendMessage`) or made their worktrees is a herdsman: drawn on top, with a line down to each
+  of its herd, labelled `msg 12:36` for its latest message or dotted `worktree`. Who and when
+  only: no message text is shown. Sessions with no link graze: a card each, in space order, with a
+  stripe in the space's color and its avatar in the corner. Every box and card ends with
+  the session's git branch. A click opens
+  a session's tab. A background session is shown in the tab titled with its name, or in the
+  tab picked with Link a tab. It reads Claude Code's files (`~/.claude/sessions`, the
+  sessions' transcripts) and redraws when a session starts, ends or changes status. Open it
+  directly with `herdr-app do tab.new '{"mod":"alpmeister","props":{"tab":"herds"}}'`.
+- **Refresh:** Dashboard and Daypack fetch when the tab opens and from its Refresh button only. The "updated" time turns
   amber after 2 hours.
 - **Settings:** `~/.config/alp/alpmeister.json` names the repository, the project board and its
   status names, the nightly workflow and the Claude commands. It reads GitHub through the `gh`

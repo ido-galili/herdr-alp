@@ -70,9 +70,10 @@ open it with `tab.new {mod: "alpmeister"}`.
 
 - **What you see**, top to bottom on the `canvas` background, 18px padding, cards with 10px
   radius and a 1px `border`:
-  - A header: two pill tabs, Dashboard and "Daypack · N" (N open focus items), then "Alpmeister"
-    (18px semibold), "updated 4m ago" in `dim` (`working` after 2 hours), and a Refresh text
-    button. Each copy remembers its tab in localStorage.
+  - A header: three pill tabs, Dashboard, Herds and "Daypack · N" (N open focus items), then
+    "Alpmeister" (18px semibold), "updated 4m ago" in `dim` (`working` after 2 hours), and a
+    Refresh text button. Each copy remembers its tab in localStorage; `props.tab` opens a copy
+    on a given tab (`tab.new {mod: "alpmeister", props: {tab: "herds"}}`).
   - **Dashboard**, top to bottom:
     - Four tiles, in one row when the tab is at least 1000px wide, else two by two: open bugs by
       priority (total, a strip and a chip per priority, counted from the priority issue field),
@@ -115,14 +116,42 @@ open it with `tab.new {mod: "alpmeister"}`.
   folder of that space's first tab (its first pane's `cwd`) when it is `launch.folder` or inside
   it, such as a worktree, else in `launch.folder`.
   The Daypack's Claude buttons do the same. It fetches when the tab opens and on Refresh only.
+  - **Herds**: the Claude Code sessions on this machine and the links between them.
+    - A Herds card: each herd as a graph. Its herdsman (the session that made the most links)
+      is a box with an `accent` border, labelled "herdsman"; a 1px `border` line drops to a bar,
+      and from it a 22px stub to each member's box, side by side, 260px of room each, centered.
+      A stub is solid and labelled `msg 14:27` (the latest message) or dotted (four 3px dashes)
+      and labelled `worktree`. Links between members are listed below the graph as one dim line
+      each. Who and when only: never message text.
+    - A Grazing card: the sessions with no link, as a wrapping grid of 272px cards in the
+      sidebar's space order, then the ones in no space. A card: a 3px stripe down the left edge
+      in the space's color, the status mark and name, the space's avatar (its letter on its
+      color, 15px) in the corner with the space's name on hover, the tab's name below (the
+      space's name when the tab is titled with the session's own name).
+    - Every box and card is 86px tall: name, tab, then a branch tag (Herdr's
+      `workspace-chrome/git-branch.svg` and the name, on `hover`); a card without a branch
+      keeps the room. A background session that no tab shows has a "Link a tab" button in its
+      tab line; the picker opens below its box, or below the grid.
 - **Built from:** `config.js` (settings), `queries.js` (one GraphQL document for everything but
   the nightly run), `data.js` (`gh api graphql`, `gh api` for workflow runs and jobs),
   `focus.js` (the focus file, written with `writeTextFile` over the last read version),
-  `project.js`, `in-flight.js`, `my-day.js`, `focus-list.js`, `ui.js`, and `main.js`.
+  `project.js`, `in-flight.js`, `my-day.js`, `focus-list.js`, `ui.js`, and `main.js`. Herds:
+  `herds-data.js` reads Claude Code's files (it never writes them): `~/.claude/sessions/*.json`
+  (live sessions, kept when `ps` finds their pid), `~/.claude/jobs/<id>/state.json` (a
+  background session's state), and each live session's transcript
+  `~/.claude/projects/*/<session>.jsonl`, where `grep` picks the main conversation's
+  `SendMessage` calls (`input.to`, a session name) and `git worktree add` commands (the folder,
+  matched to a session's `cwd`); a tool call can appear twice, so they are deduped by id. A
+  session's tab is the Herdr terminal whose foreground pid (`hc get <t> --json`) is the
+  session's pid; a background session's is the Claude tab titled with its name, else the one
+  picked with Link a tab (`~/.local/state/alp/herds.json`). The branch is the pane's live
+  `branch`, else `git branch --show-current` in the session's folder. `herds-view.js` draws it;
+  `watchFolder(~/.claude/sessions)` reloads it.
 - **Watch out:** issue search cannot filter on a board field, so in-flight items come from the
   project's own `items(query:)` filter. GitHub milestones have no start date. The runtime has no
   locale data, so dates are formatted by hand. Without a `mod.json` with `"place": "none"`, Herdr
-  docks a copy of the mod into the shown layout the first time it sees the folder.
+  docks a copy of the mod into the shown layout the first time it sees the folder. Herds: `hc ls`
+  has no foreground pid, so ask `hc get` per Claude terminal; `flex_shrink` takes a number.
 - **Done when:** `herdr-app check` passes, and the milestone headline, triage count, team PR
   count and in-flight groups match the same queries run with `gh`.
 

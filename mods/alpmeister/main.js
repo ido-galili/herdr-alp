@@ -7,11 +7,13 @@
 
 import { View, div } from "gpui-kit";
 import { h_flex, v_flex, InputState } from "gpui-base";
-import { checking, panes, readTextFile, run, setShared, shared, spaces, theme, writeTextFile, exec } from "herdr";
+import { checking, panes, props, readTextFile, run, setShared, shared, spaces, theme, watchFolder, writeTextFile, exec } from "herdr";
 import { loadConfig, stateDir } from "./config.js";
 import { loadOverview, loadPickStates } from "./data.js";
 import { FocusStore } from "./focus.js";
 import { FocusList } from "./focus-list.js";
+import { loadHerds, saveTabLink, sessionsDir } from "./herds-data.js";
+import { Herds } from "./herds-view.js";
 import { InFlight } from "./in-flight.js";
 import { MyIssues, MyPrs, Reviews } from "./my-day.js";
 import { Spotlight } from "./spotlight.js";
@@ -20,7 +22,7 @@ import { Card, ICONS, IconButton, Note, TextButton, ago } from "./ui.js";
 
 const STALE_AFTER = 2 * 3600000;
 const WIDE = 1000;
-const TABS = { dashboard: "dashboard", today: "today" };
+const TABS = { dashboard: "dashboard", today: "today", herds: "herds" };
 const TAB_KEY = "alpmeister.tab";
 const FOCUS_STAMP_KEY = "alp.focusStamp";
 
@@ -50,7 +52,14 @@ export default class Alpmeister extends View {
     this.expandedGroups = new Set();
     this.width = 1200;
     this.cacheSnapshot = null;
-    this.tab = rememberedTab();
+    // `props.tab` opens a copy on that tab: tab.new {mod: "alpmeister", props: {tab: "herds"}}.
+    this.tab = Object.values(TABS).includes(props()?.tab) ? props().tab : rememberedTab();
+    this.herds = null;
+    this.herdsLoading = false;
+    this.herdsAgain = false;
+    this.herdsWatching = false;
+    this.herdsFailure = null;
+    this.picking = null;
     this.focus = new FocusStore();
     this.focusStamp = shared(FOCUS_STAMP_KEY) ?? null;
     this.input = InputState.new({ placeholder: "Add a todo and press Enter" });
@@ -64,6 +73,64 @@ export default class Alpmeister extends View {
       await this.loadCache();
       cx.notify();
       this.refresh(cx);
+      if (this.tab === TABS.herds) this.watchHerds(cx);
+    });
+  }
+
+  /**
+   * Reads the herds again. A call while a read runs asks for one more read after it, so the
+   * latest change is never missed and reads never pile up.
+   */
+  reloadHerds(cx) {
+    if (this.herdsLoading) {
+      this.herdsAgain = true;
+      return;
+    }
+    this.herdsLoading = true;
+    cx.notify();
+    cx.spawn(async (cx) => {
+      do {
+        this.herdsAgain = false;
+        try {
+          this.herds = await loadHerds();
+          this.herdsFailure = null;
+        } catch (error) {
+          this.herdsFailure = String(error?.message ?? error);
+          console.log(`alpmeister: herds failed: ${this.herdsFailure}`);
+        }
+      } while (this.herdsAgain);
+      this.herdsLoading = false;
+      cx.notify();
+    });
+  }
+
+  /**
+   * Reads the herds, then again whenever Claude Code's session registry changes: a session
+   * starting, ending, or changing status. Started once, the first time the Herds tab shows.
+   */
+  watchHerds(cx) {
+    this.reloadHerds(cx);
+    if (this.herdsWatching) return;
+    this.herdsWatching = true;
+    cx.spawn(async (cx) => {
+      for (;;) {
+        await watchFolder(sessionsDir());
+        this.reloadHerds(cx);
+      }
+    });
+  }
+
+  /** Links a background session to the tab that shows it (or unlinks it), then redraws. */
+  linkTab(sessionId, address, cx) {
+    this.picking = null;
+    cx.notify();
+    cx.spawn(async (cx) => {
+      try {
+        await saveTabLink(sessionId, address);
+      } catch (error) {
+        console.log(`alpmeister: tab link not saved: ${error}`);
+      }
+      this.reloadHerds(cx);
     });
   }
 
@@ -232,9 +299,10 @@ export default class Alpmeister extends View {
     });
   }
 
-  /** Shows one of the two tabs and remembers it for this copy. */
+  /** Shows one of the tabs and remembers it for this copy. */
   selectTab(tab, cx) {
     this.tab = tab;
+    if (tab === TABS.herds) this.watchHerds(cx);
     try {
       localStorage.setItem(TAB_KEY, tab);
     } catch (error) {
@@ -243,7 +311,7 @@ export default class Alpmeister extends View {
     cx.notify();
   }
 
-  /** The tab switch: Dashboard and Daypack, as pills in one rounded frame. */
+  /** The tab switch: Dashboard, Herds and Daypack, as pills in one rounded frame. */
   tabs(t) {
     const open = this.focus.items().filter((item) => !item.done).length;
     const pill = (tab, label) =>
@@ -269,12 +337,19 @@ export default class Alpmeister extends View {
       .border_1()
       .border_color(t.border)
       .child(pill(TABS.dashboard, "Dashboard"))
+      .child(pill(TABS.herds, "Herds"))
       .child(pill(TABS.today, open ? `Daypack · ${open}` : "Daypack"));
   }
 
+  /**
+   * The header: tabs, title, when the shown tab's data was read, and Refresh. On Herds, Refresh
+   * reads the sessions again; elsewhere it fetches from GitHub.
+   */
   header(t) {
-    const fetchedAt = this.model?.fetchedAt;
-    const stale = fetchedAt && Date.now() - fetchedAt > STALE_AFTER;
+    const herds = this.tab === TABS.herds;
+    const fetchedAt = herds ? this.herds?.loadedAt : this.model?.fetchedAt;
+    const stale = !herds && fetchedAt && Date.now() - fetchedAt > STALE_AFTER;
+    const busy = herds ? this.herdsLoading : this.loading;
     return h_flex()
       .items_center()
       .gap(10)
@@ -290,7 +365,11 @@ export default class Alpmeister extends View {
             .child(`updated ${ago(Date.now() - fetchedAt)} ago`),
         ),
       )
-      .child(TextButton("refresh", this.loading ? "Refreshing…" : "Refresh", (cx) => this.refresh(cx)));
+      .child(
+        TextButton("refresh", busy ? "Refreshing…" : "Refresh", (cx) =>
+          herds ? this.reloadHerds(cx) : this.refresh(cx),
+        ),
+      );
   }
 
   /** Shows every row of a list section, or only its first rows again. */
@@ -381,17 +460,33 @@ export default class Alpmeister extends View {
     const config = this.config;
     const model = this.model;
     let content = v_flex().w_full().p(18).gap(14).child(this.header(t));
-    if (this.configError) content = content.child(Card("settings", "Settings", [], Note(this.configError, t.blocked)));
-    if (this.failure) content = content.child(Note(`Refresh failed: ${this.failure}`, t.blocked));
-    if (model?.errors?.github) {
-      content = content.child(Note(`GitHub: ${model.errors.github}. Try gh auth status.`, t.blocked));
-    }
-    if (!config || !model?.counts) {
-      if (!this.configError) content = content.child(Note(this.loading ? "Loading from GitHub…" : "No data yet."));
-    } else {
+    if (this.tab === TABS.herds) {
+      if (this.herdsFailure) content = content.child(Note(`Reading sessions failed: ${this.herdsFailure}`, t.blocked));
       content = content.child(
-        this.tab === TABS.today ? this.today(config, model, wide) : this.dashboard(config, model, wide),
+        Herds(this.herds, {
+          model: this.herds,
+          loading: this.herdsLoading,
+          picking: this.picking,
+          pick: (sessionId, cx) => {
+            this.picking = sessionId;
+            cx.notify();
+          },
+          link: (sessionId, address, cx) => this.linkTab(sessionId, address, cx),
+        }),
       );
+    } else {
+      if (this.configError) content = content.child(Card("settings", "Settings", [], Note(this.configError, t.blocked)));
+      if (this.failure) content = content.child(Note(`Refresh failed: ${this.failure}`, t.blocked));
+      if (model?.errors?.github) {
+        content = content.child(Note(`GitHub: ${model.errors.github}. Try gh auth status.`, t.blocked));
+      }
+      if (!config || !model?.counts) {
+        if (!this.configError) content = content.child(Note(this.loading ? "Loading from GitHub…" : "No data yet."));
+      } else {
+        content = content.child(
+          this.tab === TABS.today ? this.today(config, model, wide) : this.dashboard(config, model, wide),
+        );
+      }
     }
     return v_flex()
       .id("alpmeister")
