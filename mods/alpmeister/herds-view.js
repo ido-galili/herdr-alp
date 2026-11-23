@@ -243,6 +243,8 @@ function Connector(t, index, count, { label, dotted }) {
         .flex_none()
         .children([0, 1, 2, 3].map(() => div().w(1).h(3).bg(t.dim)))
     : div().w(1).h(22).flex_none().bg(line);
+  // The bar's row: halves out to the neighbours, and its middle pixel always drawn, so a lone
+  // member's line runs unbroken up to the herdsman's.
   return v_flex()
     .w_full()
     .child(
@@ -250,17 +252,29 @@ function Connector(t, index, count, { label, dotted }) {
         .w_full()
         .h(1)
         .child(div().flex_1().h(1).when(index > 0, (el) => el.bg(line)))
+        .child(div().w(1).h(1).flex_none().bg(dotted ? t.dim : line))
         .child(div().flex_1().h(1).when(index < count - 1, (el) => el.bg(line))),
     )
-    // The label is cut short rather than widening its side: a long one (an agent type such as
-    // general-purpose) would push the line off the column's middle, away from the bar's end
-    // and the box below.
+    // The line sits in the exact middle of the column, so it meets the bar's end and the box
+    // below. Both sides split the room evenly: the label's padding is on its text, not on its
+    // side (the layout would count it before splitting), and a long label is cut short rather
+    // than widening its side. The row is the line's height, from the top, so a label taller
+    // than the line cannot leave a gap above or below it.
     .child(
       h_flex()
         .w_full()
+        .h(22)
+        .items_start()
         .child(div().flex_1().min_w(0))
         .child(stub)
-        .child(div().flex_1().min_w(0).overflow_hidden().pl(5).pt(5).text_size(10).text_color(t.dim).truncate().child(label)),
+        .child(
+          h_flex()
+            .flex_1()
+            .min_w(0)
+            .h(22)
+            .overflow_hidden()
+            .child(div().min_w(0).pl(5).text_size(10).text_color(t.dim).truncate().child(label)),
+        ),
     );
 }
 
