@@ -29,6 +29,9 @@ const MEMBER_WIDTH = 260;
 /** The room each agent gets in a row: agents are smaller than sessions. */
 const AGENT_WIDTH = 180;
 
+/** The least room a herd's column takes in the row of herds: a herdsman with one member. */
+const HERD_MIN_WIDTH = MEMBER_WIDTH;
+
 /** One height for every agent box: status and description, then type and time. */
 const AGENT_HEIGHT = 58;
 
@@ -249,12 +252,15 @@ function Connector(t, index, count, { label, dotted }) {
         .child(div().flex_1().h(1).when(index > 0, (el) => el.bg(line)))
         .child(div().flex_1().h(1).when(index < count - 1, (el) => el.bg(line))),
     )
+    // The label is cut short rather than widening its side: a long one (an agent type such as
+    // general-purpose) would push the line off the column's middle, away from the bar's end
+    // and the box below.
     .child(
       h_flex()
         .w_full()
-        .child(div().flex_1())
+        .child(div().flex_1().min_w(0))
         .child(stub)
-        .child(div().flex_1().pl(5).pt(5).text_size(10).text_color(t.dim).child(label)),
+        .child(div().flex_1().min_w(0).overflow_hidden().pl(5).pt(5).text_size(10).text_color(t.dim).truncate().child(label)),
     );
 }
 
@@ -374,7 +380,8 @@ function linkTo(herd, member) {
 
 /**
  * One herd: the herdsman's box, a line down, then side by side the member sessions (each with its
- * own agents under it) and the herdsman's agents.
+ * own agents under it) and the herdsman's agents. A column as wide as its members and agents, so
+ * the herds sit side by side in a row that scrolls sideways.
  */
 function HerdGraph(t, herd, sessions, live, actions) {
   const { recent, earlier } = agentsByAge(herd.herdsman);
@@ -383,8 +390,11 @@ function HerdGraph(t, herd, sessions, live, actions) {
   const count = herd.members.length + ownAgents.length;
   const others = herd.links.filter((link) => link.from !== herd.herdsman.id);
   const name = (id) => sessions.find((session) => session.id === id)?.name ?? id;
+  const width = Math.max(HERD_MIN_WIDTH, herd.members.length * MEMBER_WIDTH + ownAgents.length * AGENT_WIDTH);
   return v_flex()
-    .w_full()
+    .id(`herd-${herd.herdsman.id}`)
+    .w(width)
+    .flex_none()
     .items_center()
     .child(SessionBox(t, herd.herdsman, live, actions, { herdsman: true }))
     .when(actions.picking === herd.herdsman.id, (el) =>
@@ -394,7 +404,6 @@ function HerdGraph(t, herd, sessions, live, actions) {
     .child(
       h_flex()
         .w_full()
-        .max_w(herd.members.length * MEMBER_WIDTH + ownAgents.length * AGENT_WIDTH)
         .items_start()
         .children(
           herd.members.map((member, index) =>
@@ -566,14 +575,21 @@ export function Herds(model, actions) {
             { color: t.dim },
           ),
         ],
-        v_flex()
-          .gap(18)
-          .when(!herds.length, (el) =>
-            el.child(
-              Note("No herds: no session has messaged another, made a worktree for one, or started agents lately."),
-            ),
-          )
-          .children(herds.map((herd) => HerdGraph(t, herd, model.sessions, live, actions))),
+        herds.length
+          ? // The herds side by side, a divider between them; a wide row scrolls sideways.
+            h_flex()
+              .id("herds-row")
+              .w_full()
+              .items_start()
+              .pb(10)
+              .overflow_x_scrollbar()
+              .children(
+                herds.flatMap((herd, index) => [
+                  index > 0 ? div().w(1).self_stretch().mx(16).flex_none().bg(t.border) : null,
+                  HerdGraph(t, herd, model.sessions, live, actions),
+                ]).filter(Boolean),
+              )
+          : Note("No herds: no session has messaged another, made a worktree for one, or started agents lately."),
       ),
     )
     .child(
