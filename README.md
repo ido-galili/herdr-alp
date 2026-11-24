@@ -134,6 +134,9 @@ the Dashboard starts on all your repositories.
 - **Open on a tab or workspace:** `props.tab` (`dashboard`, `herds`, `today`, `settings`) and
   `props.workspace` (a workspace's name, `""` for All repos):
   `herdr-app do tab.new '{"mod":"alpmeister","props":{"tab":"dashboard","workspace":"Team"}}'`.
+- **Demo:** `props.demo` shows a made-up herd on the Herds tab, for demos and screenshots, in
+  place of your own sessions (the other tabs stay yours). It reads nothing from `~/.claude`, and
+  its cards open no tab: `herdr-app do tab.new '{"mod":"alpmeister","props":{"tab":"herds","demo":true}}'`.
 - **State:** `~/.local/state/alp/focus.json` holds the focus list and
   `~/.local/state/alp/alpmeister-cache.json` the last result.
 

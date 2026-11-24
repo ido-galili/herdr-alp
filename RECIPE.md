@@ -98,7 +98,7 @@ open it with `tab.new {mod: "alpmeister"}`.
     from GitHub but the form's choices. Each other copy remembers its tab and
     workspace in localStorage; `props.tab` and `props.workspace` open a copy on a given one
     (`tab.new {mod: "alpmeister", props: {tab: "dashboard", workspace: "Team"}}`, `""` for All
-    repos).
+    repos). `props.demo: true` shows a made-up herd on the Herds tab, for demos and screenshots.
   - **Dashboard**: with any workspaces, a row of pills on top switches between them and "All
     repos" (the last one). Without, it shows All repos alone.
   - **All repos**, top to bottom:
@@ -239,7 +239,10 @@ open it with `tab.new {mod: "alpmeister"}`.
   agents are read in one `sh` call: per agent its meta file, the first `timestamp` in the first
   lines of its transcript (the first line is a header with none), the transcript's mtime
   (`stat -c %Y`, or `stat -f %m` on macOS), and for a nested agent the sibling transcript that
-  holds its `toolUseId` (`grep -l -F`).
+  holds its `toolUseId` (`grep -l -F`). `demo-herds.js` is the demo's herd, in `loadHerds()`'s
+  shape plus `demo: { agents, spaces, colors }`, which the Herds tab draws with in place of
+  `agents()`, `spaces()` and `shared("space.colors")`; in demo mode nothing is watched, the canvas
+  takes half the tab, and a click on a card opens nothing.
 - **Watch out:** issue search cannot filter on a board field, so in-flight items come from the
   project's own `items(query:)` filter. GitHub milestones have no start date. The runtime has no
   locale data, so dates are formatted by hand. Without a `mod.json` with `"place": "none"`, Herdr

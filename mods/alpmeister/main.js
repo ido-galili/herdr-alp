@@ -30,6 +30,7 @@ import { folderOf, loadConfig, normalizeConfig, stateDir } from "./config.js";
 import { MODEL_VERSION, loadAll, loadPickStates } from "./data.js";
 import { FocusStore, pickId } from "./focus.js";
 import { FocusList } from "./focus-list.js";
+import { loadDemoHerds } from "./demo-herds.js";
 import { loadHerds, saveTabLink, sessionsDir } from "./herds-data.js";
 import { Herds } from "./herds-view.js";
 import { HerdsCanvas } from "./herds-canvas.js";
@@ -98,6 +99,8 @@ export default class Alpmeister extends View {
     this.cacheSnapshot = null;
     // `props.tab` opens a copy on that tab: tab.new {mod: "alpmeister", props: {tab: "herds"}}.
     this.tab = Object.values(TABS).includes(props()?.tab) ? props().tab : rememberedTab();
+    // `props.demo` shows a made-up herd on the Herds tab (`demo-herds.js`), for demos and screenshots.
+    this.demo = props()?.demo === true;
     this.herds = null;
     this.herdsLoading = false;
     this.herdsAgain = false;
@@ -151,7 +154,7 @@ export default class Alpmeister extends View {
       do {
         this.herdsAgain = false;
         try {
-          this.herds = await loadHerds();
+          this.herds = this.demo ? await loadDemoHerds() : await loadHerds();
           this.herdsFailure = null;
           this.watchAgents(cx);
         } catch (error) {
@@ -170,7 +173,7 @@ export default class Alpmeister extends View {
    */
   watchHerds(cx) {
     this.reloadHerds(cx);
-    if (this.herdsWatching) return;
+    if (this.herdsWatching || this.demo) return;
     this.herdsWatching = true;
     cx.spawn(async (cx) => {
       for (;;) {
@@ -801,9 +804,10 @@ export default class Alpmeister extends View {
           expandedAgents: this.expandedAgents,
           toggleAgents: (sessionId, cx) => this.toggleAgents(sessionId, cx),
           canvas: this.herdsCanvas,
-          // In the Herds tab the canvas takes 30% of the tab; Full tab gives it all the room
-          // under its row of controls (the tab's padding, the row, the gap).
-          canvasHeight: Math.max(220, Math.round(this.height * 0.3)),
+          // In the Herds tab the canvas takes 30% of the tab (half in the demo, so its herd
+          // fits large enough to read); Full tab gives it all the room under its row of
+          // controls (the tab's padding, the row, the gap).
+          canvasHeight: Math.max(220, Math.round(this.height * (this.demo ? 0.5 : 0.3))),
           fullHeight: Math.max(300, this.height - 36 - 30 - 8),
         }),
       );

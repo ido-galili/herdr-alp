@@ -175,20 +175,27 @@ export function linkTo(herd, member) {
 // A space's stored color as the spaces mod paints it (the same table as the agents list).
 const MARK = { ansi6: "#22a99a", ansi3: "#e3814f", ansi4: "#5b8def", ansi5: "#8b7cf6", ansi2: "#3fae6a", ansi1: "#d9649a" };
 
+/**
+ * The space colors to paint with: the demo's own in demo mode, else Herdr's.
+ * @param {object} model loadHerds()'s result.
+ * @returns {Record<string, string>}
+ */
+const spaceColors = (model) => model?.demo?.colors ?? shared("space.colors") ?? {};
+
 /** A space's color, as its avatar in the sidebar shows it. */
-function spaceColor(t, space) {
-  const color = (shared("space.colors") ?? {})[space] ?? "ansi6";
+function spaceColor(t, space, colors) {
+  const color = colors[space] ?? "ansi6";
   return color.startsWith("#") ? color : (MARK[color] ?? t[color]);
 }
 
 /** A space's avatar: its first letter on its color, as the agents list and spaces mod draw it. */
-function Avatar(t, key, space, name, size = 16) {
+function Avatar(t, key, space, name, colors, size = 16) {
   return h_flex()
     .id(key)
     .size(size)
     .flex_none()
     .rounded(Math.round((size * 5) / 18))
-    .bg(spaceColor(t, space))
+    .bg(spaceColor(t, space, colors))
     .items_center()
     .justify_center()
     .text_size((size * 10.5) / 18)
@@ -198,8 +205,8 @@ function Avatar(t, key, space, name, size = 16) {
 }
 
 /** The grazing sessions in the sidebar's space order, then by name; ones in no space last. */
-function sortedBySpace(grazing, live) {
-  const order = new Map(spaces().map((space, index) => [space.id, index]));
+function sortedBySpace(grazing, live, model) {
+  const order = new Map((model?.demo?.spaces ?? spaces()).map((space, index) => [space.id, index]));
   const rank = (session) => order.get(live.get(session.terminal)?.space) ?? order.size;
   return [...grazing].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
 }
@@ -213,6 +220,7 @@ function GrazingCard(t, session, live, actions) {
   const agent = live.get(session.terminal);
   const tabName = placeOf(session, live, { space: false });
   const second = agent && tabName === session.name ? agent.space_name : tabName;
+  const colors = spaceColors(actions.model);
   return h_flex()
     .id(`hg-${session.id}`)
     .w(CARD_WIDTH)
@@ -228,10 +236,11 @@ function GrazingCard(t, session, live, actions) {
       el
         .cursor_pointer()
         .hover((style) => style.bg(t.hover))
-        .on_click(() => run("pane.focus", { terminal: session.terminal }))
+        // The demo's tabs are made up: nothing to open.
+        .on_click(() => !actions.model?.demo && run("pane.focus", { terminal: session.terminal }))
         .tooltip(`Open its tab in ${agent.space_name}`),
     )
-    .child(div().w(3).flex_none().bg(agent ? spaceColor(t, agent.space) : t.border))
+    .child(div().w(3).flex_none().bg(agent ? spaceColor(t, agent.space, colors) : t.border))
     .child(
       v_flex()
         .flex_1()
@@ -250,7 +259,7 @@ function GrazingCard(t, session, live, actions) {
             )
             .child(RoleIcon(t, `hg-role-${session.id}`, "grazing"))
             .when(Boolean(agent), (el) =>
-              el.child(Avatar(t, `hg-av-${session.id}`, agent.space, agent.space_name, 15).tooltip(agent.space_name)),
+              el.child(Avatar(t, `hg-av-${session.id}`, agent.space, agent.space_name, colors, 15).tooltip(agent.space_name)),
             ),
         )
         .child(
@@ -275,7 +284,8 @@ function GrazingCard(t, session, live, actions) {
 export function Herds(model, actions) {
   const t = theme();
   if (!model) return Note(actions.loading ? "Reading your Claude sessions…" : "No sessions read yet.");
-  const live = new Map(agents().map((agent) => [agent.address, agent]));
+  // Demo mode draws the demo's made-up tabs instead of Herdr's.
+  const live = new Map((model.demo?.agents ?? agents()).map((agent) => [agent.address, agent]));
   const { herds, grazing } = herdsOf(model);
   const shown = [...herds.flatMap((herd) => [herd.herdsman, ...herd.members]), ...grazing];
   const working = shown.filter((session) => statusOf(session, live) === "working").length;
@@ -354,7 +364,7 @@ export function Herds(model, actions) {
           .items_start()
           .gap(12)
           .when(!grazing.length, (el) => el.child(Note("Every session is in a herd.")))
-          .children(sortedBySpace(grazing, live).map((session) => GrazingCard(t, session, live, actions)))
+          .children(sortedBySpace(grazing, live, model).map((session) => GrazingCard(t, session, live, actions)))
           // The tab picker opens below the grid, so the cards keep one height.
           .when(Boolean(grazing.find((session) => session.id === actions.picking)), (el) =>
             el.child(div().w_full().child(TabPicker(t, actions.picking, model.sessions, live, actions))),
