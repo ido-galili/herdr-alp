@@ -6,7 +6,7 @@
 
 import { div, svg, PathBuilder } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { run } from "herdr";
+import { run, settings } from "herdr";
 import { agentChildren, agentsByAge } from "./herds-data.js";
 import { LinkButton, RoleIcon, StatusMark, agentLine, branchOf, linkLine, linkTo, placeOf, statusOf } from "./herds-view.js";
 import { ICONS, IconButton, Segmented, ago, formatTime } from "./ui.js";
@@ -400,7 +400,7 @@ export class HerdsCanvas {
       .hover((style) => style.bg(t.hover))
       .tooltip(tooltip)
       .on_mouse_down("left", (event, cx) => {
-        this.drag = { kind: "card", key: node.key, start: event.position, origin: this.moved[node.key] ?? { dx: 0, dy: 0 }, moved: false, terminal: hasTab ? session.terminal : null };
+        this.drag = { kind: "card", key: node.key, start: event.position, origin: this.moved[node.key] ?? { dx: 0, dy: 0 }, moved: false, terminal: hasTab && !actions.model?.demo ? session.terminal : null };
         cx.notify();
       })
       .child(
@@ -528,7 +528,10 @@ export class HerdsCanvas {
       .bg(t.canvas)
       .when(this.drag?.kind === "pan", (el) => el.cursor_grabbing())
       .on_size_change((size, cx) => {
-        this.size = size;
+        // The size comes unzoomed while the cards are laid out zoomed: at the app's 150% the
+        // canvas holds 1/1.5 as much, so Fit measures it in zoomed units.
+        const appZoom = Number(settings().zoom) || 1;
+        this.size = { width: size.width / appZoom, height: size.height / appZoom };
         this.refit = true;
         cx.notify();
       })
