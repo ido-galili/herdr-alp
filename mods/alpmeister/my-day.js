@@ -55,7 +55,7 @@ export function ClaudeButton(prefix, item, actions) {
   return IconButton(`${prefix}-go-${itemKey(item)}`, ICONS.claude, () => actions.launch(item), {
     picture: true,
     tooltip: claudeTooltip(fillPrompt(prompt, item)),
-    onMiddleClick: () => actions.launch(item, { background: true }),
+    onMiddleClick: (cx) => actions.launch(item, { background: true, cx }),
   });
 }
 

@@ -263,22 +263,38 @@ export function IconButton(id, icon, onClick, { tooltip, color, picture = false,
 /** The name a Claude tab opened on an issue or PR carries: `repo#12`, or `PR repo#12`. */
 export const sessionName = (item) => `${item.kind === "pr" ? "PR " : ""}${shortRepo(item.repo)}#${item.number}`;
 
+/** The ids of a space's tabs named `name`. */
+export function tabIdsNamed(spaceId, name) {
+  const space = spaces().find((candidate) => candidate.id === spaceId);
+  return (space?.tabs ?? []).filter((candidate) => candidate.name === name).map((candidate) => candidate.id);
+}
+
 /**
  * Tells the person a Claude tab opened in the background. A click on the notification shows the
- * tab. Background tabs go last in their space, so the tab is the last one with the session name.
+ * tab. `spaces()` lists a new tab only a moment after `tab.new`, so this waits (up to 2s) for a
+ * tab with the session name that is not in `before`, then posts the notification with it.
  * @param {{ kind: string, repo: string, number: number, title?: string }} item The issue or PR.
  * @param {string | undefined} spaceId The space the tab opened in.
+ * @param {string[]} before The ids of that space's tabs with the session name, taken before `tab.new`.
+ * @param {object} cx The event's context, to wait in.
  */
-export function announceBackgroundTab(item, spaceId) {
+export function announceBackgroundTab(item, spaceId, before, cx) {
   const name = sessionName(item);
-  const space = spaces().find((candidate) => candidate.id === spaceId);
-  const tab = space?.tabs.filter((candidate) => candidate.name === name).at(-1);
-  notify({
-    title: `Claude tab ${name} opened in the background`,
-    ...(item.title ? { body: item.title } : {}),
-    level: "info",
-    icon: "icons/claude.svg",
-    ...(tab ? { action: { name: "tab.select", args: { id: tab.id } } } : {}),
+  const known = new Set(before);
+  const newTab = () => tabIdsNamed(spaceId, name).find((id) => !known.has(id)) ?? null;
+  cx.spawn(async (cx) => {
+    let tabId = newTab();
+    for (let tries = 0; !tabId && tries < 40; tries++) {
+      await cx.sleep(50);
+      tabId = newTab();
+    }
+    notify({
+      title: `Claude tab ${name} opened in the background`,
+      ...(item.title ? { body: item.title } : {}),
+      level: "info",
+      icon: "icons/claude.svg",
+      ...(tabId ? { action: { name: "tab.select", args: { id: tabId } } } : {}),
+    });
   });
 }
 

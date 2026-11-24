@@ -53,6 +53,7 @@ import {
   announceBackgroundTab,
   fillPrompt,
   sessionName,
+  tabIdsNamed,
 } from "./ui.js";
 
 const STALE_AFTER = 2 * 3600000;
@@ -494,9 +495,9 @@ export default class Alpmeister extends View {
    * worktree, else in the clone, else in the space's own folder. A background tab opens without
    * taking focus, and a notification says so.
    * @param {{ kind: string, repo: string, number: number }} item The issue or PR.
-   * @param {{ background?: boolean }} [options]
+   * @param {{ background?: boolean, cx?: object }} [options] `cx`: the click's context, needed in the background.
    */
-  launch(item, { background = false } = {}) {
+  launch(item, { background = false, cx } = {}) {
     const clone = folderOf(this.config, item.repo);
     const space = spaces().find((candidate) => candidate.active);
     const firstTab = space?.tabs?.[0]?.id;
@@ -504,6 +505,7 @@ export default class Alpmeister extends View {
     const spaceFolder = liveFolder?.replace(/\/+$/, "");
     const inRepo = Boolean(clone && spaceFolder && (spaceFolder === clone || spaceFolder.startsWith(`${clone}/`)));
     const folder = inRepo ? spaceFolder : clone;
+    const before = tabIdsNamed(space?.id, sessionName(item));
     run("tab.new", {
       name: sessionName(item),
       ...(space ? { space: space.id } : {}),
@@ -512,7 +514,7 @@ export default class Alpmeister extends View {
       task: fillPrompt(this.prompt(item.kind), item),
       focus: !background,
     });
-    if (background) announceBackgroundTab(item, space?.id);
+    if (background) announceBackgroundTab(item, space?.id, before, cx);
   }
 
   /** The actions every row with a Claude button needs. */

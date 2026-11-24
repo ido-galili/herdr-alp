@@ -102,20 +102,35 @@ function sessionTab(item) {
   return null;
 }
 
+/** The ids of a space's tabs named `name`. */
+function tabIdsNamed(spaceId, name) {
+  const space = spaces().find((candidate) => candidate.id === spaceId);
+  return (space?.tabs ?? []).filter((candidate) => candidate.name === name).map((candidate) => candidate.id);
+}
+
 /**
  * Tells the person a Claude tab opened in the background, as Alpmeister's
  * `announceBackgroundTab` does: keep the two in step. A click on the notification shows the tab.
+ * `spaces()` lists a new tab only a moment after `tab.new`, so this waits (up to 2s) for a tab
+ * with the session name that is not in `before`.
  */
-function announceBackgroundTab(item, spaceId) {
+function announceBackgroundTab(item, spaceId, before, cx) {
   const name = sessionName(item);
-  const space = spaces().find((candidate) => candidate.id === spaceId);
-  const tab = space?.tabs.filter((candidate) => candidate.name === name).at(-1);
-  notify({
-    title: `Claude tab ${name} opened in the background`,
-    ...(item.title ? { body: item.title } : {}),
-    level: "info",
-    icon: CLAUDE_ICON,
-    ...(tab ? { action: { name: "tab.select", args: { id: tab.id } } } : {}),
+  const known = new Set(before);
+  const newTab = () => tabIdsNamed(spaceId, name).find((id) => !known.has(id)) ?? null;
+  cx.spawn(async (cx) => {
+    let tabId = newTab();
+    for (let tries = 0; !tabId && tries < 40; tries++) {
+      await cx.sleep(50);
+      tabId = newTab();
+    }
+    notify({
+      title: `Claude tab ${name} opened in the background`,
+      ...(item.title ? { body: item.title } : {}),
+      level: "info",
+      icon: CLAUDE_ICON,
+      ...(tabId ? { action: { name: "tab.select", args: { id: tabId } } } : {}),
+    });
   });
 }
 
@@ -133,9 +148,9 @@ export default class Daypack extends View {
    * worktree, else in the clone, else in the space's own folder. A background tab opens without
    * taking focus, and a notification says so.
    * @param {object} item The issue or PR.
-   * @param {{ background?: boolean }} [options]
+   * @param {{ background?: boolean, cx?: object }} [options] `cx`: the click's context, needed in the background.
    */
-  launch(item, { background = false } = {}) {
+  launch(item, { background = false, cx } = {}) {
     const { issue, pr, folders } = this.launchSettings;
     const repo = folders[repoOf(item)] ?? "";
     const space = spaces().find((candidate) => candidate.active);
@@ -144,6 +159,7 @@ export default class Daypack extends View {
     const spaceFolder = liveFolder?.replace(/\/+$/, "");
     const inRepo = Boolean(repo && spaceFolder && (spaceFolder === repo || spaceFolder.startsWith(`${repo}/`)));
     const folder = inRepo ? spaceFolder : repo;
+    const before = tabIdsNamed(space?.id, sessionName(item));
     run("tab.new", {
       name: sessionName(item),
       ...(space ? { space: space.id } : {}),
@@ -152,7 +168,7 @@ export default class Daypack extends View {
       task: fillPrompt(item.kind === "pr" ? pr : issue, item),
       focus: !background,
     });
-    if (background) announceBackgroundTab(item, space?.id);
+    if (background) announceBackgroundTab(item, space?.id, before, cx);
   }
 
   /** The Claude button for an issue or PR, when its command is set; null otherwise. */
@@ -176,7 +192,7 @@ export default class Daypack extends View {
       })
       .on_mouse_up("middle", (_event, cx) => {
         cx.stop_propagation();
-        this.launch(item, { background: true });
+        this.launch(item, { background: true, cx });
       })
       .child(image(CLAUDE_ICON).w(13).h(13));
   }

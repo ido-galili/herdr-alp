@@ -181,7 +181,7 @@ function FocusItem(item, actions) {
         IconButton(`fc-go-${item.id}`, ICONS.claude, () => actions.launch(item), {
           picture: true,
           tooltip: claudeTooltip(fillPrompt(command, item)),
-          onMiddleClick: () => actions.launch(item, { background: true }),
+          onMiddleClick: (cx) => actions.launch(item, { background: true, cx }),
         }),
       ),
     )
