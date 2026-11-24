@@ -15,9 +15,9 @@ Left to right:
   - **Footer**, 69px: `workspace-chrome` in footer mode (Settings, Add machine).
 - **Work area**:
   - **Tabs**, 42px: Alp's tab bar (`alp-tabs`, the shipped `tabs` with two buttons added). Drags the window. Left to right: the tabs, +, the sheep (Alpmeister), Files, Changes, the Basecamp button, then the window buttons where the platform draws none.
-  - **Body**, 8px padding and gap: the active tab's panes, each a card with `background` fill, 1px `border` outline (1px `accent` when focused), 10px radius, 8px between cards, framed even when alone. To the right a hidden 368px panel (280–900) stacking the shipped `files` and `changes` panels, opened from the tab bar.
+  - **Body**, 8px padding and gap: the active tab's panes, each a card with `background` fill, 1px `border` outline (1px `accent` when focused), 10px radius, 8px between cards, framed even when alone. To the right a hidden 368px panel (280–900) stacking Alp's Files panel (`alp-files`, see Files, below) and the shipped `changes` panel, opened from the tab bar.
   - **Runs panel**, 280px (140–720), hidden at first, between the body and the status bar: a 34px bar, then the selected run's terminal beside a 220px sessions list (see Runs, below).
-  - **Status bar**, 28px: `alp-status`, the shipped `workspace-status` with a Runs button before the commands hint.
+  - **Status bar**, 28px: `alp-status`, the shipped `workspace-status` with a Runs button after the commands hint, at the right end.
 - **Basecamp**, 300px (220–520), hidden at first, the root row's last child, on `chrome`: a 42px header (`basecamp`) over a stack of the Daypack and the Run tab (see Basecamp, below).
 - Theme: Dracula, shipped as the layout's own theme `themes/alp.json` (background `#282a36`, chrome `#21222c`, border `#44475a`, hover `#343746`, dim `#6272a4`, accent `#bd93f9`, working `#f1fa8c`, blocked `#ff5555`, done `#50fa7b`) and set as the root's `theme`. Every color below is a theme name, so another theme from the picker restyles it all.
 - Window: `canvas` background, no title bar (traffic lights at 12,16), 1px `border` dividers, terminal padding 14×12.
@@ -46,8 +46,8 @@ Left to right:
 
 ## Built from
 
-- **Layout** `layouts/alp.json`, cloned from the shipped `main` (0.1.14): `root` row with `"theme": "alp"` → `sidebar` column (`brand` block, `sidebar-lists` column of `limits` / `spaces` / `agents` blocks, `sidebar-footer` block) and `work` column (`tabs` block showing `alp-tabs`, `work-body` row of `main` block + hidden `panel` column with a `panel-body` stack of `files` / `changes`, hidden `bottom-panel` column, `status` block showing `alp-status`) and the hidden `basecamp` column. `main` shows `{ "tab": "active" }` with a `pane` frame whose `header` is `{ "content": { "mod": "pane-agent" }, "reveal": "always", "height": 30, "position": "top" }`.
-- **Shipped mods used**: `workspace-chrome` (brand, and footer with `props: { footer: true }`), `spaces`, `agents`, `files`, `changes`. Art borrowed from them: `mods/workspace-chrome/clock.svg`, `mods/workspace-chrome/spinner.svg`.
+- **Layout** `layouts/alp.json`, cloned from the shipped `main` (0.1.14): `root` row with `"theme": "alp"` → `sidebar` column (`brand` block, `sidebar-lists` column of `limits` / `spaces` / `agents` blocks, `sidebar-footer` block) and `work` column (`tabs` block showing `alp-tabs`, `work-body` row of `main` block + hidden `panel` column with a `panel-body` stack of `files` (showing `alp-files`) / `changes`, hidden `bottom-panel` column, `status` block showing `alp-status`) and the hidden `basecamp` column. `main` shows `{ "tab": "active" }` with a `pane` frame whose `header` is `{ "content": { "mod": "pane-agent" }, "reveal": "always", "height": 30, "position": "top" }`.
+- **Shipped mods used**: `workspace-chrome` (brand, and footer with `props: { footer: true }`), `spaces`, `agents`, `changes`. Art borrowed from them: `mods/workspace-chrome/clock.svg`, `mods/workspace-chrome/spinner.svg`.
 - **`mods/alp-tabs`**, cloned from the shipped `tabs` (0.1.16) with `mod.clone`, which rewrote its own art paths. Added, marked at the top of `main.js`:
   - The sheep, after +: a 26px button like +, with `sheep.svg` (Alp's own: a fleece outline, a solid face, two legs) at 16px. A click goes to the tab of the space's Alpmeister pane (`panes()` with `mod: "alpmeister"`) or runs `tab.new {mod: "alpmeister", name: "Alpmeister"}`. `selected` while that tab shows. Tooltip "Open Alpmeister" or "Go to Alpmeister".
   - The Basecamp button, after Changes, only when the layout has a `basecamp` node: the tent (`mods/basecamp/tent.svg`) alone in a 26px square, `selected` while the column shows, the icon `accent` while any trail item is open (counted from `~/.local/state/alp/focus.json`, again whenever `shared("alp.focusStamp")` changes) or any run is running (a live terminal with an `alp.run` label and no `alp.run.exit`). It runs `layout.toggle {id: "basecamp"}`.
@@ -375,7 +375,32 @@ open it with `tab.new {mod: "alpmeister"}`.
   terminal name, stop (SIGINT to the foreground process group; a second press within 4 s sends
   TERM), restart (with the answers it started with, `shared("alp.runs.started")`) and hide.
 - **Status bar:** `mods/alp-status/`, cloned from `workspace-status` (0.1.16), adds the Runs button
-  (`mods/alp-runs/terminal.svg` and the running count) that runs `layout.toggle {id:
-  "bottom-panel"}`.
+  (`mods/alp-runs/terminal.svg` and the running count) after the commands hint, that runs
+  `layout.toggle {id: "bottom-panel"}`.
 - **Agents:** the plugin's `alp-runs` skill: `hc ls --label alp.workspace=<root>` and `hc read
   <name>`.
+
+## Files
+
+- **What:** the Files panel with a minimal editor. A click on a file opens it in Herdr's own
+  `Editor` (syntect highlighting, line numbers, folding); local files are editable.
+- **Where:** `mods/alp-files/`, cloned from the shipped `files`; the `files` block in
+  `panel-body` shows it. The tab bar's Files button still selects the block id `files`.
+- **Footer:** 32px under an open file, always there so the editor never moves: `No changes` or
+  `Unsaved`, a `ctrl-s` hint and Save (`dim` when clean, `accent` when edited); `Saving…`;
+  `Changed on disk` with Reload and Overwrite (`Deleted on disk` with Save again); a failed save
+  with Retry; or why the file is read-only. An edited file also gets an `accent` `●` after its
+  name in the header and in the tree.
+- **Saving:** `ctrl-s` (an `on_key_down` around the editor, `cmd-s` in GPUI's spelling) or Save
+  runs `writeTextFile(path, text, base)`, which refuses when the file changed since it was read.
+  Overwrite passes the file as it is now. Unsaved documents are kept by path when you go back to
+  the tree or focus another folder, and come back when the file is reopened.
+- **Following the disk:** on each refresh (the folder watch, or every 10 s) the open file is read
+  again: a clean document takes the new text, an edited one shows `Changed on disk`.
+- **Read-only:** files on another machine (`writeTextFile` writes here only) and files over
+  400,000 characters (shown cut off).
+- **Highlighting:** syntect's default grammars, by extension. Missing ones map to the closest
+  (TypeScript → JavaScript, TOML → YAML, Vue/Svelte → HTML), and files without an extension go
+  by name (`Makefile`, `Dockerfile`, `.bashrc`, `.env`, …). Colors are Dracula's roles from the
+  theme's ANSI colors: keywords and operators `ansi5`, strings `ansi3`, functions `ansi2`, types
+  `ansi6`, numbers and constants `ansi4`, comments `dim`.

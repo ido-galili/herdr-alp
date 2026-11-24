@@ -19,6 +19,7 @@ What's inside:
 | `themes/alp.json` | its built-in theme: Dracula |
 | `mods/usage-limits/` | sidebar block: session (5h) and weekly (7d) usage, with time to reset |
 | `mods/pane-agent/` | pane header: icon, name, folder, model/effort/context chips, worktree, branch, status, split/zoom/close |
+| `mods/alp-files/` | the Files panel with a minimal editor: click a file to edit it, `ctrl-s` saves, edits survive switching files, and a file another program changed asks before it's overwritten (Herdr's `files`, cloned) |
 | `mods/alp-agents/` | sidebar agents list: grouped or priority views, sub-agents under their parent, each Space shown by its avatar |
 | `mods/alpmeister/` | a team lead's start-of-day tab: a Dashboard of all your repos or one workspace (bugs by priority, triage, customer issues, nightly, priorities, milestone, team in flight), a Board, Herds, Daypack (focus, reviews, your PRs, your issues) and Settings |
 | `mods/basecamp/` | Basecamp: the right column beside the terminals, with a Daypack tab and a Run tab, shown or hidden from the tent button in the tab bar |
@@ -181,7 +182,7 @@ workspace is the focused terminal's git checkout, or the repo the space's termin
 - **Watch:** the bottom panel opens with the run's live output. Its bar shows the run's state,
   stop (Ctrl-C, then terminate on a second press) and restart. The sessions list beside it holds
   every run: running, exited 0 or failed. The output stays after the command ends.
-- **Show or hide:** the terminal button in the status bar, before the commands hint.
+- **Show or hide:** the terminal button at the right end of the status bar, after the commands hint.
 - **Not runnable here:** configs that need VS Code's debugger or an open editor (`${file}`,
   browser and attach configs) fold away under "need VS Code", with the reason on each.
 
