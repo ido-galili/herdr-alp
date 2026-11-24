@@ -2,8 +2,8 @@ import { View, div, svg } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { spaces, agents, theme, run, window, keys, layout, terminals } from "herdr";
 
-// Alp's status bar: Herdr's `workspace-status` (0.1.16) with a Runs button before the commands
-// hint. It shows or hides the `bottom-panel` (the runs' output and their sessions), and counts
+// Alp's status bar: Herdr's `workspace-status` (0.1.16) with a Runs button after the commands
+// hint, at the right end. It shows or hides the `bottom-panel` (the runs' output and their sessions), and counts
 // the runs still running.
 
 const PANEL_ID = "bottom-panel";
@@ -68,7 +68,7 @@ export default class AlpStatus extends View {
       .child(h_flex().gap(6).items_center().child(div().size(6).rounded(3).bg(t.dim)).child(`${list.length} agents`)
         .when(needs > 0, el => el.child(div().text_color(t.blocked).child(`· ${needs} needs you`))))
       .child(div().flex_1())
-      .when(Boolean(panel), (el) => el.child(this.runsButton(t, panel)))
-      .child(div().id("palette").text_color(t.dim).on_click(() => run("app.palette")).child(this.hint(t)));
+      .child(div().id("palette").text_color(t.dim).on_click(() => run("app.palette")).child(this.hint(t)))
+      .when(Boolean(panel), (el) => el.child(this.runsButton(t, panel)));
   }
 }
