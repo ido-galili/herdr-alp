@@ -9,7 +9,7 @@ An *Alp* is the high summer pasture of the Swiss Alps: the herd roams the open s
 > [!NOTE]
 > **Claude Code only, for now.** The usage limits and the model, effort and context chips come from the `alp` Claude Code plugin. Other agents and shells still get the pane header (name, folder, worktree, status) but no chips. The status files are agent-neutral, so other agents can be added later (see [Status files](#status-files)).
 
-![Alp](preview.png)
+![Alp](layout.png)
 
 What's inside:
 
@@ -29,6 +29,8 @@ What's inside:
 | `plugins/alp/` | Claude Code plugin that writes the status files the mods read |
 | `RECIPE.md` | the brief to rebuild it from scratch (herdr.dev format) |
 | `icon.png` | Alp's logo |
+| `layout.png` | a screenshot of the layout |
+| `preview.png` | the picture herdr.dev shows: the Herds map, from Alpmeister's demo herd |
 | `sync.sh` | copy the layout and mods into Herdr's home, or pull live edits back |
 | `setup.sh` | one-step install: checks `gh`, syncs, installs the plugin and opens Alpmeister's Settings |
 
@@ -130,6 +132,9 @@ the Dashboard starts on all your repositories.
   sessions' transcripts and agent files) and redraws when a session starts, ends or changes
   status, and every few seconds while its agents work. Open it
   directly with `herdr-app do tab.new '{"mod":"alpmeister","props":{"tab":"herds"}}'`.
+
+  ![Herds](preview.png)
+
 - **Settings:** everything below, as a form (see [Settings](#settings)), in an "Alpmeister
   settings" tab opened from the gear (or gone to, when it is already open). A save there makes
   every Alpmeister tab fetch again.
