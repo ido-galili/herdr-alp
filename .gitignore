@@ -1,5 +1,6 @@
 # Herdr writes these into mod folders
 gpui-kit.d.ts
+mods/*/jsconfig.json
 *.error
 *.bak
 
