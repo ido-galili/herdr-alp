@@ -2,7 +2,8 @@
 // Each herd is a tree, its herdsman on top, members and agents below, agents under the sessions
 // that started them, and the herds side by side. The lines are painted paths, curved or stepped
 // (your pick), each labelled with how the two are linked. Drag the background to pan, drag a card to
-// move it (it stays where you put it), scroll to pan, and Cmd- or Ctrl-scroll to zoom.
+// move it and everything under it (they stay where you put them), scroll to pan, and Cmd- or
+// Ctrl-scroll to zoom.
 
 import { div, svg, PathBuilder } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
@@ -117,13 +118,16 @@ function place(node, left, top, cards, lines) {
 /**
  * The Herds canvas and everything it remembers: the line style, the pan and zoom,
  * and the cards you moved (as offsets from where the layout puts them, so a moved card stays put
- * when herds come and go).
+ * when herds come and go). A card's offset is on top of its parent's, so moving a card moves
+ * everything under it, and a card that shows up later under a moved one shows up under it.
  */
 export class HerdsCanvas {
   constructor() {
     const kept = remembered();
     this.edges = EDGE_STYLES.some((style) => style.value === kept.edges) ? kept.edges : "curved";
     this.moved = kept.moved && typeof kept.moved === "object" ? kept.moved : {};
+    // Offsets kept before they stacked were each a card's own: made relative on the first layout.
+    this.flat = !kept.nested && Object.keys(this.moved).length > 0;
     this.pan = { x: 24, y: 24 };
     this.zoom = 1;
     this.size = null;
@@ -140,7 +144,7 @@ export class HerdsCanvas {
   /** Keeps the choices and the moved cards for next time. */
   remember() {
     try {
-      localStorage.setItem(STORE_KEY, JSON.stringify({ edges: this.edges, moved: this.moved }));
+      localStorage.setItem(STORE_KEY, JSON.stringify({ edges: this.edges, moved: this.moved, nested: true }));
     } catch (error) {
       console.log(`alpmeister: canvas not remembered: ${error}`);
     }
@@ -229,7 +233,10 @@ export class HerdsCanvas {
     ].filter(Boolean);
   }
 
-  /** Lays the herds out side by side, each card moved by as much as you dragged it. */
+  /**
+   * Lays the herds out side by side, each card moved by as much as you dragged it and its
+   * parents: a card's offset carries everything under it along.
+   */
   layout(herds, actions) {
     const cards = [];
     const lines = [];
@@ -239,14 +246,37 @@ export class HerdsCanvas {
       place(tree, left, 0, cards, lines);
       left += treeWidth(tree) + HERD_GAP;
     }
+    const parent = new Map(lines.map((line) => [line.to, line.from]));
+    if (this.flat && cards.length) this.nest(cards, parent);
+    // place() puts a parent before its children, so its total offset is known by then.
+    const total = new Map();
     for (const card of cards) {
-      const offset = this.moved[card.node.key];
-      if (offset) {
-        card.x += offset.dx;
-        card.y += offset.dy;
-      }
+      const own = this.moved[card.node.key] ?? { dx: 0, dy: 0 };
+      const above = total.get(parent.get(card)) ?? { dx: 0, dy: 0 };
+      const offset = { dx: above.dx + own.dx, dy: above.dy + own.dy };
+      total.set(card, offset);
+      card.x += offset.dx;
+      card.y += offset.dy;
     }
     return { cards, lines };
+  }
+
+  /**
+   * Turns offsets kept before they stacked (each card's own) into offsets on top of the parent's,
+   * so the cards stay where they were.
+   */
+  nest(cards, parent) {
+    const flat = { ...this.moved };
+    const own = (card) => flat[card.node.key] ?? { dx: 0, dy: 0 };
+    for (const card of cards) {
+      const up = parent.get(card);
+      if (!up || !(flat[card.node.key] || flat[up.node.key])) continue;
+      const mine = own(card);
+      const theirs = own(up);
+      this.moved[card.node.key] = { dx: mine.dx - theirs.dx, dy: mine.dy - theirs.dy };
+    }
+    this.flat = false;
+    this.remember();
   }
 
   /** Where a line leaves its parent and meets its child: bottom middle to top middle. */
@@ -378,8 +408,8 @@ export class HerdsCanvas {
           agent.background ? "in the background" : "in the foreground"
         }${agent.model ? ` · model ${agent.model}` : ""}${agent.startedAt ? ` · started ${formatTime(agent.startedAt)}` : ""}`
       : hasTab
-        ? "Click to open its tab · drag to move"
-        : "Drag to move";
+        ? "Click to open its tab · drag to move it and what's under it"
+        : "Drag to move it and what's under it";
     return v_flex()
       .id(`hc-${node.key}`)
       .absolute()
@@ -582,7 +612,7 @@ export class HerdsCanvas {
           .bg(t.background)
           .text_size(10)
           .text_color(t.dim)
-          .child("drag to pan · scroll to pan · Cmd-scroll to zoom · drag a card to move it"),
+          .child("drag to pan · scroll to pan · Cmd-scroll to zoom · drag a card to move it and what's under it"),
       );
   }
 }
