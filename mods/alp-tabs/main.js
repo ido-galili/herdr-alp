@@ -2,14 +2,18 @@ import { View, div, svg, image } from "gpui-kit";
 import { h_flex, ScrollHandle } from "gpui-base";
 import { spaces, panes, run, openOverlay, theme, window, shared, layout, settings, home, readTextFile, terminals } from "herdr";
 
-// Alp's tab bar: Herdr's `tabs` (0.1.16) with two buttons added. Beside +, the sheep opens
-// Alpmeister: it goes to the space's Alpmeister tab, or opens one. After Changes, the Basecamp
-// button shows or hides the `basecamp` column (the Daypack and Run tabs), when the layout has one.
+// Alp's tab bar: Herdr's `tabs` (0.1.16) with two buttons added. After +, icon buttons in two
+// groups split by a line: [Files Changes | Alpmeister Basecamp]. Alpmeister goes to the space's
+// Alpmeister tab, or opens one. Basecamp shows or hides the `basecamp` column (the Daypack and Run
+// tabs), when the layout has one. A button that is on gets the selected fill and a white icon.
+// An Alpmeister tab shows Alpmeister's icon before its name.
 
 const ALPMEISTER = "alpmeister";
-const SHEEP_ICON = "mods/alp-tabs/sheep.svg";
+const ALPMEISTER_ICON = "mods/alp-tabs/dashboard.svg";
 const BASECAMP_ID = "basecamp";
-const BASECAMP_ICON = "mods/basecamp/tent.svg";
+const BASECAMP_ICON = "mods/alp-tabs/panel-right.svg";
+const FILES_ICON = "mods/alp-tabs/files.svg";
+const CHANGES_ICON = "mods/alp-tabs/changes.svg";
 const FOCUS_STAMP = "alp.focusStamp";
 
 /**
@@ -165,6 +169,8 @@ export default class Tabs extends View {
         })
         .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); openOverlay({ mod: "menu", kind: "popup", width: 200, props: { tab: "tab", target: { id: c.id, space: space.id } } }); })
         .when(Boolean(program?.icon), el => el.child(program.tint ? svg(program.icon).size(14).text_color(t.muted) : image(program.icon).size(14)))
+        // Alp: an Alpmeister tab carries the same icon as its button.
+        .when(!program?.icon && lead?.mod === ALPMEISTER, el => el.child(svg(ALPMEISTER_ICON).size(14).flex_none().text_color(c.active ? t.foreground : t.muted)))
         .child(div().max_w(170).truncate().child(c.zoomed ? `${name} Z` : name))
         .when(c.status === "working", el => el.child(svg("mods/workspace-chrome/spinner.svg").size(12).flex_none().text_color(t.working).spin(900)))
         .when(c.status === "blocked" || c.status === "done", el => el.child(div().size(6).rounded(3).bg(t[c.status])))
@@ -180,14 +186,19 @@ export default class Tabs extends View {
     this.syncPanel(space, panel, body, enabled);
     const panelButton = (id, label, icon) => {
       const on = panel && !panel.hidden && body?.active === id;
-      return h_flex().id(`panel-${id}`).h(26).px(8).gap(5).flex_none().items_center().rounded(6)
-        .text_size(12).bg(on ? t.selected : t.chrome).text_color(on ? t.foreground : t.muted)
-        .hover(s => s.bg(t.hover)).on_mouse_down("left", stop)
+      return h_flex().id(`panel-${id}`).size(26).flex_none().items_center().justify_center().rounded(6)
+        .bg(on ? t.selected : t.chrome).text_color(on ? t.foreground : t.muted)
+        .hover(s => s.bg(t.hover).text_color(t.foreground)).on_mouse_down("left", stop)
+        .tooltip(`${on ? "Hide" : "Show"} ${label}`)
         .on_click(() => {
           if (on) run("layout.hide", { id: "panel" });
           else { run("layout.select", { stack: "panel-body", child: id }); run("layout.show", { id: "panel" }); }
-        }).child(svg(icon).size(14)).child(label);
+        }).child(svg(icon).size(15));
     };
+    const basecamp = find(root, BASECAMP_ID);
+    const hasPanels = enabled.includes("files") || enabled.includes("changes");
+    // A thin line between the panel buttons and Alp's own.
+    const separator = div().w(1).h(16).mx(5).flex_none().bg(t.border);
     return h_flex().size_full().min_w(0).px(10).pl(lightsPadding).gap(3).items_center().bg(t.chrome).border_b(1).border_color(t.border)
       .on_mouse_up("left", () => { this.pressed = null; })
       .on_scroll_wheel(e => this.wheel(e))
@@ -195,36 +206,55 @@ export default class Tabs extends View {
         .on_size_change((_size, cx) => { if (active >= 0) { this.scroll.scroll_to_item(active); cx.notify(); } })
         .children(shown.map(item)))
       .child(button("tab-new", "+", () => openOverlay({ mod: "new-menu", kind: "popup", width: 250, height: 512 })))
-      .child(this.sheepButton(t, space, button))
-      .when(enabled.includes("files"), el => el.child(panelButton("files", "Files", "mods/files/file.svg")))
-      .when(enabled.includes("changes"), el => el.child(panelButton("changes", "Changes", "mods/changes/changes.svg")))
-      .when(Boolean(find(root, BASECAMP_ID)), el => el.child(this.basecampButton(t, find(root, BASECAMP_ID), stop)))
+      .when(enabled.includes("files"), el => el.child(panelButton("files", "Files", FILES_ICON)))
+      .when(enabled.includes("changes"), el => el.child(panelButton("changes", "Changes", CHANGES_ICON)))
+      .when(hasPanels, el => el.child(separator))
+      .child(this.alpmeisterButton(t, space, stop))
+      .when(Boolean(basecamp), el => el.child(this.basecampButton(t, basecamp, stop)))
       .when(w?.buttons, el => el.child(button("minimize", w.platform === "windows" ? svg("mods/alp-tabs/win-min.svg").size(16) : "−", () => run("window.minimize")))
         .child(button("maximize", w.platform === "windows" ? svg(`mods/alp-tabs/${w.maximized ? "win-restore" : "win-max"}.svg`).size(16) : "□", () => run("window.maximize")))
         .child(button("close-window", w.platform === "windows" ? svg("mods/alp-tabs/win-close.svg").size(16) : svg("mods/pane/close.svg").size(13), () => run("window.close"))));
   }
 
   /**
-   * The sheep beside +: goes to the space's Alpmeister tab, or opens one. Lit while that tab shows.
+   * One of the bar's icon buttons: the selected fill and a white icon while it's on, muted while
+   * off, white on hover.
    * @param {object} t The theme.
-   * @param {object | undefined} space The active space.
-   * @param {Function} button The bar's 26px button.
+   * @param {string} id Element id.
+   * @param {string} icon The icon's path.
+   * @param {boolean} on Whether what it opens is showing.
+   * @param {Function} stop Keeps the press from dragging the window.
    * @returns {object}
    */
-  sheepButton(t, space, button) {
+  iconButton(t, id, icon, on, stop) {
+    return h_flex().id(id).size(26).flex_none().items_center().justify_center().rounded(6)
+      .bg(on ? t.selected : t.chrome).text_color(on ? t.foreground : t.muted)
+      .hover(s => s.bg(t.hover).text_color(t.foreground))
+      .on_mouse_down("left", stop)
+      .child(svg(icon).size(15).flex_none());
+  }
+
+  /**
+   * Alpmeister's button: goes to the space's Alpmeister tab, or opens one. On while that tab shows.
+   * @param {object} t The theme.
+   * @param {object | undefined} space The active space.
+   * @param {Function} stop Keeps the press from dragging the window.
+   * @returns {object}
+   */
+  alpmeisterButton(t, space, stop) {
     const pane = alpmeisterPane(space);
     const shown = Boolean(pane && space?.tabs?.find((tab) => tab.id === pane.tab)?.active);
-    return button("alpmeister", svg(SHEEP_ICON).size(16), () => {
-      if (pane) run("tab.select", { id: pane.tab });
-      else run("tab.new", { mod: ALPMEISTER, name: "Alpmeister" });
-    })
-      .when(shown, (el) => el.bg(t.selected).text_color(t.foreground))
+    return this.iconButton(t, "alpmeister", ALPMEISTER_ICON, shown, stop)
+      .on_click(() => {
+        if (pane) run("tab.select", { id: pane.tab });
+        else run("tab.new", { mod: ALPMEISTER, name: "Alpmeister" });
+      })
       .tooltip(pane ? "Go to Alpmeister" : "Open Alpmeister");
   }
 
   /**
-   * The Basecamp button after Changes: shows or hides the `basecamp` column. The icon takes the
-   * accent color while any trail item is open or any run is still running.
+   * Basecamp's button, last: shows or hides the `basecamp` column. The tooltip counts open trail
+   * items and runs still running.
    * @param {object} t The theme.
    * @param {object} column The layout's `basecamp` node.
    * @param {Function} stop Keeps the press from dragging the window.
@@ -233,14 +263,9 @@ export default class Tabs extends View {
   basecampButton(t, column, stop) {
     const open = !column.hidden;
     const running = terminals().filter((terminal) => terminal.state === "live" && terminal.labels?.["alp.run"] && !terminal.labels["alp.run.exit"]).length;
-    const color = this.trailOpen > 0 || running > 0 ? t.accent : null;
     const counts = [this.trailOpen ? `${this.trailOpen} open` : "", running ? `${running} running` : ""].filter(Boolean).join(" · ");
-    return h_flex().id("basecamp-button").size(26).flex_none().items_center().justify_center().rounded(6)
-      .bg(open ? t.selected : t.chrome).text_color(color ?? (open ? t.foreground : t.muted))
-      .hover(s => s.bg(t.hover).text_color(color ?? t.foreground))
-      .on_mouse_down("left", stop)
+    return this.iconButton(t, "basecamp-button", BASECAMP_ICON, open, stop)
       .on_click(() => run("layout.toggle", { id: BASECAMP_ID }))
-      .tooltip(`${open ? "Hide" : "Show"} Basecamp${counts ? ` · ${counts}` : ""}`)
-      .child(svg(BASECAMP_ICON).size(14).flex_none());
+      .tooltip(`${open ? "Hide" : "Show"} Basecamp${counts ? ` · ${counts}` : ""}`);
   }
 }

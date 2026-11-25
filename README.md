@@ -22,11 +22,11 @@ What's inside:
 | `mods/alp-files/` | the Files panel with a minimal editor: click a file to edit it, `ctrl-s` saves, edits survive switching files, and a file another program changed asks before it's overwritten (Herdr's `files`, cloned) |
 | `mods/alp-agents/` | sidebar agents list: grouped or priority views, sub-agents under their parent, each Space shown by its avatar |
 | `mods/alpmeister/` | a team lead's start-of-day tab: a Dashboard of all your repos or one workspace (bugs by priority, triage, customer issues, nightly, priorities, milestone, team in flight), a Board, Herds, Daypack (focus, reviews, your PRs, your issues) and Settings |
-| `mods/basecamp/` | Basecamp: the right column beside the terminals, with a Daypack tab and a Run tab, shown or hidden from the tent button in the tab bar |
+| `mods/basecamp/` | Basecamp: the right column beside the terminals, with a Daypack tab and a Run tab, shown or hidden from its button at the end of the tab bar |
 | `mods/daypack/` | Daypack: Basecamp's tab with today's trail |
 | `mods/alp-runs/` | Runs: Basecamp's Run tab (the runs in Alp's config, `.herdr/alp.json` and your own, each with a play button, and an import from VS Code) and the bottom panel with each run's output and sessions |
 | `mods/alp-status/` | the status bar: Herdr's, with a Runs button that shows or hides the bottom panel |
-| `mods/alp-tabs/` | the tab bar: Herdr's tabs with a sheep beside + that opens Alpmeister, and the Basecamp button after Changes |
+| `mods/alp-tabs/` | the tab bar: Herdr's tabs, then icon buttons in two groups, Files and Changes, then Alpmeister and Basecamp |
 | `plugins/alp/` | Claude Code plugin that writes the status files the mods read |
 | `schema/alp.schema.json` | the JSON schema for Alp's config files |
 | `RECIPE.md` | the brief to rebuild it from scratch (herdr.dev format) |
@@ -88,7 +88,7 @@ Restart running Claude sessions after installing or changing the plugin.
 
 In an alp cooperative, the Alpmeister plans the season and oversees the alp, while the senn
 works the herd. The `alpmeister` mod is that view for a team lead, opened as a tab: click the
-sheep beside + in the tab bar (it goes to the space's Alpmeister tab when one is open), or
+dashboard button in the tab bar (it goes to the space's Alpmeister tab when one is open), or
 
 ```sh
 herdr-app do tab.new '{"mod":"alpmeister","name":"Alpmeister"}'
