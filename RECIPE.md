@@ -347,17 +347,33 @@ open it with `tab.new {mod: "alpmeister"}`.
   space's other terminals' and the space's folder that is in a git repo. `git rev-parse
   --path-format=absolute --show-toplevel --git-common-dir` gives its root and, for a worktree,
   the main checkout.
-- **Entries:** `.vscode/launch.json` (configurations and compounds), `.vscode/tasks.json` (with
-  the `osx`/`linux`/`windows` block) and `~/.config/alp/commands.json` (`{ commands: [{ name,
-  command, cwd?, env?, inputs?, workspace? }] }`, `workspace` matching the root or the main
-  checkout). JSONC is read by `jsonc.js`. `${workspaceFolder}`, `${env:X}`, `${userHome}` and
-  `${input:id}` resolve; `${file}`-like variables, `${command:}`, `${config:}`, browser, attach
-  and other debugger types mark the entry as not runnable, with the reason.
-- **Run tab:** a filter and reload button, the workspace name, then LAUNCH, TASKS and SAVED (with
-  +). A row: the session mark (`●` `working`, `✓` `done`, `✗` `blocked`), the name, and a play
-  button (a spinner while starting). A click on a row with a session selects it. Entries that
-  can't run fold under "N need VS Code". Right-click: a saved command offers Edit and Delete, a
-  task offers "Save to my commands…".
+- **Config:** `alp-config.js` reads `~/.config/alp/alp.json` (you), `<root>/.herdr/alp.json`
+  (repo) and `<mainRoot>/.herdr/alp.local.json` (local) and deep-merges them in that order:
+  objects key by key, anything else replaced, `null` removes. `jsonc.js` parses JSONC and edits it
+  in place (`editJsonc(text, path, value)` sets or removes one key and keeps comments, formatting
+  and order). Writing the local file adds `.herdr/alp.local.json` to the repo's `info/exclude`. A
+  new repo file starts with a comment and `$schema` (`schema/alp.schema.json`).
+- **Entries:** `config.js` turns each of the merged `runs` into an entry (`run:<name>`, kind `run`
+  or `compound` for a `runs` group), applying the platform's `macos`/`linux`/`windows` block, with
+  its origin (the latest file that defines it). Listed in the repo file's order, then local, then
+  yours. `${workspaceFolder}`, `${env:X}`, `${userHome}` and `${input:id}` resolve; `${file}`-like
+  variables, `${command:}` and `${config:}` mark the run as not runnable, with the reason. The
+  first load moves `~/.config/alp/commands.json` into the config and renames it `.bak`.
+- **Import:** `vscode.js` converts `.vscode/launch.json` (node, node-terminal and python configs,
+  compounds) and `tasks.json` (shell, process and npm tasks, their platform blocks as the run's)
+  into runs, or gives the reason one can't be (attach, browser and other debuggers, extension
+  tasks, `command` inputs, editor variables, a name used twice). The `import` dialog
+  (`import-view.js`) lists them with checkboxes, ticks dependencies along, and writes the picked
+  runs and the inputs they use to the repo or local file.
+- **Run tab:** a filter, + (add a run) and reload, the workspace name, then a heading per
+  `section` (LAUNCH, TASKS and RUNS first). A row: the session mark (`●` `working`, `✓` `done`, `✗`
+  `blocked`), the name, *yours* or *local* in `dim` for runs from your files, and a play button (a
+  spinner while starting). A click on a row with a session selects it. Runs that can't run fold
+  under "N can't run here", hidden ones under "N hidden". With no runs: where runs live, Import
+  from VS Code… (when `.vscode` has configs) and Add a run…; with runs, Import from VS Code… ends
+  the list. Right-click: Edit…, Delete from the file it's in, Hide or Show again. The `save` form
+  has name, command, folder and Save to (This repo, Just me here, Me everywhere). The list
+  re-reads on changes in `<root>/.herdr` and on `shared("alp.runs.stamp")`, which every write sets.
 - **Starting:** inputs first (the `input` dialog: chips for `pickString`, fields for
   `promptString`, defaults from `shared("alp.runs.inputs")`), handed back to the list through
   `shared("alp.runs.launch")`. Then `dependsOn`/`preLaunchTask` (sequence or parallel; a task

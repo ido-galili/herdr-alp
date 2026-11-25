@@ -20,12 +20,21 @@ export const LIST_GRACE_MS = 5000;
 
 let shellPath = null;
 
-/** The person's login shell, as the wrapper runs in it. */
+/**
+ * The shell the wrapper runs in: the person's login shell when it is a POSIX one that exists,
+ * else the first of zsh, bash and sh that is installed (a fish user on Linux may have no zsh).
+ * @returns {Promise<string>} The shell's path.
+ */
 async function loginShell() {
   if (shellPath) return shellPath;
-  const result = await exec("sh", ["-c", 'printf %s "$SHELL"']).catch(() => null);
-  const found = result?.stdout.trim() || "/bin/zsh";
-  shellPath = POSIX_SHELLS.has(found.split("/").pop()) ? found : "/bin/zsh";
+  const script = [
+    'case "${SHELL##*/}" in zsh|bash|sh|dash|ksh) [ -x "$SHELL" ] && { printf %s "$SHELL"; exit; };; esac',
+    "for s in /bin/zsh /usr/bin/zsh /bin/bash /usr/bin/bash; do [ -x \"$s\" ] && { printf %s \"$s\"; exit; }; done",
+    "printf /bin/sh",
+  ].join("\n");
+  const result = await exec("sh", ["-c", script]).catch(() => null);
+  const found = result?.stdout.trim();
+  shellPath = found && POSIX_SHELLS.has(found.split("/").pop()) ? found : "/bin/sh";
   return shellPath;
 }
 
@@ -71,21 +80,21 @@ export function neededInputs(entry, catalog) {
   const visit = (current, depth) => {
     if (!current || seen.has(current.key) || depth > MAX_DEPTH) return;
     seen.add(current.key);
-    current.dependsOn.forEach((name) => visit(findTask(catalog, name), depth + 1));
-    (current.configurations ?? []).forEach((name) =>
-      visit(
-        catalog.launch.find((item) => item.name === name),
-        depth + 1,
-      ),
-    );
+    current.dependsOn.forEach((name) => visit(findRun(catalog, name), depth + 1));
+    (current.configurations ?? []).forEach((name) => visit(findRun(catalog, name), depth + 1));
     current.inputIds.forEach((id) => ids.includes(id) || ids.push(id));
   };
   visit(entry, 0);
   return ids.map((id) => entry.inputDefs?.[id] ?? catalog.inputs[id] ?? { id, type: "promptString", description: id });
 }
 
-/** A task by its label. */
-const findTask = (catalog, name) => catalog.tasks.find((task) => task.name === name);
+/**
+ * A run by its name.
+ * @param {object} catalog From `loadEntries`.
+ * @param {string} name The run's name.
+ * @returns {object | undefined}
+ */
+const findRun = (catalog, name) => catalog.runs.find((run) => run.name === name);
 
 /** A terminal name: 1-32 of a-z 0-9 - _, unique among live terminals. */
 function uniqueName(title, workspace) {
@@ -252,8 +261,8 @@ export async function startEntry(entry, catalog, workspace, answers, depth = 0) 
   if (depth > MAX_DEPTH) throw new Error(`${entry.name}: dependencies nest too deep`);
   if (entry.unsupported) throw new Error(`${entry.name} ${entry.unsupported}`);
   const runDependency = async (name) => {
-    const task = findTask(catalog, name);
-    if (!task) throw new Error(`${entry.name}: no task named ${name}`);
+    const task = findRun(catalog, name);
+    if (!task) throw new Error(`${entry.name}: no run named ${name}`);
     const address = await startEntry(task, catalog, workspace, answers, depth + 1);
     if (!address || task.isBackground) return;
     const exit = await waitForExit(address);
@@ -264,15 +273,9 @@ export async function startEntry(entry, catalog, workspace, answers, depth = 0) 
   if (entry.kind === "compound") {
     const addresses = [];
     for (const name of entry.configurations) {
-      addresses.push(
-        await startEntry(
-          catalog.launch.find((item) => item.name === name),
-          catalog,
-          workspace,
-          answers,
-          depth + 1,
-        ),
-      );
+      const part = findRun(catalog, name);
+      if (!part) throw new Error(`${entry.name}: no run named ${name}`);
+      addresses.push(await startEntry(part, catalog, workspace, answers, depth + 1));
     }
     return addresses.find(Boolean) ?? null;
   }

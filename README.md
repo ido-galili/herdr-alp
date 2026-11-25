@@ -24,10 +24,11 @@ What's inside:
 | `mods/alpmeister/` | a team lead's start-of-day tab: a Dashboard of all your repos or one workspace (bugs by priority, triage, customer issues, nightly, priorities, milestone, team in flight), a Board, Herds, Daypack (focus, reviews, your PRs, your issues) and Settings |
 | `mods/basecamp/` | Basecamp: the right column beside the terminals, with a Daypack tab and a Run tab, shown or hidden from the tent button in the tab bar |
 | `mods/daypack/` | Daypack: Basecamp's tab with today's trail |
-| `mods/alp-runs/` | Runs: Basecamp's Run tab (the workspace's VS Code launch configs and tasks, and your saved commands, each with a play button) and the bottom panel with each run's output and sessions |
+| `mods/alp-runs/` | Runs: Basecamp's Run tab (the runs in Alp's config, `.herdr/alp.json` and your own, each with a play button, and an import from VS Code) and the bottom panel with each run's output and sessions |
 | `mods/alp-status/` | the status bar: Herdr's, with a Runs button that shows or hides the bottom panel |
 | `mods/alp-tabs/` | the tab bar: Herdr's tabs with a sheep beside + that opens Alpmeister, and the Basecamp button after Changes |
 | `plugins/alp/` | Claude Code plugin that writes the status files the mods read |
+| `schema/alp.schema.json` | the JSON schema for Alp's config files |
 | `RECIPE.md` | the brief to rebuild it from scratch (herdr.dev format) |
 | `icon.png` | Alp's logo |
 | `sync.sh` | copy the layout and mods into Herdr's home, or pull live edits back |
@@ -172,38 +173,81 @@ the new shape.
 
 ## Runs
 
-Basecamp's **Run** tab lists what the focused workspace can run: its `.vscode/launch.json`
-configurations and compounds, its `.vscode/tasks.json` tasks, and your saved commands. The
+Basecamp's **Run** tab lists what the focused workspace can run: the runs in Alp's config. The
 workspace is the focused terminal's git checkout, or the repo the space's terminals are in.
 
-- **Run:** the play button starts the entry. Its `preLaunchTask` and `dependsOn` tasks start
-  first, and a compound starts each of its configurations. A `${input:...}` asks first, with the
-  last answer filled in.
+- **Run:** the play button starts the run. What it `dependsOn` starts first, and a group starts
+  each of its runs. A `${input:...}` asks first, with the last answer filled in.
 - **Watch:** the bottom panel opens with the run's live output. Its bar shows the run's state,
   stop (Ctrl-C, then terminate on a second press) and restart. The sessions list beside it holds
   every run: running, exited 0 or failed. The output stays after the command ends.
 - **Show or hide:** the terminal button at the right end of the status bar, after the commands hint.
-- **Not runnable here:** configs that need VS Code's debugger or an open editor (`${file}`,
-  browser and attach configs) fold away under "need VS Code", with the reason on each.
+- **Add, edit, delete:** **+** adds a run; right-click a run to edit it, delete it from the file
+  it's in, or hide it for yourself.
+- **Not runnable here:** runs that use `${file}` and other editor-only variables fold away under
+  "can't run here", with the reason on each.
 
-### Saved commands
+### Where runs live
 
-The **+** beside Saved, or "Save to my commands…" on a task's right-click, writes
-`~/.config/alp/commands.json`. Right-click a saved command to edit or delete it.
+Three files, deep-merged. Later ones win:
 
-```json
+| File | Whose | |
+|---|---|---|
+| `~/.config/alp/alp.json` | yours, in every repo | |
+| `.herdr/alp.json` | the repo's | commit it to share the runs with everyone who clones the repo |
+| `.herdr/alp.local.json` | yours, in this repo only | Git ignores it (Alp adds it to `.git/info/exclude`); every worktree of the repo shares the main checkout's |
+
+Objects merge key by key, anything else is replaced, and `null` removes a key. Runs are keyed by
+name, so your local file can change one field of the team's run, or hide it with `null`. Runs from
+your files are marked *yours* or *local* in the list.
+
+```jsonc
+// .herdr/alp.json
 {
-  "commands": [
-    { "name": "Kill port", "command": "lsof -t -i:${input:port} | xargs kill",
-      "inputs": [{ "id": "port", "type": "promptString", "description": "Port" }] },
-    { "name": "Reset local DB", "command": "npm run dev:containers -- reset",
-      "workspace": "~/Projects/my-repo" }
-  ]
+  "$schema": "https://raw.githubusercontent.com/ido-galili/herdr-alp/main/schema/alp.schema.json",
+  "runs": {
+    "Dev server": { "section": "Launch", "command": "npm run dev", "cwd": "web", "background": true },
+    "API": { "section": "Launch", "command": ["node", "server/index.js"], "envFile": "server/.env", "dependsOn": ["Build"] },
+    "Build": { "section": "Tasks", "command": "npm run build", "macos": { "command": "npm run build:mac" } },
+    "Migrate": { "section": "Tasks", "command": "npm run migrate -- ${input:target}" },
+    "Full stack": { "section": "Launch", "runs": ["API", "Dev server"] }
+  },
+  "inputs": {
+    "target": { "type": "pickString", "options": ["latest", "previous"], "default": "latest" }
+  }
 }
 ```
 
-A command with `workspace` shows only in that repo and its worktrees. `cwd` defaults to the
-workspace root. `inputs` follow the VS Code format.
+```jsonc
+// .herdr/alp.local.json: my own port, and no Migrate for me
+{ "runs": { "Dev server": { "env": { "PORT": "5180" } }, "Migrate": null } }
+```
+
+- `command`: a string runs in the shell, a list runs the program directly.
+- `cwd` and `envFile` are relative to the repo root. `env` adds variables.
+- `dependsOn` (with `order`: `parallel` by default, or `sequence`) starts first. One that isn't
+  `background` must exit 0 before the run starts.
+- `runs` makes a group. `section` is the heading it's listed under (`Runs` by default).
+- `macos`, `linux` and `windows` hold fields used on that platform instead.
+- Variables are VS Code's: `${workspaceFolder}`, `${env:NAME}`, `${userHome}`, `${input:id}`.
+  `inputs` are `promptString` or `pickString`.
+
+The schema in `schema/alp.schema.json` gives completion in VS Code. Import and Save edit only the
+keys they change, so comments and formatting stay.
+
+### Import from VS Code
+
+When the repo has `.vscode/launch.json` or `tasks.json`, the Run tab offers **Import from VS
+Code…**. It lists every launch config, compound and task with a checkbox. Ticking one ticks what
+it depends on. Ones that can't run outside VS Code (debugger attach, browser launches, extension
+tasks, `${file}`) are greyed with the reason, and names already in the config stay unticked unless
+you tick them to replace. The picked runs go into This repo (`.herdr/alp.json`) or Just me here
+(`.herdr/alp.local.json`), with the inputs they use. After that the Run tab reads only Alp's
+files.
+
+Saved commands from the earlier `~/.config/alp/commands.json` move into Alp's config the first
+time the Run tab loads (ones kept for one workspace go to that repo's local file), and the old
+file is kept as `commands.json.bak`.
 
 ### For agents
 

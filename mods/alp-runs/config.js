@@ -1,23 +1,39 @@
-// What the Run tab lists: a workspace's VS Code launch configurations and tasks, and the commands
-// the person saved in ~/.config/alp/commands.json. Each becomes an entry the runner can start.
+// What the Run tab lists: the `runs` of Alp's config (alp-config.js), merged from your file, the
+// repo's and your local one. Each run becomes an entry the runner can start. VS Code's
+// launch.json and tasks.json are only read to import from (vscode.js).
+//
+// A run, as the files hold it:
+//   "Dev server": {
+//     "command": "npm run dev",        a string runs in the shell; a list runs the program directly
+//     "cwd": "web",                    relative to the repo root; ${workspaceFolder} by default
+//     "env": { "PORT": "5173" }, "envFile": "web/.env",
+//     "dependsOn": ["Build"], "order": "sequence",   started first; "parallel" by default
+//     "background": true,              a dependency that keeps running (others must exit 0 first)
+//     "runs": ["API", "Web"],          a group: starts each of these instead of a command
+//     "section": "Launch",             the heading it's listed under ("Runs" by default)
+//     "macos": { … }, "linux": { … }, "windows": { … }   fields for that platform only
+//   }
 
-import { exec, home, readTextFile } from "herdr";
+import { exec, home, notify, readTextFile } from "herdr";
+import { loadConfig, originOf, writeLayer } from "./alp-config.js";
 import { parseJsonc } from "./jsonc.js";
 import { inputIds, unsupportedReason } from "./template.js";
 
+/** Where saved commands were kept before Alp's config; moved into it once, then kept as .bak. */
 export const COMMANDS_PATH = () => `${home()}/.config/alp/commands.json`;
-const NODE_TYPES = new Set(["node", "pwa-node"]);
-const PYTHON_TYPES = new Set(["python", "debugpy"]);
-const BROWSER_TYPES = new Set(["chrome", "pwa-chrome", "msedge", "pwa-msedge", "firefox"]);
+export const DEFAULT_SECTION = "Runs";
+const SECTION_ORDER = ["Launch", "Tasks", DEFAULT_SECTION];
+const PLATFORM_KEY = { macos: "macos", linux: "linux", windows: "windows" };
 
 /** A path with a leading `~` made absolute, without a trailing slash. */
 export const expandHome = (path) => (path?.startsWith("~") ? home() + path.slice(1) : (path ?? "")).replace(/\/+$/, "");
 
-/** A string, or the `value` of VS Code's `{ value, quoting }` form. */
-const text = (value) => (typeof value === "string" ? value : typeof value?.value === "string" ? value.value : "");
-
-/** A list of names from a string, a list, or nothing. */
-const names = (value) =>
+/**
+ * A list of names from a string, a list, or nothing.
+ * @param {any} value The setting.
+ * @returns {string[]}
+ */
+export const names = (value) =>
   value == null
     ? []
     : (Array.isArray(value) ? value : [value])
@@ -51,208 +67,180 @@ export async function findWorkspace(folder) {
  */
 function templatesOf(entry) {
   const command = entry.command;
-  const words = !command
-    ? []
-    : "argv" in command
-      ? [...command.argv, command.tail ?? ""]
-      : [command.shell, ...command.args.map((arg) => arg.template)];
+  const words = !command ? [] : "argv" in command ? command.argv : [command.shell];
   return [...words, entry.cwd, entry.envFile ?? "", ...Object.values(entry.env ?? {})].map(String);
 }
 
-/** Adds what can't run here and which inputs it asks for. */
-function finish(entry, reason = null) {
+/**
+ * A folder setting as a template: relative folders are under the repo root.
+ * @param {any} cwd The run's `cwd`.
+ * @returns {string}
+ */
+function folderTemplate(cwd) {
+  if (typeof cwd !== "string" || !cwd.trim()) return "${workspaceFolder}";
+  return /^(\/|~|\$\{)/.test(cwd) ? cwd : `\${workspaceFolder}/${cwd.replace(/^\.\//, "")}`;
+}
+
+/**
+ * A run from the config as an entry the runner starts, with the platform's own block applied.
+ * @param {string} name The run's name.
+ * @param {object} raw Its merged value.
+ * @param {string} platform "macos", "linux" or "windows".
+ * @param {string} origin The layer it came from ("you", "repo" or "local").
+ * @returns {object} The entry, with `unsupported` (why it can't run, or null) and `inputIds`.
+ */
+export function runEntry(name, raw, platform, origin = "repo") {
+  const own = raw[PLATFORM_KEY[platform]] ?? {};
+  const run = { ...raw, ...own, env: { ...raw.env, ...own.env } };
+  const group = names(run.runs);
+  const command =
+    typeof run.command === "string" && run.command.trim()
+      ? { shell: run.command, args: [] }
+      : Array.isArray(run.command) && run.command.length
+        ? { argv: run.command.map(String) }
+        : null;
+  const entry = {
+    key: `run:${name}`,
+    kind: group.length ? "compound" : "run",
+    name,
+    origin,
+    section: typeof run.section === "string" && run.section.trim() ? run.section.trim() : DEFAULT_SECTION,
+    cwd: folderTemplate(run.cwd),
+    env: Object.fromEntries(Object.entries(run.env ?? {}).map(([key, value]) => [key, String(value)])),
+    envFile: typeof run.envFile === "string" ? folderTemplate(run.envFile) : null,
+    dependsOn: names(run.dependsOn),
+    dependsOrder: run.order === "sequence" ? "sequence" : "parallel",
+    isBackground: Boolean(run.background),
+    configurations: group,
+    command: group.length ? null : command,
+  };
   const templates = templatesOf(entry);
+  const empty = !entry.command && !group.length && !entry.dependsOn.length ? "has no command" : null;
   return {
     ...entry,
-    unsupported: reason ?? templates.map(unsupportedReason).find(Boolean) ?? null,
+    unsupported: empty ?? templates.map(unsupportedReason).find(Boolean) ?? null,
     inputIds: [...new Set(templates.flatMap(inputIds))],
   };
 }
 
 /**
- * A launch configuration as an entry. Debugger-only types are kept, marked as not runnable here.
- * @param {object} config One item of `configurations`.
- * @returns {object} The entry.
+ * Marks groups that name a missing run or one that can't run here.
+ * @param {object[]} entries All entries.
+ * @returns {object[]} The same entries, groups checked.
  */
-function launchEntry(config) {
-  const base = {
-    key: `launch:${config.name}`,
-    kind: "launch",
-    name: config.name,
-    cwd: config.cwd ?? "${workspaceFolder}",
-    env: config.env ?? {},
-    envFile: config.envFile ?? null,
-    dependsOn: names(config.preLaunchTask),
-    dependsOrder: "sequence",
-    isBackground: true,
-    command: null,
-  };
-  if (config.request && config.request !== "launch") return finish(base, "attaches a debugger to a running program");
-  if (BROWSER_TYPES.has(config.type)) return finish(base, "opens a browser under VS Code's debugger");
-  const args = Array.isArray(config.args) ? config.args : [];
-  const rawArgs = typeof config.args === "string" ? [{ template: config.args }] : [];
-  if (config.type === "node-terminal") return finish({ ...base, command: { shell: config.command ?? "", args: [] } });
-  if (NODE_TYPES.has(config.type)) {
-    if (!config.program && !config.runtimeExecutable && !args.length) {
-      return base.dependsOn.length ? finish(base) : finish(base, "names no program to run");
-    }
-    const argv = [
-      config.runtimeExecutable ?? "node",
-      ...(config.runtimeArgs ?? []),
-      ...(config.program ? [config.program] : []),
-      ...args,
-    ];
-    return finish({ ...base, command: { argv, tail: rawArgs[0]?.template ?? null } });
-  }
-  if (PYTHON_TYPES.has(config.type)) {
-    const target = config.module ? ["-m", config.module] : config.program ? [config.program] : null;
-    if (!target) return finish(base, "names no program to run");
-    return finish({ ...base, command: { argv: [config.python ?? "python3", ...target, ...args] } });
-  }
-  return finish(base, `uses the ${config.type} debugger`);
-}
-
-/**
- * A compound launch: several configurations started together.
- * @param {object} compound One item of `compounds`.
- * @param {Map<string, object>} launches The launch entries by name.
- * @returns {object} The entry.
- */
-function compoundEntry(compound, launches) {
-  const configurations = names(compound.configurations);
-  const missing = configurations.find((name) => !launches.has(name));
-  const blocked = configurations.map((name) => launches.get(name)).find((entry) => entry?.unsupported);
-  const reason = missing
-    ? `names ${missing}, which isn't in launch.json`
-    : blocked
-      ? `includes ${blocked.name}, which ${blocked.unsupported}`
-      : null;
-  return {
-    key: `compound:${compound.name}`,
-    kind: "compound",
-    name: compound.name,
-    configurations,
-    dependsOn: names(compound.preLaunchTask),
-    dependsOrder: "sequence",
-    isBackground: true,
-    command: null,
-    cwd: "${workspaceFolder}",
-    env: {},
-    envFile: null,
-    unsupported: reason,
-    inputIds: [],
-  };
-}
-
-/**
- * A task as an entry, with the platform's own block (`osx`, `linux`, `windows`) applied.
- * @param {object} raw One item of `tasks`.
- * @param {string} platform "macos", "linux" or "windows".
- * @returns {object} The entry.
- */
-function taskEntry(raw, platform) {
-  const own = raw[{ macos: "osx", linux: "linux", windows: "windows" }[platform]] ?? {};
-  const task = {
-    ...raw,
-    ...own,
-    options: { ...raw.options, ...own.options, env: { ...raw.options?.env, ...own.options?.env } },
-  };
-  const name = task.label ?? task.taskName ?? text(task.command);
-  const args = (task.args ?? []).map(text);
-  const base = {
-    key: `task:${name}`,
-    kind: "task",
-    name,
-    cwd: task.options?.cwd ?? "${workspaceFolder}",
-    env: task.options?.env ?? {},
-    envFile: null,
-    dependsOn: names(task.dependsOn),
-    dependsOrder: task.dependsOrder === "sequence" ? "sequence" : "parallel",
-    isBackground: Boolean(task.isBackground),
-    command: null,
-  };
-  if (task.type === "npm") {
-    const cwd = task.path ? `\${workspaceFolder}/${task.path}` : base.cwd;
-    return finish({ ...base, cwd, command: { shell: `npm run ${task.script}`, args: [] } });
-  }
-  const command = text(task.command);
-  if (!command) return base.dependsOn.length ? finish(base) : finish(base, "has no command");
-  if (task.type === "process") return finish({ ...base, command: { argv: [command, ...args] } });
-  if (task.type && task.type !== "shell")
-    return finish(base, `is a ${task.type} task, which needs its VS Code extension`);
-  return finish({
-    ...base,
-    command: { shell: command, args: args.map((arg) => ({ template: arg, quoted: /\s/.test(arg) })) },
+function checkGroups(entries) {
+  const byName = new Map(entries.map((entry) => [entry.name, entry]));
+  return entries.map((entry) => {
+    if (entry.unsupported || entry.kind !== "compound") return entry;
+    const missing = entry.configurations.find((name) => !byName.has(name));
+    const blocked = entry.configurations.map((name) => byName.get(name)).find((part) => part?.unsupported);
+    const reason = missing
+      ? `names ${missing}, which isn't a run`
+      : blocked
+        ? `includes ${blocked.name}, which ${blocked.unsupported}`
+        : null;
+    return reason ? { ...entry, unsupported: reason } : entry;
   });
 }
 
 /**
- * A saved command as an entry.
- * @param {object} saved One item of commands.json's `commands`.
- * @returns {object} The entry.
+ * The section headings in the order the Run tab shows them: Launch, Tasks and Runs first, then
+ * the rest as they first appear.
+ * @param {object[]} entries The entries.
+ * @returns {string[]}
  */
-function savedEntry(saved) {
-  return finish({
-    key: `saved:${saved.name}`,
-    kind: "saved",
-    name: saved.name,
-    cwd: saved.cwd ?? "${workspaceFolder}",
-    env: saved.env ?? {},
-    envFile: null,
-    dependsOn: [],
-    dependsOrder: "parallel",
-    isBackground: false,
-    command: { shell: saved.command ?? "", args: [] },
-    workspace: saved.workspace ?? null,
-    inputDefs: Object.fromEntries((saved.inputs ?? []).map((input) => [input.id, input])),
-  });
+export function sectionsOf(entries) {
+  const seen = [...new Set(entries.map((entry) => entry.section))];
+  return [...SECTION_ORDER.filter((section) => seen.includes(section)), ...seen.filter((s) => !SECTION_ORDER.includes(s))];
 }
 
 /**
- * Reads and parses a JSONC file.
- * @param {string} path Where it is.
- * @param {string[]} errors Where a parse error is reported.
- * @returns {Promise<{ text: string | null, value: any }>} The text as read, and its value ({} when absent or broken).
+ * Whether the workspace has VS Code launch configs or tasks to import.
+ * @param {{ root: string }} workspace From `findWorkspace`.
+ * @returns {Promise<boolean>}
  */
-async function readConfig(path, errors) {
-  const source = await readTextFile(path).catch(() => null);
-  if (source == null) return { text: null, value: {} };
-  try {
-    return { text: source, value: parseJsonc(source) ?? {} };
-  } catch (error) {
-    errors.push(`${path.split("/").slice(-2).join("/")}: ${error}`);
-    return { text: source, value: {} };
-  }
+async function hasVscode(workspace) {
+  const files = await Promise.all(
+    ["launch.json", "tasks.json"].map((file) => readTextFile(`${workspace.root}/.vscode/${file}`).catch(() => null)),
+  );
+  return files.some((text) => text != null);
 }
 
 /**
  * Everything the Run tab lists for a workspace.
  * @param {{ root: string, mainRoot: string }} workspace The workspace, from `findWorkspace`.
  * @param {string} platform "macos", "linux" or "windows".
- * @returns {Promise<{ launch: object[], tasks: object[], saved: object[], inputs: Record<string, object>, errors: string[], commandsText: string | null }>}
+ * @returns {Promise<{ runs: object[], sections: string[], inputs: Record<string, object>, errors: string[], layers: Record<string, object>, vscode: boolean }>}
  */
 export async function loadEntries(workspace, platform) {
-  const errors = [];
-  const [launchFile, tasksFile, commandsFile] = await Promise.all([
-    readConfig(`${workspace.root}/.vscode/launch.json`, errors),
-    readConfig(`${workspace.root}/.vscode/tasks.json`, errors),
-    readConfig(COMMANDS_PATH(), errors),
-  ]);
-  const configs = (launchFile.value.configurations ?? []).filter((config) => config?.name).map(launchEntry);
-  const byName = new Map(configs.map((entry) => [entry.name, entry]));
-  const compounds = (launchFile.value.compounds ?? [])
-    .filter((compound) => compound?.name)
-    .map((compound) => compoundEntry(compound, byName));
-  const tasks = (tasksFile.value.tasks ?? []).map((task) => taskEntry(task, platform)).filter((entry) => entry.name);
-  const here = new Set([workspace.root, workspace.mainRoot]);
-  const saved = (commandsFile.value.commands ?? [])
-    .filter((command) => command?.name && command.command)
-    .map(savedEntry)
-    .filter((entry) => !entry.workspace || here.has(expandHome(entry.workspace)));
-  const inputs = Object.fromEntries(
-    [...(launchFile.value.inputs ?? []), ...(tasksFile.value.inputs ?? [])]
-      .filter((input) => input?.id)
-      .map((input) => [input.id, input]),
+  const [{ layers, merged, errors }, vscode] = await Promise.all([loadConfig(workspace), hasVscode(workspace)]);
+  const raw = merged.runs && typeof merged.runs === "object" ? merged.runs : {};
+  // The repo file's order first, then runs only in your local file, then only in yours.
+  const order = [
+    ...new Set(["repo", "local", "you"].flatMap((layer) => Object.keys(layers[layer].value.runs ?? {}))),
+  ].filter((name) => name in raw);
+  const runs = checkGroups(
+    order
+      .map((name) => [name, raw[name]])
+      .filter(([, value]) => value && typeof value === "object" && !Array.isArray(value))
+      .map(([name, value]) => runEntry(name, value, platform, originOf(layers, name))),
   );
-  return { launch: [...compounds, ...configs], tasks, saved, inputs, errors, commandsText: commandsFile.text };
+  const inputs = Object.fromEntries(
+    Object.entries(merged.inputs ?? {})
+      .filter(([, input]) => input && typeof input === "object")
+      .map(([id, input]) => [id, { ...input, id }]),
+  );
+  return { runs, sections: sectionsOf(runs), inputs, errors, layers, vscode };
+}
+
+/**
+ * Saved commands in the earlier commands.json shape, as edits to Alp's config: the ones kept for
+ * one workspace go to that repo's local file, the rest to yours.
+ * @param {object[]} commands commands.json's `commands`.
+ * @returns {{ layer: "you" | "local", root: string | null, edits: { path: string[], value: any }[] }[]}
+ */
+export function commandsAsEdits(commands) {
+  const groups = new Map();
+  for (const saved of commands) {
+    if (!saved?.name || !saved.command) continue;
+    const root = saved.workspace ? expandHome(saved.workspace) : null;
+    const id = root ?? "";
+    if (!groups.has(id)) groups.set(id, { layer: root ? "local" : "you", root, edits: [] });
+    const run = { command: saved.command, ...(saved.cwd ? { cwd: saved.cwd } : {}), ...(saved.env ? { env: saved.env } : {}) };
+    groups.get(id).edits.push({ path: ["runs", saved.name], value: run });
+    for (const input of saved.inputs ?? []) {
+      if (!input?.id) continue;
+      const { id: inputId, ...definition } = input;
+      groups.get(id).edits.push({ path: ["inputs", inputId], value: definition });
+    }
+  }
+  return [...groups.values()];
+}
+
+/**
+ * Moves the saved commands of commands.json into Alp's config once, then renames the file to
+ * commands.json.bak. Does nothing when there is no commands.json.
+ * @returns {Promise<boolean>} Whether anything moved.
+ */
+export async function migrateCommands() {
+  const path = COMMANDS_PATH();
+  const text = await readTextFile(path).catch(() => null);
+  if (text == null) return false;
+  let commands = [];
+  try {
+    commands = parseJsonc(text)?.commands ?? [];
+  } catch (error) {
+    notify({ title: "Saved commands not moved", body: `${path}: ${error?.message ?? error}`, level: "error" });
+    return false;
+  }
+  for (const group of commandsAsEdits(commands)) {
+    const workspace = group.root ? await findWorkspace(group.root) : null;
+    await writeLayer(group.layer, workspace, group.edits);
+  }
+  await exec("mv", [path, `${path}.bak`]);
+  notify({
+    title: "Saved commands moved",
+    body: "Your saved commands are now runs in Alp's config (~/.config/alp/alp.json, or the repo's .herdr/alp.local.json).",
+  });
+  return true;
 }

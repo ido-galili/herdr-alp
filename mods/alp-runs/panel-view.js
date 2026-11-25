@@ -60,7 +60,7 @@ export function closeAndMoveOn(session) {
 async function restart(session) {
   const workspace = await findWorkspace(session.workspace);
   const catalog = await loadEntries(workspace, window()?.platform ?? "macos");
-  const entry = [...catalog.launch, ...catalog.tasks, ...catalog.saved].find((item) => item.key === session.key);
+  const entry = catalog.runs.find((item) => item.key === session.key);
   if (!entry) {
     notify({ title: `${session.title} is no longer in the workspace`, level: "warning" });
     return;

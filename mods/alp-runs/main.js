@@ -1,14 +1,15 @@
-// Runs: the workspace's VS Code launch configs, tasks and saved commands, started as named,
+// Runs: the workspace's runs from Alp's config (.herdr/alp.json and your own), started as named,
 // labelled herdr-core terminals. One mod draws every piece, chosen by `props().part`:
 // - `list`: Basecamp's Run tab.
 // - `bar`, `sessions`, `empty`: the bottom panel's bar, sessions list and output placeholder.
-// - `input`, `save`, `menu`: the Run tab's dialogs and right-click menu.
+// - `input`, `save`, `import`, `menu`: the Run tab's dialogs and right-click menu.
 
 import { View, div } from "gpui-kit";
 import { props } from "herdr";
 import { ListPart } from "./list-view.js";
 import { BarPart, EmptyPart, SessionsPart } from "./panel-view.js";
 import { InputPart, MenuPart, SavePart } from "./forms.js";
+import { ImportPart } from "./import-view.js";
 
 const PARTS = {
   list: ListPart,
@@ -17,6 +18,7 @@ const PARTS = {
   empty: EmptyPart,
   input: InputPart,
   save: SavePart,
+  import: ImportPart,
   menu: MenuPart,
 };
 

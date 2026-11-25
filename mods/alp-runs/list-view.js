@@ -1,11 +1,14 @@
-// Basecamp's Run tab: the focused workspace's launch configs, tasks and saved commands, each with
-// a play button. A row whose entry has a session shows its state and selects it in the bottom
-// panel. Entries that need VS Code are folded away at the end, with the reason on each. Entries
-// the person hides fold away too, remembered per repository in this copy's localStorage.
+// Basecamp's Run tab: the focused workspace's runs from Alp's config (your file, the repo's
+// .herdr/alp.json and your .herdr/alp.local.json, merged), under their sections, each with a play
+// button. A row whose run has a session shows its state and selects it in the bottom panel. Runs
+// that can't run here fold away at the end, with the reason on each. Runs the person hides fold
+// away too, remembered per repository in this copy's localStorage. With VS Code configs in the
+// repo, Import from VS Code copies the ones the person picks into the config.
 
 import { div, svg } from "gpui-kit";
 import { h_flex, v_flex, Input, InputState } from "gpui-base";
 import {
+  checking,
   focused,
   home,
   notify,
@@ -18,7 +21,7 @@ import {
   watchFolder,
   window,
 } from "herdr";
-import { findWorkspace, loadEntries } from "./config.js";
+import { findWorkspace, loadEntries, migrateCommands } from "./config.js";
 import { neededInputs, sessionFor, startEntry } from "./runner.js";
 import { showSession } from "./panel.js";
 
@@ -32,11 +35,33 @@ export const ANSWERS_KEY = "alp.runs.inputs";
 const PLAY_ICON = "mods/alp-runs/play.svg";
 const PLUS_ICON = "mods/workspace-chrome/plus.svg";
 const RELOAD_ICON = "mods/alp-runs/reload.svg";
-const SECTIONS = [
-  { id: "launch", title: "LAUNCH" },
-  { id: "tasks", title: "TASKS" },
-  { id: "saved", title: "SAVED" },
-];
+/** How a run's origin is marked after its name; the repo's runs carry no mark. */
+const ORIGIN_MARK = { you: "yours", local: "local" };
+
+/**
+ * Opens the form that adds a run, or edits one.
+ * @param {string | null} root The workspace root, or null outside a repository.
+ * @param {{ name: string, layer: string } | null} editing The run to edit and the file it's in.
+ * @returns {void}
+ */
+export function openSaveForm(root, editing = null) {
+  openOverlay({
+    mod: "alp-runs",
+    kind: "dialog",
+    width: 480,
+    height: 420,
+    props: { part: "save", root, ...(editing ?? {}) },
+  });
+}
+
+/**
+ * Opens the dialog that imports VS Code launch configs and tasks.
+ * @param {string} root The workspace root.
+ * @returns {void}
+ */
+export function openImport(root) {
+  openOverlay({ mod: "alp-runs", kind: "dialog", width: 560, height: 600, props: { part: "import", root } });
+}
 
 /**
  * Folders that say where the person works now, best first: the focused terminal's, the active
@@ -177,6 +202,11 @@ export class ListPart {
   load(cx, force = false) {
     const folders = this.folder.split("\n");
     cx.spawn(async (cx) => {
+      // Saved commands from before Alp's config move into it once (never during `herdr-app check`).
+      if (!this.migrated && !checking()) {
+        this.migrated = true;
+        await migrateCommands().catch((error) => console.log(`alp-runs: saved commands not moved: ${error}`));
+      }
       let workspace = null;
       for (const folder of folders) {
         workspace = await findWorkspace(folder);
@@ -190,14 +220,14 @@ export class ListPart {
     });
   }
 
-  /** Reads the entries again whenever the workspace's .vscode folder changes. */
+  /** Reads the entries again whenever the workspace's .herdr folder changes. */
   watch(cx, root) {
     this.watchRoot = root;
     const token = ++this.watchToken;
     this.watchHandle?.cancel();
     cx.spawn(async (cx) => {
       while (token === this.watchToken) {
-        this.watchHandle = watchFolder(`${root}/.vscode`);
+        this.watchHandle = watchFolder(`${root}/.herdr`);
         const changed = await this.watchHandle.catch(() => null);
         if (!changed?.length || token !== this.watchToken) return;
         this.catalog = await loadEntries(this.workspace, window()?.platform ?? "macos");
@@ -212,7 +242,7 @@ export class ListPart {
       const sameWorkspace = this.workspace?.root === request.root && this.catalog;
       const workspace = sameWorkspace ? this.workspace : await findWorkspace(request.root);
       const catalog = sameWorkspace ? this.catalog : await loadEntries(workspace, window()?.platform ?? "macos");
-      const entry = [...catalog.launch, ...catalog.tasks, ...catalog.saved].find((item) => item.key === request.key);
+      const entry = catalog.runs.find((item) => item.key === request.key);
       if (entry) await this.start(cx, entry, catalog, workspace, request.answers);
     });
   }
@@ -297,15 +327,23 @@ export class ListPart {
     };
     const menu = (_event, cx) => {
       cx.stop_propagation();
-      const count = 1 + (entry.kind === "saved" ? 2 : entry.kind === "task" ? 1 : 0);
       openOverlay({
         mod: "alp-runs",
         kind: "popup",
-        width: 210,
-        height: 12 + count * 34,
-        props: { part: "menu", key: entry.key, root: this.workspace.root, repo: this.workspace.mainRoot, hidden },
+        width: 230,
+        height: 12 + 3 * 34,
+        props: {
+          part: "menu",
+          key: entry.key,
+          name: entry.name,
+          origin: entry.origin,
+          root: this.workspace.root,
+          repo: this.workspace.mainRoot,
+          hidden,
+        },
       });
     };
+    const originMark = ORIGIN_MARK[entry.origin];
     return h_flex()
       .id(`run-${entry.key}`)
       .w_full()
@@ -335,6 +373,17 @@ export class ListPart {
           .text_color(entry.unsupported ? t.dim : t.foreground)
           .child(entry.name),
       )
+      .when(Boolean(originMark), (el) =>
+        el.child(
+          div()
+            .id(`run-origin-${entry.key}`)
+            .flex_none()
+            .text_size(10.5)
+            .text_color(t.dim)
+            .tooltip(entry.origin === "you" ? "From ~/.config/alp/alp.json" : "Changed in .herdr/alp.local.json")
+            .child(originMark),
+        ),
+      )
       .when(!entry.unsupported, (el) =>
         el.child(
           h_flex()
@@ -357,40 +406,61 @@ export class ListPart {
       );
   }
 
-  /** A section heading, with + for saved commands. */
-  heading(t, section) {
-    const add = (_event, cx) => {
-      cx.stop_propagation();
-      openOverlay({
-        mod: "alp-runs",
-        kind: "dialog",
-        width: 460,
-        height: 360,
-        props: { part: "save", root: this.workspace?.root ?? null },
-      });
-    };
-    return h_flex()
-      .px(10)
+  /**
+   * A section heading.
+   * @param {object} t The theme.
+   * @param {string} title The section's name.
+   * @returns {object}
+   */
+  heading(t, title) {
+    return div().px(10).pt(10).pb(3).text_size(10.5).font_semibold().text_color(t.dim).child(title.toUpperCase());
+  }
+
+  /**
+   * A small text action in the list, like Import from VS Code.
+   * @param {object} t The theme.
+   * @param {string} id Element id.
+   * @param {string} label What it says.
+   * @param {(cx: object) => void} action What a click does.
+   * @returns {object}
+   */
+  action(t, id, label, action) {
+    return div()
+      .id(id)
+      .mx(10)
+      .mt(8)
+      .text_size(11.5)
+      .text_color(t.accent)
+      .cursor_pointer()
+      .hover((style) => style.opacity(0.8))
+      .on_click((_event, cx) => action(cx))
+      .child(label);
+  }
+
+  /**
+   * What the list shows when the config has no runs: where runs live and how to add one.
+   * @param {object} t The theme.
+   * @returns {object}
+   */
+  emptyState(t) {
+    const root = this.workspace?.repo ? this.workspace.root : null;
+    return v_flex()
       .pt(10)
-      .pb(3)
-      .items_center()
-      .child(div().flex_1().text_size(10.5).font_semibold().text_color(t.dim).child(section.title))
-      .when(section.id === "saved", (el) =>
-        el.child(
-          h_flex()
-            .id("run-save-new")
-            .size(20)
-            .items_center()
-            .justify_center()
-            .rounded(5)
-            .cursor_pointer()
-            .text_color(t.dim)
-            .hover((style) => style.bg(t.hover).text_color(t.foreground))
-            .tooltip("Save a command")
-            .on_click(add)
-            .child(svg(PLUS_ICON).size(12)),
-        ),
-      );
+      .child(
+        div()
+          .px(10)
+          .text_size(11.5)
+          .text_color(t.dim)
+          .child(
+            root
+              ? "No runs yet. Runs live in .herdr/alp.json, shared with the repo, and in your own Alp config."
+              : "No runs yet. Open a terminal in a repository to see its runs.",
+          ),
+      )
+      .when(Boolean(root && this.catalog?.vscode), (el) =>
+        el.child(this.action(t, "run-import-empty", "Import from VS Code…", () => openImport(root))),
+      )
+      .child(this.action(t, "run-add-empty", "Add a run…", () => openSaveForm(root)));
   }
 
   render(cx) {
@@ -400,26 +470,25 @@ export class ListPart {
     const matches = (entry) => !query || entry.name.toLowerCase().includes(query);
     const catalog = this.catalog;
     const hiddenKeys = this.hiddenKeys();
-    const all = catalog ? [...catalog.launch, ...catalog.tasks, ...catalog.saved] : [];
+    const all = catalog ? catalog.runs : [];
     const blocked = all.filter((entry) => entry.unsupported && !hiddenKeys.has(entry.key) && matches(entry));
     const hidden = all.filter((entry) => hiddenKeys.has(entry.key) && matches(entry));
     const items = [];
     if (catalog) {
-      for (const section of SECTIONS) {
-        const rows = catalog[section.id].filter(
-          (entry) => !entry.unsupported && !hiddenKeys.has(entry.key) && matches(entry),
+      if (!all.length) items.push(this.emptyState(t));
+      for (const section of catalog.sections) {
+        const rows = all.filter(
+          (entry) => entry.section === section && !entry.unsupported && !hiddenKeys.has(entry.key) && matches(entry),
         );
-        if (!rows.length && section.id !== "saved") continue;
+        if (!rows.length) continue;
         items.push(this.heading(t, section));
-        if (!rows.length)
-          items.push(div().px(10).py(4).text_size(11.5).text_color(t.dim).child("Save a command with +."));
         rows.forEach((entry) => items.push(this.row(t, entry)));
       }
       items.push(
         ...this.fold(
           t,
           "run-blocked",
-          "need VS Code",
+          "can't run here",
           blocked.map((entry) => this.row(t, entry)),
           this.showBlocked,
           () => {
@@ -437,6 +506,10 @@ export class ListPart {
           },
         ),
       );
+      if (all.length && catalog.vscode && this.workspace?.repo) {
+        const root = this.workspace.root;
+        items.push(this.action(t, "run-import", "Import from VS Code…", () => openImport(root)));
+      }
     }
     return v_flex()
       .id("alp-runs-list")
@@ -463,6 +536,24 @@ export class ListPart {
           )
           .child(
             h_flex()
+              .id("run-add")
+              .flex_none()
+              .size(24)
+              .items_center()
+              .justify_center()
+              .rounded(6)
+              .cursor_pointer()
+              .text_color(t.dim)
+              .hover((style) => style.bg(t.hover).text_color(t.foreground))
+              .tooltip("Add a run")
+              .on_click((_event, cx) => {
+                cx.stop_propagation();
+                openSaveForm(this.workspace?.repo ? this.workspace.root : null);
+              })
+              .child(svg(PLUS_ICON).size(12)),
+          )
+          .child(
+            h_flex()
               .id("run-reload")
               .flex_none()
               .size(24)
@@ -472,7 +563,7 @@ export class ListPart {
               .cursor_pointer()
               .text_color(t.dim)
               .hover((style) => style.bg(t.hover).text_color(t.foreground))
-              .tooltip(`Read ${this.workspace?.name ?? "the workspace"}'s launch.json and tasks.json again`)
+              .tooltip(`Read ${this.workspace?.name ?? "the workspace"}'s runs again`)
               .on_click((_event, cx) => this.load(cx, true))
               .child(svg(RELOAD_ICON).size(12)),
           ),
