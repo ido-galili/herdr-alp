@@ -10,6 +10,7 @@ import { CardMenu } from "./board-menu.js";
 import { loadConfig } from "./config.js";
 import { loadBoardView } from "./data.js";
 import { saveSettings } from "./settings-data.js";
+import { demoMilestones } from "./demo-data.js";
 
 const PICKED_KEY = "alpmeister.boardPeople";
 /** A press that moves less than this is a click (open the card), not a drag. */
@@ -148,6 +149,12 @@ export class BoardState {
     const { ws } = this.workspace();
     if (!ws || this.busy) return;
     const query = this.input.value().trim();
+    if (this.view.demo) {
+      // The demo has no board on GitHub to filter: the field keeps what was typed.
+      this.error = "The demo board does not filter.";
+      cx.notify();
+      return;
+    }
     this.busy = true;
     this.error = null;
     cx.notify();
@@ -197,6 +204,7 @@ export class BoardState {
   /** Keeps a workspace's picked people for this copy, then redraws. */
   savePicked(ws, picked, cx) {
     this.pickedByWorkspace = { ...this.pickedByWorkspace, [ws.name]: [...picked] };
+    if (this.view.demo) return cx.notify();
     try {
       localStorage.setItem(PICKED_KEY, JSON.stringify(this.pickedByWorkspace));
     } catch (error) {
@@ -222,6 +230,8 @@ export class BoardState {
    */
   write(item, change, write, cx) {
     change.apply();
+    // The demo board is made up: the change shows, and nothing is written.
+    if (this.view.demo) return cx.notify();
     this.writing.add(item.itemId);
     this.writeError = null;
     cx.notify();
@@ -405,6 +415,7 @@ export class BoardState {
     this.menuFor = item.itemId;
     this.submenu = null;
     const repo = item.repo;
+    if (this.view.demo && repo) this.milestones[repo] = { list: demoMilestones(repo) };
     if (item.kind !== "draft" && repo && !this.milestones[repo]) {
       this.milestones[repo] = { loading: true };
       cx.spawn(async (cx) => {
