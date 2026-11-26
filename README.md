@@ -28,7 +28,7 @@ What's inside:
 | `mods/daypack/` | Daypack: Basecamp's tab with today's trail |
 | `mods/alp-runs/` | Runs: Basecamp's Run tab (the runs in Alp's config, `.herdr/alp.json` and your own, each with a play button, and an import from VS Code) and the bottom panel with each run's output and sessions |
 | `mods/alp-status/` | the status bar: Herdr's, with a Runs button that shows or hides the bottom panel |
-| `mods/alp-tabs/` | the tab bar: Herdr's tabs, then icon buttons in two groups, Files and Changes, then Alpmeister and Basecamp |
+| `mods/alp-tabs/` | the tab bar: an Alpmeister tab pinned before the space's tabs, then the tabs, then icon buttons in two groups, Files and Changes, then Basecamp |
 | `plugins/alp/` | Claude Code plugin that writes the status files the mods read |
 | `schema/alp.schema.json` | the JSON schema for Alp's config files |
 | `RECIPE.md` | the brief to rebuild it from scratch (herdr.dev format) |
@@ -89,8 +89,10 @@ Restart running Claude sessions after installing or changing the plugin.
 ## Alpmeister
 
 In an alp cooperative, the Alpmeister plans the season and oversees the alp, while the senn
-works the herd. The `alpmeister` mod is that view for a team lead, opened as a tab: click the
-dashboard button in the tab bar (it goes to the space's Alpmeister tab when one is open), or
+works the herd. The `alpmeister` mod is that view for a team lead. Its tab is pinned first in the
+tab bar, before the space's tabs, and belongs to no space. Click it and Alpmeister takes the whole
+work area in place of the terminals. Click it again, pick a tab, open one or switch spaces to get
+the terminals back. It can also open as a tab of its own in a space:
 
 ```sh
 herdr-app do tab.new '{"mod":"alpmeister","name":"Alpmeister"}'

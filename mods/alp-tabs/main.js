@@ -2,14 +2,21 @@ import { View, div, svg, image } from "gpui-kit";
 import { h_flex, ScrollHandle } from "gpui-base";
 import { spaces, panes, run, openOverlay, theme, window, shared, layout, settings, home, readTextFile, terminals } from "herdr";
 
-// Alp's tab bar: Herdr's `tabs` (0.1.16) with two buttons added. After +, icon buttons in two
-// groups split by a line: [Files Changes | Alpmeister Basecamp]. Alpmeister goes to the space's
-// Alpmeister tab, or opens one. Basecamp shows or hides the `basecamp` column (the Daypack and Run
-// tabs), when the layout has one. A button that is on gets the selected fill and a white icon.
-// An Alpmeister tab shows Alpmeister's icon before its name.
+// Alp's tab bar: Herdr's `tabs` (0.1.16) with Alpmeister and two button groups added.
+// Alpmeister comes first, pinned before the space's tabs: it belongs to no space. A click swaps
+// the `work-stack` to the `alpmeister-view` block, so only Alpmeister shows; a space tab, a new
+// tab, another space, or Alpmeister again swaps back to the terminals. After +, icon buttons in
+// groups split by a line: [Files Changes | Basecamp]. Basecamp shows or hides the `basecamp`
+// column (the Daypack and Run tabs), when the layout has one. A button that is on gets the
+// selected fill and a white icon. A layout without `work-stack` gets Alpmeister as an icon
+// button instead, going to the space's Alpmeister tab or opening one. An Alpmeister tab in a
+// space shows Alpmeister's icon before its name.
 
 const ALPMEISTER = "alpmeister";
 const ALPMEISTER_ICON = "mods/alp-tabs/dashboard.svg";
+const WORK_STACK = "work-stack";
+const WORK_BODY = "work-body";
+const ALPMEISTER_VIEW = "alpmeister-view";
 const BASECAMP_ID = "basecamp";
 const BASECAMP_ICON = "mods/alp-tabs/panel-right.svg";
 const FILES_ICON = "mods/alp-tabs/files.svg";
@@ -150,33 +157,41 @@ export default class Tabs extends View {
       if (active >= 0) this.scroll.scroll_to_item(active);
     }
     const stop = (_e, cx) => cx.stop_propagation();
+    // A thin line after the pinned Alpmeister tab, and between the panel buttons and Alp's own.
+    const separator = () => div().w(1).h(16).mx(5).flex_none().bg(t.border);
     const button = (id, label, action) => div().id(id).size(26).flex_none().flex().items_center().justify_center().rounded(6).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
       .on_mouse_down("left", stop).on_click(action).child(label);
+    const root = layout(), stack = find(root, WORK_STACK);
+    const pinned = Boolean(stack && find(stack, ALPMEISTER_VIEW));
+    const alpOn = pinned && stack.active === ALPMEISTER_VIEW;
+    const showTerminals = () => { if (alpOn) run("layout.select", { stack: WORK_STACK, child: WORK_BODY }); };
+    this.leaveAlpmeister(space, selected, alpOn, showTerminals);
     const item = (c, i) => {
+      const on = c.active && !alpOn;
       const lead = panes().find(p => p.tab === c.id && p.program?.agent) ?? panes().find(p => p.tab === c.id);
       const program = lead?.program;
       const name = label(c, lead);
       return h_flex().id(`tab-${c.id}`).h(29).px(10).gap(7).rounded(7).items_center().flex_none().text_size(12.8)
         // A rename or status dot on this or an earlier tab can push the active one out.
         .when(i <= active, el => el.on_size_change((_size, cx) => { this.scroll.scroll_to_item(active); cx.notify(); }))
-        .border(1).border_color(c.active ? t.border : t.chrome).bg(c.active ? t.raised : t.chrome).text_color(c.active ? t.foreground : t.muted)
+        .border(1).border_color(on ? t.border : t.chrome).bg(on ? t.raised : t.chrome).text_color(on ? t.foreground : t.muted)
         .hover(s => s.bg(t.hover))
         .on_mouse_down("left", (e, cx) => { cx.stop_propagation(); this.pressed = i; if (e.click_count === 2) run("tab.rename", { id: c.id }); })
         .on_mouse_up("left", () => {
           const from = this.pressed; this.pressed = null;
           if (from !== null && from !== i) run("tab.move", { id: shown[from].id, index: space.tabs.findIndex(x => x.id === c.id) + 1 });
-          else run("tab.select", { id: c.id });
+          else { run("tab.select", { id: c.id }); showTerminals(); }
         })
         .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); openOverlay({ mod: "menu", kind: "popup", width: 200, props: { tab: "tab", target: { id: c.id, space: space.id } } }); })
         .when(Boolean(program?.icon), el => el.child(program.tint ? svg(program.icon).size(14).text_color(t.muted) : image(program.icon).size(14)))
         // Alp: an Alpmeister tab carries the same icon as its button.
-        .when(!program?.icon && lead?.mod === ALPMEISTER, el => el.child(svg(ALPMEISTER_ICON).size(14).flex_none().text_color(c.active ? t.foreground : t.muted)))
+        .when(!program?.icon && lead?.mod === ALPMEISTER, el => el.child(svg(ALPMEISTER_ICON).size(14).flex_none().text_color(on ? t.foreground : t.muted)))
         .child(div().max_w(170).truncate().child(c.zoomed ? `${name} Z` : name))
         .when(c.status === "working", el => el.child(svg("mods/workspace-chrome/spinner.svg").size(12).flex_none().text_color(t.working).spin(900)))
         .when(c.status === "blocked" || c.status === "done", el => el.child(div().size(6).rounded(3).bg(t[c.status])))
         .when(c.active, el => el.child(div().id(`close-${c.id}`).text_color(t.dim).on_mouse_down("left", stop).on_click((_e, cx) => { cx.stop_propagation(); run("tab.close", { id: c.id }); }).child(svg("mods/pane/close.svg").size(12))));
     };
-    const root = layout(), sidebar = find(root, "sidebar"), w = window();
+    const sidebar = find(root, "sidebar"), w = window();
     // Old saved rails and a dragged-narrow sidebar can be smaller than the window buttons.
     const lightsPadding = w?.platform === "macos" && w.titlebar === "none" && !w.fullscreen && root?.traffic_lights
       ? Math.max(10, (root.traffic_lights[0] + 64) / settings().zoom - (sidebar?.hidden ? 0 : sidebar?.size?.px ?? 0))
@@ -185,31 +200,30 @@ export default class Tabs extends View {
     const enabled = shared("workspace.panels") ?? ["files", "changes"];
     this.syncPanel(space, panel, body, enabled);
     const panelButton = (id, label, icon) => {
-      const on = panel && !panel.hidden && body?.active === id;
+      const on = !alpOn && panel && !panel.hidden && body?.active === id;
       return h_flex().id(`panel-${id}`).size(26).flex_none().items_center().justify_center().rounded(6)
         .bg(on ? t.selected : t.chrome).text_color(on ? t.foreground : t.muted)
         .hover(s => s.bg(t.hover).text_color(t.foreground)).on_mouse_down("left", stop)
         .tooltip(`${on ? "Hide" : "Show"} ${label}`)
         .on_click(() => {
           if (on) run("layout.hide", { id: "panel" });
-          else { run("layout.select", { stack: "panel-body", child: id }); run("layout.show", { id: "panel" }); }
+          else { showTerminals(); run("layout.select", { stack: "panel-body", child: id }); run("layout.show", { id: "panel" }); }
         }).child(svg(icon).size(15));
     };
     const basecamp = find(root, BASECAMP_ID);
     const hasPanels = enabled.includes("files") || enabled.includes("changes");
-    // A thin line between the panel buttons and Alp's own.
-    const separator = div().w(1).h(16).mx(5).flex_none().bg(t.border);
     return h_flex().size_full().min_w(0).px(10).pl(lightsPadding).gap(3).items_center().bg(t.chrome).border_b(1).border_color(t.border)
       .on_mouse_up("left", () => { this.pressed = null; })
       .on_scroll_wheel(e => this.wheel(e))
+      .when(pinned, el => el.child(this.alpmeisterTab(t, alpOn, stop)).child(separator()))
       .child(h_flex().id("tab-scroll").flex_1().min_w(0).h_full().items_center().gap(3).overflow_x_scrollbar().track_scroll(this.scroll)
         .on_size_change((_size, cx) => { if (active >= 0) { this.scroll.scroll_to_item(active); cx.notify(); } })
         .children(shown.map(item)))
       .child(button("tab-new", "+", () => openOverlay({ mod: "new-menu", kind: "popup", width: 250, height: 512 })))
       .when(enabled.includes("files"), el => el.child(panelButton("files", "Files", FILES_ICON)))
       .when(enabled.includes("changes"), el => el.child(panelButton("changes", "Changes", CHANGES_ICON)))
-      .when(hasPanels, el => el.child(separator))
-      .child(this.alpmeisterButton(t, space, stop))
+      .when(hasPanels && (!pinned || Boolean(basecamp)), el => el.child(separator()))
+      .when(!pinned, el => el.child(this.alpmeisterButton(t, space, stop)))
       .when(Boolean(basecamp), el => el.child(this.basecampButton(t, basecamp, stop)))
       .when(w?.buttons, el => el.child(button("minimize", w.platform === "windows" ? svg("mods/alp-tabs/win-min.svg").size(16) : "−", () => run("window.minimize")))
         .child(button("maximize", w.platform === "windows" ? svg(`mods/alp-tabs/${w.maximized ? "win-restore" : "win-max"}.svg`).size(16) : "□", () => run("window.maximize")))
@@ -235,7 +249,40 @@ export default class Tabs extends View {
   }
 
   /**
-   * Alpmeister's button: goes to the space's Alpmeister tab, or opens one. On while that tab shows.
+   * While Alpmeister shows, going to another tab or space (a click elsewhere, a key, a new tab)
+   * swaps back to the terminals so that tab shows.
+   * @param {object | undefined} space The active space.
+   * @param {string | undefined} selected The active tab's id.
+   * @param {boolean} alpOn Whether Alpmeister's view shows.
+   * @param {Function} back Swaps back to the terminals.
+   */
+  leaveAlpmeister(space, selected, alpOn, back) {
+    const where = `${space?.id}:${selected}`;
+    const moved = this.where !== undefined && where !== this.where;
+    this.where = where;
+    if (moved) back();
+  }
+
+  /**
+   * Alpmeister's pinned tab, before the space's tabs: shows Alpmeister's view in place of the
+   * terminals, or the terminals again when it already shows.
+   * @param {object} t The theme.
+   * @param {boolean} on Whether Alpmeister's view shows.
+   * @param {Function} stop Keeps the press from dragging the window.
+   * @returns {object}
+   */
+  alpmeisterTab(t, on, stop) {
+    return h_flex().id("alpmeister-tab").h(29).px(10).gap(7).rounded(7).items_center().flex_none().text_size(12.8)
+      .border(1).border_color(on ? t.border : t.chrome).bg(on ? t.raised : t.chrome).text_color(on ? t.foreground : t.muted)
+      .hover(s => s.bg(t.hover)).on_mouse_down("left", stop)
+      .on_click(() => run("layout.select", { stack: WORK_STACK, child: on ? WORK_BODY : ALPMEISTER_VIEW }))
+      .tooltip(on ? "Back to the terminals" : "Show Alpmeister")
+      .child(svg(ALPMEISTER_ICON).size(14).flex_none().text_color(on ? t.foreground : t.muted))
+      .child("Alpmeister");
+  }
+
+  /**
+   * Alpmeister's button, for a layout without `work-stack`: goes to the space's Alpmeister tab, or opens one. On while that tab shows.
    * @param {object} t The theme.
    * @param {object | undefined} space The active space.
    * @param {Function} stop Keeps the press from dragging the window.
