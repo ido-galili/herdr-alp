@@ -2,7 +2,7 @@
 
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout } from "herdr";
+import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, layout } from "herdr";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -15,15 +15,6 @@ function find(node, id) {
 
 // The sidebar's rail goes by its width, not a flag: dragging its edge narrows it too.
 const narrow = () => (find(layout(), "sidebar")?.size?.px ?? Infinity) < 160;
-
-// To the rail (on macOS wide enough for the traffic lights), or back to the width it had.
-function toggleSidebar() {
-  const width = find(layout(), "sidebar")?.size?.px;
-  if (!narrow()) setShared("sidebar.width", width);
-  // Mods edited before the rail went by width still read the flag.
-  setShared("sidebar.collapsed", !narrow());
-  run("layout.resize", { id: "sidebar", px: narrow() ? (shared("sidebar.width") ?? 268) : window()?.platform === "macos" ? 76 : 44 });
-}
 
 // Drops what an agent puts before its title: a status glyph or spinner and the separator
 // after it ("✦  Working", "⠋ - Thinking"), and Codex's blinking "[ ! ] " / "[ . ] " mark.
@@ -322,18 +313,40 @@ export default class Agents extends View {
       const more = detail.get(a.address);
       // An agent on another machine (`vps/t7`) says which.
       const machine = a.address.includes("/") ? a.address.split("/")[0] : null;
+      // Rail: one tile per agent, its number on its space's color. The status is a badge on
+      // the tile's corner, as on the spaces rail. An idle agent's tile is faded, so the busy
+      // ones and the ones that need you stand out.
       if (collapsed) {
+        const color = colors[a.space] ?? "ansi6";
+        const fill = color.startsWith("#") ? color : (MARK[color] ?? t[color]);
+        const quiet = a.status === "idle";
+        const ring = a.focused ? t.selected : t.chrome;
+        const badge = a.status === "working"
+          ? div().absolute().top(-4).right(-4).size(12).rounded_full().bg(ring).flex().items_center().justify_center()
+            .child(svg("mods/workspace-chrome/spinner.svg").size(10).text_color(t.working).spin(900))
+          : a.status === "blocked" || a.status === "done"
+            ? div().absolute().top(-3).right(-3).size(9).rounded_full().border(2).border_color(ring).bg(t[a.status])
+            : null;
         return h_flex()
           .id(`ag-${a.address}`)
-          .h(26)
-          .px(8)
+          .h(30)
+          .w(32)
           .flex_none()
+          .self_center()
+          .rounded(8)
           .items_center()
-          .gap(4)
-          .hover((s) => s.bg(t.hover))
+          .justify_center()
+          .cursor_pointer()
+          .tooltip(`${i + 1}  ${a.space_name ? `${a.space_name} · ` : ""}${label(a)}`)
+          .when(a.focused, (el) => el.bg(t.selected))
+          .when(!a.focused, (el) => el.hover((s) => s.bg(t.hover)))
           .on_click(() => run("pane.focus", { pane: a.pane }))
-          .child(div().flex_1().min_w(0).whitespace_nowrap().text_right().text_color(t.muted).child(String(i + 1)))
-          .child(h_flex().w(14).flex_none().items_center().justify_center().child(this.status(t, a, true)));
+          .child(div().relative().flex_none()
+            .child(h_flex().size(22).rounded(6).items_center().justify_center()
+              .bg(quiet ? fill + "33" : fill)
+              .text_size(11).font_bold().text_color(quiet ? fill : "#ffffff")
+              .child(String(i + 1)))
+            .when(Boolean(badge), (el) => el.child(badge)));
       }
       const when = this.since(a);
       const idle = a.status === "idle" && !a.focused;
@@ -467,23 +480,6 @@ export default class Agents extends View {
       .when(list.length === 0 && !collapsed, (el) =>
         el.child(div().px(12).text_size(12).text_color(t.dim).child("No agent status yet. Agents show up here when they report their status. Older versions and agents inside tmux may not.")),
       )
-      .child(v_flex().id("ag-list").flex_1().min_h(0).px(collapsed ? 0 : 8).overflow_y_scrollbar().mode("always").children(rows))
-      .when(collapsed, (el) =>
-        el.child(
-          h_flex()
-            .h(28)
-            .items_center()
-            .justify_center()
-            .child(
-              div()
-                .id("collapse")
-                .text_size(13)
-                .text_color(t.dim)
-                .hover((s) => s.text_color(t.foreground))
-                .on_click(toggleSidebar)
-                .child("»"),
-            ),
-        ),
-      );
+      .child(v_flex().id("ag-list").flex_1().min_h(0).px(collapsed ? 0 : 8).when(collapsed, (el) => el.pt(8).gap(2)).overflow_y_scrollbar().mode(collapsed ? "scrolling" : "always").children(rows));
   }
 }

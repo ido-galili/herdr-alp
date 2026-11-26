@@ -15,7 +15,7 @@
           "id": "brand",
           "type": "block",
           "content": {
-            "mod": "workspace-chrome"
+            "mod": "alp-chrome"
           },
           "size": {
             "px": 46
@@ -40,7 +40,7 @@
               "id": "spaces",
               "type": "block",
               "content": {
-                "mod": "spaces"
+                "mod": "alp-spaces"
               },
               "size": {
                 "weight": 1
@@ -64,7 +64,7 @@
           "id": "sidebar-footer",
           "type": "block",
           "content": {
-            "mod": "workspace-chrome",
+            "mod": "alp-chrome",
             "props": {
               "footer": true
             }
