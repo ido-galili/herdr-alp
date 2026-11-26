@@ -35,6 +35,7 @@ import { MODEL_VERSION, loadAll, loadPickStates } from "./data.js";
 import { FocusStore, pickId } from "./focus.js";
 import { FocusList } from "./focus-list.js";
 import { loadDemoHerds } from "./demo-herds.js";
+import { demoConfig, demoDiscovery, demoFocus, demoModel } from "./demo-data.js";
 import { loadHerds, saveTabLink, sessionsDir } from "./herds-data.js";
 import { Herds } from "./herds-view.js";
 import { HerdsCanvas } from "./herds-canvas.js";
@@ -116,7 +117,9 @@ export default class Alpmeister extends View {
     this.cacheSnapshot = null;
     // `props.tab` opens a copy on that tab: tab.new {mod: "alpmeister", props: {tab: "herds"}}.
     this.tab = Object.values(TABS).includes(props()?.tab) ? props().tab : rememberedTab();
-    // `props.demo` shows a made-up herd on the Herds tab (`demo-herds.js`), for demos and screenshots.
+    // `props.demo` shows made-up data on every tab, for demos and screenshots: a herd on Herds
+    // (`demo-herds.js`), and settings, GitHub data and a focus list everywhere else (`demo-data.js`).
+    // It calls no GitHub and writes nothing: not the settings, the cache or the focus list.
     this.demo = props()?.demo === true;
     this.herds = null;
     this.herdsLoading = false;
@@ -127,7 +130,7 @@ export default class Alpmeister extends View {
     this.herdsFailure = null;
     this.picking = null;
     this.herdsCanvas = new HerdsCanvas();
-    this.focus = new FocusStore();
+    this.focus = new FocusStore(this.demo ? demoFocus() : null);
     this.focusStamp = shared(FOCUS_STAMP_KEY) ?? null;
     this.input = InputState.new({ placeholder: "Add a todo and press Enter" });
     this.input.on("submit", (_event, cx) => this.addTodo(cx));
@@ -136,6 +139,7 @@ export default class Alpmeister extends View {
     this.todoEdit.on("submit", (_event, cx) => this.saveTodoEdit(cx));
     this.todoEdit.on("blur", (_event, cx) => this.saveTodoEdit(cx));
     this.settings = new SettingsForm((cx) => this.announceSettings(cx));
+    if (this.demo) this.settings.useDemo(demoDiscovery(demoConfig().config));
     this.settingsStamp = shared(SETTINGS_STAMP_KEY) ?? null;
     if (checking()) return;
     if (this.tab === TABS.settings) {
@@ -249,7 +253,7 @@ export default class Alpmeister extends View {
    * unsaved edits.
    */
   async loadSettings() {
-    const { config, error, text } = await loadConfig();
+    const { config, error, text } = this.demo ? demoConfig() : await loadConfig();
     this.config = config ?? null;
     this.configError = error ?? null;
     this.configText = text;
@@ -290,13 +294,15 @@ export default class Alpmeister extends View {
    */
   openSettings() {
     const space = spaces().find((candidate) => candidate.active);
-    const open = space?.tabs?.find((tab) => tab.name === SETTINGS_TAB_NAME);
+    const name = this.demo ? `${SETTINGS_TAB_NAME} (demo)` : SETTINGS_TAB_NAME;
+    const open = space?.tabs?.find((tab) => tab.name === name);
     if (open) run("tab.select", { id: open.id });
-    else run("tab.new", { mod: "alpmeister", name: SETTINGS_TAB_NAME, props: { tab: TABS.settings } });
+    else run("tab.new", { mod: "alpmeister", name, props: { tab: TABS.settings, ...(this.demo ? { demo: true } : {}) } });
   }
 
   /** Draws the last result at once, before the first refresh returns. */
   async loadCache() {
+    if (this.demo) return;
     const text = await readTextFile(cachePath());
     this.cacheSnapshot = text;
     try {
@@ -310,6 +316,7 @@ export default class Alpmeister extends View {
 
   /** Keeps the latest result for the next first paint. */
   async saveCache(model) {
+    if (this.demo) return;
     const text = JSON.stringify(model);
     await exec("mkdir", ["-p", stateDir()]);
     try {
@@ -338,10 +345,12 @@ export default class Alpmeister extends View {
         try {
           const config = await this.loadSettings();
           if (config) {
-            this.model = await loadAll(config);
+            this.model = this.demo ? demoModel(config) : await loadAll(config);
             this.failure = null;
-            await this.saveCache(this.model);
-            await this.checkPicks(config);
+            if (!this.demo) {
+              await this.saveCache(this.model);
+              await this.checkPicks(config);
+            }
           }
         } catch (error) {
           this.failure = String(error?.message ?? error);
@@ -384,12 +393,14 @@ export default class Alpmeister extends View {
 
   /** Tells the Daypack sidebar that the focus list changed on disk. */
   announceFocus() {
+    if (this.demo) return;
     this.focusStamp = Date.now();
     setShared(FOCUS_STAMP_KEY, this.focusStamp);
   }
 
   /** Reloads the focus list when the Daypack sidebar changed it. */
   syncFocus(cx) {
+    if (this.demo) return;
     const stamp = shared(FOCUS_STAMP_KEY) ?? null;
     if (stamp === this.focusStamp) return;
     this.focusStamp = stamp;
@@ -498,6 +509,8 @@ export default class Alpmeister extends View {
    * @param {{ background?: boolean, cx?: object }} [options] `cx`: the click's context, needed in the background.
    */
   launch(item, { background = false, cx } = {}) {
+    // The demo's repositories are made up: there is nothing to start Claude on.
+    if (this.demo) return;
     const clone = folderOf(this.config, item.repo);
     const space = spaces().find((candidate) => candidate.active);
     const firstTab = space?.tabs?.[0]?.id;
@@ -530,6 +543,7 @@ export default class Alpmeister extends View {
   /** Shows a workspace on the Dashboard, or All repos, and remembers it for this copy. */
   selectWorkspace(name, cx) {
     this.workspaceName = name;
+    if (this.demo) return cx.notify();
     try {
       localStorage.setItem(WORKSPACE_KEY, name);
     } catch (error) {
@@ -542,6 +556,7 @@ export default class Alpmeister extends View {
   selectTab(tab, cx) {
     this.tab = tab;
     if (tab === TABS.herds) this.watchHerds(cx);
+    if (this.demo) return cx.notify();
     try {
       localStorage.setItem(TAB_KEY, tab);
     } catch (error) {
@@ -829,7 +844,7 @@ export default class Alpmeister extends View {
   /** Starts the Settings form over from the file, dropping unsaved edits. */
   revertSettings(cx) {
     cx.spawn(async (cx) => {
-      const { config, error, text } = await loadConfig();
+      const { config, error, text } = this.demo ? demoConfig() : await loadConfig();
       this.config = config ?? this.config;
       this.configError = error ?? null;
       if (config) this.settings.load(config, text);

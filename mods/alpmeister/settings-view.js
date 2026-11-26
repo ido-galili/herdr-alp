@@ -133,6 +133,8 @@ export class SettingsForm {
    */
   constructor(onSaved) {
     this.onSaved = onSaved;
+    /** The demo data the form shows instead of GitHub and the disk, or null. */
+    this.demo = null;
     this.inputs = {};
     for (const [key, field] of Object.entries(FIELDS)) {
       const input = InputState.new({ placeholder: field.placeholder ?? "" });
@@ -240,6 +242,7 @@ export class SettingsForm {
    * clones, the shown workspace's repository details and board fields. Safe to call on every draw.
    */
   ensureLoaded(cx) {
+    if (this.demo) return;
     if (!this.discovery && !this.discovering && !this.discoverError) this.rediscover(cx);
     const ws = this.workspace();
     if (ws?.repo && !this.details[ws.repo]) {
@@ -272,6 +275,7 @@ export class SettingsForm {
 
   /** Reads your repositories, boards and clones again. */
   rediscover(cx) {
+    if (this.demo) return this.useDemo(this.demo, cx);
     this.discovering = true;
     this.discoverError = null;
     this.details = {};
@@ -344,8 +348,30 @@ export class SettingsForm {
     ws.inFlight.statuses = ordered(inFlight);
   }
 
+  /**
+   * Fills the form's choices from made-up data instead of GitHub and the disk, for the demo. Its
+   * Save then writes nothing.
+   * @param {{ discovery: object, details: object, fields: object, clones: object }} data From `demoDiscovery()`.
+   * @param {object} [cx] The view's context, to redraw.
+   */
+  useDemo(data, cx) {
+    this.demo = data;
+    this.discovery = data.discovery;
+    this.details = { ...data.details };
+    this.fields = { ...data.fields };
+    this.clones = data.clones;
+    this.discovering = false;
+    this.discoverError = null;
+    cx?.notify();
+  }
+
   /** Writes the draft to the file. */
   save(cx) {
+    if (this.demo) {
+      this.message = { text: "Demo settings: nothing is saved.", error: false };
+      cx.notify();
+      return;
+    }
     const missing = this.draft.workspaces.find((ws) => !ws.repo && !ws.board);
     if (missing) {
       this.message = { text: `"${missing.name || "A workspace"}" needs a repository or a board.`, error: true };
@@ -415,7 +441,7 @@ export class SettingsForm {
     return h_flex()
       .items_center()
       .gap(10)
-      .child(div().text_size(11).text_color(t.dim).child("~/.config/alp/alpmeister.json"))
+      .child(div().text_size(11).text_color(t.dim).child(this.demo ? "Demo settings: Save writes nothing" : "~/.config/alp/alpmeister.json"))
       .when(Boolean(this.message), (el) =>
         el.child(Note(this.message.text, this.message.error ? t.blocked : t.done)),
       )

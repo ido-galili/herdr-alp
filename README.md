@@ -146,9 +146,13 @@ the Dashboard starts on all your repositories.
 - **Open on a tab or workspace:** `props.tab` (`dashboard`, `herds`, `today`, `settings`) and
   `props.workspace` (a workspace's name, `""` for All repos):
   `herdr-app do tab.new '{"mod":"alpmeister","props":{"tab":"dashboard","workspace":"Team"}}'`.
-- **Demo:** `props.demo` shows a made-up herd on the Herds tab, for demos and screenshots, in
-  place of your own sessions (the other tabs stay yours). It reads nothing from `~/.claude`, and
-  its cards open no tab: `herdr-app do tab.new '{"mod":"alpmeister","props":{"tab":"herds","demo":true}}'`.
+- **Demo:** `props.demo` fills every tab with made-up data, for demos and screenshots: an
+  org with three workspaces (a repository and a board, a repository only, a board only), every
+  bug priority, a failing nightly, cards in every status, PRs in every review state, a focus list
+  and a herd on Herds. It calls no GitHub and writes nothing: not the settings, the cache or the
+  focus list, and Board moves only change what it shows. Its gear opens demo settings whose Save
+  writes nothing:
+  `herdr-app do tab.new '{"mod":"alpmeister","props":{"tab":"dashboard","workspace":"Website","demo":true}}'`.
 - **State:** `~/.local/state/alp/focus.json` holds the focus list and
   `~/.local/state/alp/alpmeister-cache.json` the last result.
 

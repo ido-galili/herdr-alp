@@ -65,13 +65,20 @@ function withRepo(item) {
 
 /** A focus list stored on disk, written back only over the version it was read from. */
 export class FocusStore {
-  constructor() {
+  /**
+   * @param {object[] | null} demo A made-up list for the demo: it is never read from or written
+   *   to the file.
+   */
+  constructor(demo = null) {
     this.list = [];
     this.snapshot = null;
+    this.demo = Boolean(demo);
+    if (demo) this.list = demo;
   }
 
   /** Reads the file. A missing or unreadable file starts an empty list. */
   async load() {
+    if (this.demo) return;
     const text = await readTextFile(focusPath());
     this.snapshot = text;
     try {
@@ -85,6 +92,7 @@ export class FocusStore {
 
   /** Writes the file. On a write from elsewhere since the last read, reloads and reports false. */
   async save() {
+    if (this.demo) return true;
     const text = `${JSON.stringify({ items: this.list }, null, 2)}\n`;
     await exec("mkdir", ["-p", stateDir()]);
     try {
