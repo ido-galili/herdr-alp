@@ -202,9 +202,9 @@ function shortcut(name, args) {
 
 /**
  * A tab's menu rows (the ⋯ and a right-click): Rename, Show all panes when zoomed, Move left and
- * right, New tab, Close. Or, for "+N", the tabs that didn't fit.
+ * right, New tab, then Put away and Close. Or, for "+N", the tabs that didn't fit.
  * @param {{ menu: "tab" | "more", id?: string, ids?: string[], space: string }} p The popup's props.
- * @returns {{ label: string, icon?: string, tab?: object, command: string, args: object, apart?: boolean }[]}
+ * @returns {{ label: string, icon?: string, tab?: object, command: string, args: object, apart?: boolean, tip?: string }[]}
  */
 function menuItems(p) {
   const space = spaces().find((s) => s.id === p.space);
@@ -219,7 +219,9 @@ function menuItems(p) {
     c.index > 1 && { label: "Move left", icon: "mods/workspace-chrome/chevron-left.svg", command: "tab.move", args: { id: c.id, by: -1 } },
     c.index < tabs.length && { label: "Move right", icon: "mods/workspace-chrome/chevron-right.svg", command: "tab.move", args: { id: c.id, by: 1 } },
     { label: "New tab", icon: "mods/workspace-chrome/plus.svg", command: "tab.new", args: { space: space.id } },
-    { label: "Close", icon: "mods/workspace-chrome/x.svg", command: "tab.close", args: { id: c.id }, apart: true },
+    { label: "Put away", icon: "mods/workspace-chrome/archive.svg", command: "tab.settle", args: { id: c.id }, apart: true,
+      tip: "Out of the lists, still running. It comes back when shown or when an agent in it needs you." },
+    { label: "Close", icon: "mods/workspace-chrome/x.svg", command: "tab.close", args: { id: c.id } },
   ].filter(Boolean);
 }
 
@@ -479,7 +481,8 @@ export default class Tabs extends View {
   }
 
   /**
-   * The popup copy: a tab's menu, or the tabs "+N" holds. ↑/↓ move, Enter runs, Esc closes.
+   * The popup copy: a tab's menu, or the tabs "+N" holds. ↑/↓ move, Enter runs, Esc closes; the
+   * pointer moves the same highlight, so only one row is ever lit.
    * @param {object} t The theme.
    * @returns {object}
    */
@@ -515,7 +518,8 @@ export default class Tabs extends View {
           .when(Boolean(it.apart) && i > 0, el => el.child(div().mx(7).my(4).h(1).bg(t.border)))
           .child(h_flex().id(`mi-${i}`).h(31).px(8).gap(9).rounded(7).items_center().flex_none().text_color(t.foreground)
             .when(i === this.at, el => el.bg(t.selected))
-            .hover(s => s.bg(t.hover))
+            .when(Boolean(it.tip), el => el.tooltip(it.tip))
+            .on_hover((hovered, cx) => { if (hovered && this.at !== i) { this.at = i; cx.notify(); } })
             .on_click(() => choose(i))
             .when(Boolean(it.icon), el => el.child(svg(it.icon).size(14).flex_none().text_color(t.muted)))
             .when(Boolean(it.tab), el => el.child(program?.icon
