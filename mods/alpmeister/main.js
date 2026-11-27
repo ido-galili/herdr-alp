@@ -81,6 +81,8 @@ const REPOS_ACTIVE_ONLY_KEY = "alpmeister.reposActiveOnly";
 /** The Dashboard switch's value for your GitHub as a whole. */
 const ALL_REPOS = "";
 const FOCUS_STAMP_KEY = "alp.focusStamp";
+/** The first run's "Add a workspace" card on All repos: "true" once "Not now" hid it. */
+const ADD_WORKSPACE_DISMISSED_KEY = "alpmeister.addWorkspaceDismissed";
 /** The Daypack key's "Hide key": "true" once hidden. */
 const DAYPACK_KEY_HIDDEN_KEY = "alpmeister.daypackKeyHidden";
 /** Set by Basecamp's Daypack to ask the pinned Alp to show Settings in place. */
@@ -186,6 +188,20 @@ function rememberedKeyHidden() {
 }
 
 /**
+ * Whether a switch stored as "true" in this copy's storage is on.
+ * @param {string} key The storage key.
+ * @returns {boolean} True when it is; false when nothing is remembered.
+ */
+function rememberedFlag(key) {
+  try {
+    return localStorage.getItem(key) === "true";
+  } catch (error) {
+    console.log(`alpmeister: ${key} not read: ${error}`);
+    return false;
+  }
+}
+
+/**
  * Whether the Repos card showed only repositories with open work, as remembered.
  * @returns {boolean} True when it did; false when nothing is remembered.
  */
@@ -210,6 +226,7 @@ export default class Alpmeister extends View {
     this.workspaceName = typeof props()?.workspace === "string" ? props().workspace : rememberedWorkspace();
     this.reposActiveOnly = rememberedReposActiveOnly();
     this.keyHidden = rememberedKeyHidden();
+    this.addWorkspaceDismissed = rememberedFlag(ADD_WORKSPACE_DISMISSED_KEY);
     this.failure = null;
     // The workspaces whose Team in flight shows only the next milestone.
     this.milestoneOnly = rememberedMilestoneOnly();
@@ -226,6 +243,8 @@ export default class Alpmeister extends View {
     // (`demo-herds.js`), and settings, GitHub data and a focus list everywhere else (`demo-data.js`).
     // It calls no GitHub and writes nothing: not the settings, the cache or the focus list.
     this.demo = props()?.demo === true;
+    // With `props.firstRun` too, the demo is a first run: no settings file, so no workspace.
+    this.demoFirstRun = this.demo && props()?.firstRun === true;
     this.herds = null;
     this.herdsLoading = false;
     this.herdsAgain = false;
@@ -260,7 +279,7 @@ export default class Alpmeister extends View {
     this.inSettings = false;
     // A save while Settings shows in place fetches again on Back.
     this.fetchOnBack = false;
-    // Where to scroll once drawn: "top", or "workspaces" for Settings' workspaces card.
+    // "top" once drawn scrolls the view, or Settings' page, back to its top.
     this.scrollTo = null;
     this.scrollTask = null;
     this.scroll = ScrollHandle.new();
@@ -381,12 +400,23 @@ export default class Alpmeister extends View {
    * unsaved edits.
    */
   async loadSettings() {
-    const { config, error, text } = this.demo ? demoConfig() : await loadConfig();
+    const { config, error, text } = this.demo ? this.demoSettings() : await loadConfig();
     this.config = config ?? null;
     this.configError = error ?? null;
     this.configText = text;
     if (config && !this.settings.dirty()) this.settings.load(config, text);
     return config ?? null;
+  }
+
+  /**
+   * The demo's settings. With `props.firstRun` too, the demo is a first run: no settings file,
+   * so no workspaces, and Overview's All repos shows the "Add a workspace" card.
+   * @returns {{ config: object, text: string | null }}
+   */
+  demoSettings() {
+    const demo = demoConfig();
+    if (!this.demoFirstRun) return demo;
+    return { config: { ...demo.config, workspaces: [] }, text: null };
   }
 
   /**
@@ -467,10 +497,10 @@ export default class Alpmeister extends View {
   }
 
   /**
-   * Shows Settings in place of the view, with "Back to <view>". Edits not saved yet are still
-   * there. Given a workspace, Settings opens on it, scrolled to the workspaces card, with one of
-   * its dropdowns open when `picker` names one ("ws-board" for the board picker). The settings
-   * copy shows Settings already.
+   * Shows Settings in place of the view, with "Back to <view>", on the page it showed last.
+   * Edits not saved yet are still there. Given a workspace, Settings opens on its page, with one
+   * of its dropdowns open when `picker` names one ("ws-board" for the board picker). The
+   * settings copy shows Settings already.
    * @param {{ workspace?: string | null, picker?: string }} [options] Where Settings opens.
    * @param {object} [cx] The context, to redraw.
    * @returns {void}
@@ -479,8 +509,8 @@ export default class Alpmeister extends View {
     if (this.tab === TABS.settings) return;
     this.inSettings = true;
     this.pickerOpen = null;
-    const found = workspace != null && this.settings.showWorkspace(workspace, { picker });
-    this.scrollTo = found ? "workspaces" : "top";
+    if (workspace != null) this.settings.showWorkspace(workspace, { picker });
+    this.scrollTo = "top";
     cx?.notify();
   }
 
@@ -1395,8 +1425,79 @@ export default class Alpmeister extends View {
   }
 
   /**
+   * Opens Settings on a new workspace's page, with one of its dropdowns open when `picker` names
+   * one. Like "+ Add workspace" there, it is an unsaved change until Save.
+   * @param {{ picker?: string }} options The dropdown to open, such as "ws-repo".
+   * @param {object} cx The context.
+   * @returns {void}
+   */
+  addWorkspace({ picker } = {}, cx) {
+    this.openSettings({}, cx);
+    if (this.inSettings || this.tab === TABS.settings) this.settings.addWorkspace(cx, { picker });
+  }
+
+  /**
+   * The first run's card on All repos, while there is no workspace: what All repos is, "Add a
+   * workspace" and "Not now", which hides it for good on this computer (for this copy, in the demo).
+   * @param {object} t The theme.
+   * @returns {object | null} The card, or null once dismissed or with a workspace.
+   */
+  firstRunCard(t) {
+    if (this.addWorkspaceDismissed || (this.config?.workspaces.length ?? 0) > 0) return null;
+    const dismiss = (cx) => {
+      this.addWorkspaceDismissed = true;
+      if (!this.demo) {
+        try {
+          localStorage.setItem(ADD_WORKSPACE_DISMISSED_KEY, "true");
+        } catch (error) {
+          console.log(`alpmeister: "Not now" not remembered: ${error}`);
+        }
+      }
+      cx.notify();
+    };
+    return h_flex()
+      .id("first-run")
+      .w_full()
+      .p(14)
+      .gap(14)
+      .items_center()
+      .rounded(10)
+      .border_1()
+      .border_color(t.accent)
+      .bg(t.selected)
+      .child(
+        v_flex()
+          .flex_1()
+          .min_w(0)
+          .gap(3)
+          .child(div().text_size(13).font_semibold().text_color(t.foreground).child("This is every repo you can reach."))
+          .child(
+            div().text_size(12).text_color(t.muted).child("Add a workspace to see one team's board, bugs and milestones."),
+          ),
+      )
+      .child(
+        h_flex()
+          .id("first-run-add")
+          .flex_none()
+          .h(28)
+          .px(12)
+          .items_center()
+          .rounded(6)
+          .bg(t.accent)
+          .text_size(12)
+          .font_semibold()
+          .text_color(t.accent_foreground ?? t.background)
+          .cursor_pointer()
+          .hover((style) => style.opacity(0.85))
+          .on_click((_event, cx) => this.addWorkspace({ picker: "ws-repo" }, cx))
+          .child("Add a workspace"),
+      )
+      .child(TextButton("first-run-dismiss", "Not now", dismiss, { tooltip: "Hide this; Settings adds a workspace any time" }));
+  }
+
+  /**
    * Opens Settings at the board picker of a workspace without a board: the one the Overview shows
-   * when it has none, else the first one; with no workspace yet, at the workspaces card.
+   * when it has none, else the first one; with no workspace yet, on a new one.
    * @param {object} cx The context.
    * @returns {void}
    */
@@ -1405,10 +1506,7 @@ export default class Alpmeister extends View {
     const shown = this.shownWorkspace();
     const target = shown && !shown.board ? shown : (workspaces.find((ws) => !ws.board) ?? workspaces[0]);
     if (target) this.openSettings({ workspace: target.name, picker: "ws-board" }, cx);
-    else {
-      this.openSettings({}, cx);
-      if (this.inSettings) this.scrollTo = "workspaces";
-    }
+    else this.addWorkspace({ picker: "ws-board" }, cx);
   }
 
   /**
@@ -1469,6 +1567,8 @@ export default class Alpmeister extends View {
       if (model.errors?.account) {
         content = content.child(Note(`GitHub: ${model.errors.account}. Try gh auth status.`, t.blocked));
       }
+      const firstRun = this.firstRunCard(t);
+      if (firstRun) content = content.child(firstRun);
       if (!account) return content.child(Note(this.loading ? "Loading from GitHub…" : "No data yet."));
       return content.child(AccountTiles(account, { wide })).child(
         Repos(config, account, {
@@ -1590,7 +1690,7 @@ export default class Alpmeister extends View {
   /** Starts the Settings form over from the file, dropping unsaved edits. */
   revertSettings(cx) {
     cx.spawn(async (cx) => {
-      const { config, error, text } = this.demo ? demoConfig() : await loadConfig();
+      const { config, error, text } = this.demo ? this.demoSettings() : await loadConfig();
       this.config = config ?? this.config;
       this.configError = error ?? null;
       if (config) this.settings.load(config, text);
@@ -1615,12 +1715,14 @@ export default class Alpmeister extends View {
   }
 
   /**
-   * Settings' parts, for Settings in place and the settings copy.
+   * Settings under the header, for Settings in place and the settings copy: the side list, the
+   * page in the scroll area, and the save bar.
    * @param {object} cx The context.
-   * @returns {object[]} The parts: the save bar, the account card, the workspaces card.
+   * @returns {object} The element.
    */
-  settingsParts(cx) {
-    return this.settings.parts(cx, {
+  settingsView(cx) {
+    return this.settings.view(cx, {
+      scroll: this.scroll,
       configError: this.configError,
       onRevert: (cx) => this.revertSettings(cx),
       onReset: (cx) => {
@@ -1648,8 +1750,8 @@ export default class Alpmeister extends View {
   }
 
   /**
-   * Draws the header and the shown view, or Settings in place of it. Settings' parts are the
-   * scroll area's own children, so it can scroll to the workspaces card.
+   * Draws the header and the shown view, or Settings in place of it. Settings scrolls only its
+   * page: the header, its side list and its save bar stay put.
    * @param {object} cx The render's context.
    * @returns {object} The tab.
    */
@@ -1666,8 +1768,6 @@ export default class Alpmeister extends View {
       .id("alpmeister")
       .size_full()
       .bg(t.canvas)
-      .overflow_y_scrollbar()
-      .track_scroll(this.scroll)
       .on_size_change((size, cx) => {
         if (Math.abs(size.width - this.width) > 1 || Math.abs(size.height - this.height) > 1) {
           this.width = size.width;
@@ -1675,13 +1775,14 @@ export default class Alpmeister extends View {
           cx.notify();
         }
       });
-    if (this.tab === TABS.settings || this.inSettings) {
-      // Settings' parts are the scroll area's own children, so it can scroll to a workspace.
-      const parts = [this.header(t), ...this.settingsParts(cx)];
-      if (this.scrollTo) this.scrollToPart(this.scrollTo === "workspaces" ? parts.length - 1 : 0, cx);
-      return root.p(18).gap(14).children(parts);
+    if (this.scrollTo || this.settings.scrollTop) {
+      this.settings.scrollTop = false;
+      this.scrollToPart(0, cx);
     }
-    if (this.scrollTo) this.scrollToPart(0, cx);
+    if (this.tab === TABS.settings || this.inSettings) {
+      return root.child(div().flex_none().px(18).pt(18).pb(this.inSettings ? 0 : 10).child(this.header(t))).child(this.settingsView(cx));
+    }
+    const page = root.overflow_y_scrollbar().track_scroll(this.scroll);
     // The Herds canvas in full tab hides the header too: the canvas takes the whole tab.
     const fullCanvas = this.tab === TABS.herds && this.herdsCanvas.full;
     let content = v_flex().w_full().p(18).gap(14).when(!fullCanvas, (el) => el.child(this.header(t)));
@@ -1731,6 +1832,6 @@ export default class Alpmeister extends View {
         );
       }
     }
-    return root.child(content);
+    return page.child(content);
   }
 }

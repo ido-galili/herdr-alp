@@ -34,7 +34,7 @@ What's inside:
 | `RECIPE.md` | the brief to rebuild it from scratch (herdr.dev format) |
 | `icon.png` | Alp's logo |
 | `sync.sh` | copy the layout and mods into Herdr's home, or pull live edits back |
-| `setup.sh` | one-step install: checks `gh`, syncs, installs the plugin and opens Alp's Settings |
+| `setup.sh` | one-step install: checks `gh`, syncs, installs the plugin and switches to the alp layout |
 
 ## Install
 
@@ -45,8 +45,9 @@ git clone https://github.com/ido-galili/herdr-alp && cd herdr-alp
 ./setup.sh
 ```
 
-It walks through the steps below, then opens Alp's [Settings](#settings). To do
-it by hand instead:
+It walks through the steps below, then switches Herdr to the alp layout. Alp opens on the
+Overview of all your repositories, with a card that offers to add a workspace in its
+[Settings](#settings). To do it by hand instead:
 
 ### 1. Herdr layout and mods
 
@@ -100,7 +101,8 @@ herdr-app do tab.new '{"mod":"alpmeister","name":"Alp"}'
 
 It has four views: Overview, Board, Herds and Daypack, as tabs after its name, and a Settings
 button that shows its settings in place of the view. It works before you set anything:
-the Overview starts on all your repositories.
+the Overview starts on all your repositories, with a card that offers to add a workspace
+("Not now" hides it for good).
 
 - **Overview:** your GitHub as a whole, or one workspace, picked from the Workspace dropdown on
   top, with what the workspace covers beside it. Each tile ends in what a click opens ("See all
@@ -141,9 +143,10 @@ the Overview starts on all your repositories.
   status, and every few seconds while its agents work. Open it
   directly with `herdr-app do tab.new '{"mod":"alpmeister","props":{"tab":"herds"}}'`.
 - **Settings:** everything below, as a form (see [Settings](#settings)), shown in place of the
-  view, with "Back to Overview" (or the view you came from). Edits you haven't saved stay while Alp
-  is open, and the button says so: "Settings · 2 unsaved". After a save, Back fetches again, and
-  every other Alp tab fetches too.
+  view, with "Back to Overview" (or the view you came from). A side list picks the page, and the
+  save bar stays at the bottom: "2 unsaved changes · Revert · Save". Edits you haven't saved stay
+  while Alp is open, and the button says so: "Settings · 2 unsaved". After a save, Back fetches
+  again, and every other Alp tab fetches too.
 - **Refresh:** Overview and Daypack fetch when the tab opens, when it shows data over 2 hours
   old, and from "Updated 3h ago · Refresh", which turns orange after 2 hours.
 - **Pinned:** shown in place of the terminals (the Alp layout's pinned tab), the header ends in
@@ -170,18 +173,19 @@ The settings tab edits `~/.config/alp/alpmeister.json`. Its choices come from Gi
 the `gh` CLI (your repositories, your account's and organizations' project boards, a board's
 statuses and fields, a repository's workflows) and from your disk (local clones). Only the Board
 writes to GitHub: a card's status, its place in the column, its iteration and its milestone; the
-rest of Alp only reads. Nothing is saved until Save, which keeps the previous
-file as `alpmeister.json.bak`.
+rest of Alp only reads. Nothing is saved until Save, in the bar at the bottom, which keeps the
+previous file as `alpmeister.json.bak`; Revert drops the unsaved changes.
 
-| Part | What you set |
+A side list picks the page: **You** (GitHub, Local folders, Claude buttons, Card filters), then
+a page per workspace and "+ Add workspace".
+
+| Page | What you set |
 |---|---|
-| Repos in scope | all your repositories (new ones join on their own; archived ones optional), or only the ones you check |
+| GitHub | the repos in scope: all your repositories (new ones join on their own; archived ones optional), or only the ones you pick |
 | Local folders | each repository's clone, where its Claude buttons open; clones found under `~/projects`, `~/code` and the like are offered |
 | Claude buttons | what they type into the new Claude tab. `{repo}` and `{number}` are filled in; a `/command` works too |
-| Daypack searches | the searches behind Waiting for your review, Your open PRs and Your issues |
-| Workspaces | as many as you like, each with a name, a repository and/or a project board |
-| A workspace's board | its status and iteration fields, and per status: not started, in flight or other; hidden from Your issues; on hold |
-| A workspace's repository | the nightly workflow, its branch and the runs that count; the bugs, triage, spotlight and customer issue settings |
+| Card filters | every card's filter in one list, with the same editor the Daypack cards have: Waiting for your review, Your open PRs and Your issues, then each workspace's Open bugs, Triage bugs and Open PRs (`queries.prs`, `is:pr is:open` by default; the repository and a sort are added). A Daypack card's "Save for this card" writes the same setting |
+| Workspace: *name* | its name, repository and project board, then sections that fold, each with a line saying what it is set to: Board columns (per status: what it means and whether the Board shows it; "More per-status options" adds hidden from Your issues and on hold; the status and iteration fields), Nightly (the workflow, its branch and the runs that count), Bugs and triage, Spotlight and Customer issues |
 
 Nightly checks (one row per job or step) are edited in the file: see
 `mods/alpmeister/alpmeister.example.json` for every key. A file in the earlier one-repo shape
