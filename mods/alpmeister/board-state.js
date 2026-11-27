@@ -1,25 +1,26 @@
 // The Board tab's own state: its filter (Type, Columns and People chips and the raw board
-// filter), a card being dragged to another status, the card menu that moves it or sets its
-// iteration or milestone, and the toast with Undo after a move.
+// filter, edited in the filter dialog), a card being dragged to another status, the card menu
+// that moves it or sets its iteration or milestone, and the toast with Undo after a move.
 //
-// Applying the filter only previews it: the board is fetched with it and nothing is saved. Save
-// writes the board filter and the columns to the settings file (`boardView.query`,
-// `boardView.statuses`); the people picked stay on this computer, in localStorage. A filter
-// GitHub refuses keeps the last good board and shows GitHub's error. A move shows at once, goes
-// back with an error when GitHub refuses it, and can be undone from the toast.
+// The board always shows the saved filter. The filter dialog counts an edit without touching
+// the board; its Save writes the board filter and the columns to the settings file
+// (`boardView.query`, `boardView.statuses`), and the people picked stay on this computer, in
+// localStorage. A filter GitHub refuses keeps the last good board and shows GitHub's error in the
+// dialog. A move shows at once, goes back with an error when GitHub refuses it, and can be undone
+// from the toast.
 
-import { InputState } from "gpui-base";
 import { readTextFile } from "herdr";
 import { openMilestones, setIteration, setMilestone, setPosition, setStatus } from "./board-actions.js";
 import { boardSummary, boardTypes, withBoardTypes } from "./board-terms.js";
-import { CARD_GAP, COLUMN_PADDING, NO_STATUS, UNASSIGNED, peopleOf } from "./board-view.js";
+import { CARD_GAP, COLUMN_PADDING, NO_STATUS, UNASSIGNED, peopleOf, pickedItem } from "./board-view.js";
 import { CardMenu } from "./board-menu.js";
 import { configPath, normalizeConfig } from "./config.js";
 import { boardStatuses, loadBoardView } from "./data.js";
 import { saveSettings } from "./settings-data.js";
 import { demoBoardView, demoMilestones } from "./demo-data.js";
 import { valuesOf } from "./search-terms.js";
-import { FilterControl } from "./ui.js";
+import { openFilterDialog } from "./filter-dialog.js";
+import { FilterButton } from "./ui.js";
 
 const PICKED_KEY = "alpmeister.boardPeople";
 /** A press that moves less than this is a click (open the card), not a drag. */
@@ -48,6 +49,14 @@ const sameList = (one, other) => one.length === other.length && one.every((entry
  * @returns {boolean}
  */
 const sameView = (one, other) => one.query.trim() === other.query.trim() && sameList(one.statuses, other.statuses);
+
+/**
+ * A workspace with another Board filter and columns in place of its saved ones, to fetch with.
+ * @param {object} ws The workspace.
+ * @param {{ query: string, statuses?: string[] }} view The filter, and the columns.
+ * @returns {object} A copy; `ws` is not changed.
+ */
+const withView = (ws, view) => ({ ...ws, boardView: { ...ws.boardView, query: view.query.trim(), statuses: view.statuses ?? ws.boardView.statuses } });
 
 /**
  * How a toast names a card: its number, or a draft's title.
@@ -81,19 +90,8 @@ export class BoardState {
    */
   constructor(view) {
     this.view = view;
-    this.input = InputState.new({ placeholder: "The board's filter, such as type:Bug iteration:@current" });
-    this.input.on("submit", (_event, cx) => this.applyTyped(cx));
-    /** The workspace and filter the field last showed, so typing is never overwritten. */
-    this.shownKey = null;
-    /** Whether the filter's editor is open. */
-    this.filterOpen = false;
-    /** Each workspace's applied filter that is not saved, by name: `{ query, statuses }`. */
-    this.edits = {};
     /** Each workspace's types seen on its cards in this copy, so a Type chip stays offered once its cards are filtered out. */
     this.seenTypes = {};
-    this.busy = false;
-    /** The filter's line under the field: `{ text, error? }` or null. */
-    this.message = null;
     this.pickedByWorkspace = {};
     /**
      * The card being dragged, or null: `{ item, start, moved, over, grab, size, pointer }`. `grab` is
@@ -154,8 +152,8 @@ export class BoardState {
    */
   options(ws) {
     return {
-      filter: this.filterControl(ws),
-      onChooseColumns: (cx) => this.toggleFilter(cx),
+      filter: this.filterButton(ws),
+      onChooseColumns: () => this.openFilter(ws),
       onClearFilters: (cx) => this.clearFilters(ws, cx),
       picked: this.picked(ws),
       draggedId: this.drag?.moved ? this.drag.item.itemId : null,
@@ -211,116 +209,182 @@ export class BoardState {
   }
 
   /**
-   * The Board filter and columns a workspace's board shows: the applied edit, else the saved one.
+   * Whether the settings hold a Board filter or columns other than the default: the filter's
+   * button is then in the accent.
    * @param {object} ws The workspace.
-   * @returns {{ query: string, statuses: string[] }}
+   * @returns {boolean}
    */
-  shown(ws) {
-    return this.edits[ws.name] ?? this.saved(ws);
-  }
-
-  /**
-   * The workspace as its board is shown: with the applied edit in place of the saved filter.
-   * @param {object} ws The workspace.
-   * @returns {object} The same workspace without an edit, else a copy.
-   */
-  effective(ws) {
-    const edit = this.edits[ws.name];
-    return edit ? { ...ws, boardView: { ...ws.boardView, ...edit } } : ws;
-  }
-
-  /**
-   * The settings with every workspace's applied Board filter in place, for a fetch that keeps
-   * the previews.
-   * @param {object} config The settings.
-   * @returns {object} The same settings without edits, else a copy.
-   */
-  withEdits(config) {
-    if (!Object.keys(this.edits).length) return config;
-    return { ...config, workspaces: config.workspaces.map((ws) => this.effective(ws)) };
-  }
-
-  /**
-   * The filter's state: "edited" while a preview isn't saved, "saved" when the settings hold a
-   * filter or columns other than the default, else "default".
-   * @param {object} ws The workspace.
-   * @returns {"default" | "edited" | "saved"}
-   */
-  look(ws) {
-    if (this.edits[ws.name]) return "edited";
+  isSaved(ws) {
     const saved = this.saved(ws);
-    return saved.query.trim() !== DEFAULT_QUERY || saved.statuses.length ? "saved" : "default";
+    return saved.query.trim() !== DEFAULT_QUERY || saved.statuses.length > 0;
   }
 
   /**
-   * Shows the board's filter in the field when the workspace or its filter changed.
+   * The workspace as the settings have it now, by name: a dialog outlives the draw that opened it.
+   * @param {object} ws The workspace as it was.
+   * @returns {object} The workspace now, or `ws` when the settings lost it.
+   */
+  current(ws) {
+    return this.view.config?.workspaces.find((entry) => entry.name === ws.name && entry.board) ?? ws;
+  }
+
+  /**
+   * The Board filter's button for the header: the filter in words, which opens the filter dialog.
    * @param {object} ws The workspace.
-   * @returns {void}
+   * @returns {object}
    */
-  sync(ws) {
-    const key = `${ws.name}\n${this.shown(ws).query}`;
-    if (key === this.shownKey) return;
-    this.shownKey = key;
-    this.input.set_value(this.shown(ws).query);
-  }
-
-  /**
-   * Opens or shuts the filter's editor. Opening puts the shown filter in the field and moves the
-   * keyboard there.
-   * @param {object} cx The context.
-   * @returns {void}
-   */
-  toggleFilter(cx) {
-    const { ws } = this.workspace();
-    this.filterOpen = !this.filterOpen;
-    this.message = null;
-    if (this.filterOpen) {
-      if (ws) this.input.set_value(this.shown(ws).query);
-      // The field mounts on the next frame; focus it once it is there.
-      cx.timer.after(100, () => this.input.focus());
-    } else {
-      this.input.blur();
-    }
-    cx.notify();
-  }
-
-  /**
-   * Shows the board with a filter and columns, as a preview: it is fetched (in the demo, the
-   * made-up cards are filtered) and nothing is saved. The same as the saved filter drops the
-   * edit. A filter GitHub refuses keeps the last good board and the old edit, and shows
-   * GitHub's error.
-   * @param {object} ws The workspace.
-   * @param {{ query: string, statuses: string[] }} next The filter and the columns.
-   * @param {object} cx The context.
-   * @returns {void}
-   */
-  preview(ws, next, cx) {
-    if (this.busy) return;
-    const view = { query: next.query.trim(), statuses: next.statuses };
-    const target = { ...ws, boardView: { ...ws.boardView, ...view } };
-    this.input.set_value(view.query);
-    this.message = null;
-    const keep = (boardView) => {
-      if (sameView(view, this.saved(ws))) delete this.edits[ws.name];
-      else this.edits[ws.name] = view;
-      this.shownKey = `${ws.name}\n${view.query}`;
-      this.putBoard(ws, boardView);
-    };
-    if (this.view.demo) {
-      keep(demoBoardView(target));
-      return cx.notify();
-    }
-    this.busy = true;
-    cx.notify();
-    cx.spawn(async (cx) => {
-      try {
-        keep(await loadBoardView(target));
-      } catch (error) {
-        this.message = { text: `GitHub: ${error?.message ?? error}`, error: true };
-      }
-      this.busy = false;
-      cx.notify();
+  filterButton(ws) {
+    const saved = this.saved(ws);
+    return FilterButton("bv-filter", {
+      summary: boardSummary(saved.query, boardStatuses(ws), ws.statuses.length, [...this.picked(ws)]),
+      saved: this.isSaved(ws),
+      onOpen: () => this.openFilter(ws),
+      tooltip: "Change what the board shows",
     });
+  }
+
+  /**
+   * Opens the filter dialog on the Board: the saved filter and columns and the people picked, or
+   * `start` in their place. The board shows the saved filter until Save.
+   * @param {object} ws The workspace.
+   * @param {{ query?: string }} [start] What the dialog starts on instead.
+   * @returns {void}
+   */
+  openFilter(ws, start = {}) {
+    const saved = this.saved(ws);
+    openFilterDialog({
+      start: { query: saved.query, statuses: saved.statuses, people: [...this.picked(ws)], ...start },
+      fallback: { query: DEFAULT_QUERY, statuses: [], people: [] },
+      spec: (draft) => this.dialogSpec(this.current(ws), draft),
+      count: (draft) => this.countDraft(this.current(ws), draft),
+      save: (draft) => this.saveDraft(this.current(ws), draft),
+    });
+  }
+
+  /**
+   * What the filter dialog draws for the Board: the Type, Columns and People chips, the board
+   * filter, and how many cards it shows now.
+   * @param {object} ws The workspace.
+   * @param {{ query: string, statuses: string[], people: string[] }} draft The dialog's edit.
+   * @returns {import("./filter-dialog.js").DialogSpec}
+   */
+  dialogSpec(ws, draft) {
+    const items = this.view.model?.workspaces?.[ws.name]?.boardView?.items ?? [];
+    for (const item of items) if (item.type) (this.seenTypes[ws.name] ??= new Set()).add(item.type);
+    const ticked = boardStatuses(withView(ws, draft));
+    const types = boardTypes(draft.query);
+    const picked = new Set(draft.people);
+    const people = peopleOf(items);
+    // Someone picked whose cards the filter hides stays offered, so they can be unpicked.
+    for (const login of picked) if (!people.some((person) => person.login === login)) people.push({ login, count: 0 });
+    const groups = [
+      {
+        label: "Type",
+        chips: this.typeOptions(ws, items, draft.query).map((type) => ({
+          id: `bv-f-type-${type}`,
+          label: type,
+          on: types.includes(type),
+          press: (edit) => {
+            const now = boardTypes(edit.query);
+            const next = now.includes(type) ? now.filter((entry) => entry !== type) : [...now, type];
+            return { ...edit, query: withBoardTypes(edit.query, next) };
+          },
+        })),
+      },
+      {
+        label: "Columns",
+        chips: ws.statuses.map((status) => ({
+          id: `bv-f-col-${status}`,
+          label: status,
+          on: !ticked.length || ticked.includes(status),
+          press: (edit) => this.toggleColumn(ws, edit, status),
+        })),
+      },
+      {
+        label: "People",
+        note: "kept on this computer",
+        chips: people.map((person) => ({
+          id: `bv-f-who-${person.login || "unassigned"}`,
+          label: person.login === UNASSIGNED ? "Unassigned" : person.login,
+          on: picked.has(person.login),
+          tooltip: `${person.count} card${person.count === 1 ? "" : "s"}`,
+          press: (edit) => {
+            const next = new Set(edit.people);
+            if (next.has(person.login)) next.delete(person.login);
+            else next.add(person.login);
+            return { ...edit, people: [...next] };
+          },
+        })),
+      },
+    ].filter((group) => group.chips.length);
+    return {
+      title: `Filter: ${ws.board.title || ws.name}`,
+      groups,
+      inputLabel: "Board filter",
+      placeholder: "The board's filter, such as type:Bug iteration:@current",
+      hint: "The chips write this. Enter updates the preview.",
+      noun: ["card", "cards"],
+      now: this.view.model?.workspaces?.[ws.name]?.boardView ? items.filter((item) => pickedItem(item, this.picked(ws))).length : null,
+      saveLabel: "Save for this board",
+      demo: this.view.demo,
+    };
+  }
+
+  /**
+   * Counts the cards a draft shows: the board fetched with its filter and columns (in the demo,
+   * the made-up cards filtered), then its people. The board itself stays as it is.
+   * @param {object} ws The workspace.
+   * @param {{ query: string, statuses: string[], people: string[] }} draft The dialog's edit.
+   * @returns {Promise<number>}
+   * @throws {Error} With GitHub's message when it refuses the filter.
+   */
+  async countDraft(ws, draft) {
+    const target = withView(ws, draft);
+    const boardView = this.view.demo ? demoBoardView(target) : await loadBoardView(target);
+    const picked = new Set(draft.people ?? []);
+    return (boardView?.items ?? []).filter((item) => pickedItem(item, picked)).length;
+  }
+
+  /**
+   * The filter dialog's Save: keeps the people on this computer, and writes the board filter and
+   * the columns to the settings file (`boardView.query`, `boardView.statuses`) through
+   * `saveSettings`, which keeps the old file as alpmeister.json.bak; unchanged, nothing is
+   * written. A filter GitHub refuses is not saved. In the demo the settings change for this copy
+   * only, and nothing is written.
+   * @param {object} ws The workspace.
+   * @param {{ query: string, statuses: string[], people: string[] }} draft The dialog's edit.
+   * @returns {Promise<void>}
+   * @throws {Error} When GitHub refuses the filter, or the file can't be written.
+   */
+  async saveDraft(ws, draft) {
+    const view = { query: draft.query.trim(), statuses: draft.statuses };
+    this.pickedByWorkspace = { ...this.pickedByWorkspace, [ws.name]: draft.people ?? [] };
+    // localStorage belongs to the copy that calls it: keep the people from the Board's own copy.
+    this.view.queued.push(() => this.rememberPicked());
+    if (!sameView(view, this.saved(ws))) {
+      const target = withView(ws, view);
+      if (this.view.demo) {
+        const config = this.view.config;
+        this.view.config = { ...config, workspaces: config.workspaces.map((entry) => (entry.name === ws.name ? target : entry)) };
+        this.putBoard(ws, demoBoardView(target));
+      } else {
+        const text = await readTextFile(configPath());
+        let raw = {};
+        try {
+          raw = text ? JSON.parse(text) : {};
+        } catch (error) {
+          throw new Error(`${configPath()} is not valid JSON: ${error}`);
+        }
+        const next = withBoardView(raw ?? {}, ws.name, view);
+        const config = normalizeConfig(next);
+        const boardView = await loadBoardView(config.workspaces.find((entry) => entry.name === ws.name));
+        const written = await saveSettings(next, text);
+        this.view.settingsSaved(config, written);
+        this.putBoard(ws, boardView);
+        if (this.view.model) await this.view.saveCache(this.view.model);
+      }
+    }
+    this.view.filterDone();
   }
 
   /**
@@ -339,135 +403,28 @@ export class BoardState {
   }
 
   /**
-   * Applies what the field holds, with the shown columns.
-   * @param {object} cx The context.
-   * @returns {void}
-   */
-  applyTyped(cx) {
-    const { ws } = this.workspace();
-    if (ws) this.preview(ws, { query: this.input.value(), statuses: this.shown(ws).statuses }, cx);
-  }
-
-  /**
-   * Turns one type on or off in the field's filter, from a chip, and applies it.
+   * One column on or off in a draft, from a chip. With no columns ticked every status is a
+   * column, so the first click leaves out the one clicked; every column ticked is the same as
+   * none (or as the saved columns, when those are every one). The last column stays.
    * @param {object} ws The workspace.
-   * @param {string} type The type.
-   * @param {object} cx The context.
-   * @returns {void}
-   */
-  toggleType(ws, type, cx) {
-    const query = this.input.value();
-    const types = boardTypes(query);
-    const next = types.includes(type) ? types.filter((entry) => entry !== type) : [...types, type];
-    this.preview(ws, { query: withBoardTypes(query, next), statuses: this.shown(ws).statuses }, cx);
-  }
-
-  /**
-   * Turns one column on or off, from a chip, and applies it. With no columns ticked every
-   * status is a column, so the first click leaves out the one clicked; every column ticked is
-   * the same as none (or as the saved columns, when those are every one). The last column stays.
-   * @param {object} ws The workspace.
+   * @param {{ query: string, statuses: string[] }} draft The dialog's edit.
    * @param {string} status The status.
-   * @param {object} cx The context.
-   * @returns {void}
+   * @returns {object | string} The draft after the click, or why it can't be.
    */
-  toggleColumn(ws, status, cx) {
-    const ticked = boardStatuses(this.effective(ws));
+  toggleColumn(ws, draft, status) {
+    const ticked = boardStatuses(withView(ws, draft));
     const current = ticked.length ? ticked : ws.statuses;
     const next = current.includes(status) ? current.filter((entry) => entry !== status) : ws.statuses.filter((entry) => entry === status || current.includes(entry));
-    if (!next.length) {
-      this.message = { text: "Keep at least one column." };
-      return cx.notify();
-    }
+    if (!next.length) return "Keep at least one column.";
     const saved = this.saved(ws).statuses;
     const all = next.length === ws.statuses.length;
     const statuses = !all ? next : boardStatuses(ws).length === ws.statuses.length ? saved : [];
-    this.preview(ws, { query: this.input.value(), statuses }, cx);
-  }
-
-  /**
-   * "Reset", or Esc: drops the preview and shows the saved filter again.
-   * @param {object} cx The context.
-   * @returns {void}
-   */
-  reset(cx) {
-    const { ws } = this.workspace();
-    if (!ws) return;
-    if (!this.edits[ws.name]) {
-      this.input.set_value(this.saved(ws).query);
-      this.message = null;
-      return cx.notify();
-    }
-    this.preview(ws, this.saved(ws), cx);
-  }
-
-  /**
-   * Esc in the filter: resets a preview and keeps the editor open, or closes the editor.
-   * @param {object} cx The context.
-   * @returns {boolean} Whether it reset a preview.
-   */
-  escape(cx) {
-    const { ws } = this.workspace();
-    if (!ws || !this.edits[ws.name]) return false;
-    this.reset(cx);
-    return true;
-  }
-
-  /**
-   * "Save for this board": applies the field's filter with the shown columns and writes both to
-   * the settings file (`boardView.query`, `boardView.statuses`), through `saveSettings`, which
-   * keeps the old file as alpmeister.json.bak. A filter GitHub refuses is not saved. In the demo
-   * the settings change for this copy only, and nothing is written.
-   * @param {object} cx The context.
-   * @returns {void}
-   */
-  save(cx) {
-    const { ws } = this.workspace();
-    if (!ws || this.busy) return;
-    const view = { query: this.input.value().trim(), statuses: this.shown(ws).statuses };
-    if (this.view.demo) {
-      const config = this.view.config;
-      this.view.config = {
-        ...config,
-        workspaces: config.workspaces.map((entry) => (entry.name === ws.name ? { ...entry, boardView: { ...entry.boardView, ...view } } : entry)),
-      };
-      delete this.edits[ws.name];
-      this.putBoard(ws, demoBoardView({ ...ws, boardView: { ...ws.boardView, ...view } }));
-      this.message = { text: "Demo settings: nothing is written to the file." };
-      return cx.notify();
-    }
-    this.busy = true;
-    this.message = null;
-    cx.notify();
-    cx.spawn(async (cx) => {
-      try {
-        const text = await readTextFile(configPath());
-        let raw = {};
-        try {
-          raw = text ? JSON.parse(text) : {};
-        } catch (error) {
-          throw new Error(`${configPath()} is not valid JSON: ${error}`);
-        }
-        const next = withBoardView(raw ?? {}, ws.name, view);
-        const config = normalizeConfig(next);
-        const boardView = await loadBoardView(config.workspaces.find((entry) => entry.name === ws.name));
-        const written = await saveSettings(next, text);
-        this.view.settingsSaved(config, written);
-        delete this.edits[ws.name];
-        this.shownKey = `${ws.name}\n${view.query}`;
-        this.putBoard(ws, boardView);
-        if (this.view.model) await this.view.saveCache(this.view.model);
-      } catch (error) {
-        this.message = { text: String(error?.message ?? error), error: true };
-      }
-      this.busy = false;
-      cx.notify();
-    });
+    return { ...draft, statuses };
   }
 
   /**
    * "Clear filters", from an empty board: everyone, and when the board itself came back empty,
-   * no board filter either (a preview; the columns stay).
+   * the filter dialog with no board filter, to save if it should stay.
    * @param {object} ws The workspace.
    * @param {object} cx The context.
    * @returns {void}
@@ -476,8 +433,8 @@ export class BoardState {
     this.pickedByWorkspace = { ...this.pickedByWorkspace, [ws.name]: [] };
     this.rememberPicked();
     const items = this.view.model?.workspaces?.[ws.name]?.boardView?.items ?? [];
-    if (items.length) return cx.notify();
-    this.preview(ws, { query: "", statuses: this.shown(ws).statuses }, cx);
+    if (!items.length) this.openFilter(ws, { query: "" });
+    cx.notify();
   }
 
   /**
@@ -485,88 +442,19 @@ export class BoardState {
    * those the filter names, and those the workspace's settings name.
    * @param {object} ws The workspace.
    * @param {object[]} items The board's cards.
+   * @param {string} query The board filter as the dialog has it.
    * @returns {string[]} The types, in alphabetical order.
    */
-  typeOptions(ws, items) {
+  typeOptions(ws, items, query) {
     const types = new Set([
       ...items.map((item) => item.type).filter(Boolean),
       ...(this.seenTypes[ws.name] ?? []),
-      ...boardTypes(this.input.value()),
+      ...boardTypes(query),
       ...valuesOf(ws.bugs?.query ?? "", "type"),
       ...(ws.spotlight?.featureTypes ?? []),
       ...(ws.inFlight?.excludeTypes ?? []),
     ]);
     return [...types].sort((one, other) => one.localeCompare(other));
-  }
-
-  /**
-   * The Board's filter: the summary for its header and, while open, its editor with the Type,
-   * Columns and People chips and the raw board filter.
-   * @param {object} ws The workspace.
-   * @returns {{ summary: object, panel: object | null }}
-   */
-  filterControl(ws) {
-    const items = this.view.model?.workspaces?.[ws.name]?.boardView?.items ?? [];
-    for (const item of items) if (item.type) (this.seenTypes[ws.name] ??= new Set()).add(item.type);
-    const shown = this.effective(ws);
-    const ticked = boardStatuses(shown);
-    const picked = this.picked(ws);
-    const types = boardTypes(this.filterOpen ? this.input.value() : this.shown(ws).query);
-    const people = peopleOf(items);
-    // Someone picked whose cards the filter hides stays offered, so they can be unpicked.
-    for (const login of picked) if (!people.some((person) => person.login === login)) people.push({ login, count: 0 });
-    const groups = [
-      {
-        label: "Type",
-        chips: this.typeOptions(ws, items).map((type) => ({
-          id: `bv-f-type-${type}`,
-          label: type,
-          on: types.includes(type),
-          onPress: (cx) => this.toggleType(ws, type, cx),
-        })),
-      },
-      {
-        label: "Columns",
-        chips: ws.statuses.map((status) => ({
-          id: `bv-f-col-${status}`,
-          label: status,
-          on: !ticked.length || ticked.includes(status),
-          onPress: (cx) => this.toggleColumn(ws, status, cx),
-        })),
-      },
-      {
-        label: "People",
-        note: "kept on this computer",
-        chips: people.map((person) => ({
-          id: `bv-f-who-${person.login || "unassigned"}`,
-          label: person.login === UNASSIGNED ? "Unassigned" : person.login,
-          on: picked.has(person.login),
-          tooltip: `${person.count} card${person.count === 1 ? "" : "s"}`,
-          onPress: (cx) => this.togglePerson(ws, person.login, cx),
-        })),
-      },
-    ].filter((group) => group.chips.length);
-    const look = this.look(ws);
-    return FilterControl("bv-filter", {
-      summary: boardSummary(this.shown(ws).query, ticked, ws.statuses.length, [...picked]),
-      look,
-      open: this.filterOpen,
-      onToggle: (cx) => this.toggleFilter(cx),
-      chips: [],
-      groups,
-      input: this.input,
-      inputLabel: "Board filter",
-      onApply: (cx) => this.applyTyped(cx),
-      onSave: look === "edited" || this.input.value().trim() !== this.shown(ws).query.trim() ? (cx) => this.save(cx) : null,
-      onReset: look === "edited" ? (cx) => this.reset(cx) : null,
-      onEscape: (cx) => this.escape(cx),
-      saveLabel: "Save for this board",
-      resetLabel: "Reset",
-      resetTooltip: "Back to the saved filter (Esc)",
-      lookWords: { edited: "Applied as a preview, not saved", saved: "Saved for this board" },
-      busy: this.busy,
-      message: this.message,
-    });
   }
 
   /**
@@ -576,22 +464,6 @@ export class BoardState {
    */
   picked(ws) {
     return new Set(this.pickedByWorkspace[ws.name] ?? []);
-  }
-
-  /**
-   * Picks or unpicks one person in a workspace.
-   * @param {object} ws The workspace.
-   * @param {string} login The login; "" is Unassigned.
-   * @param {object} cx The context.
-   * @returns {void}
-   */
-  togglePerson(ws, login, cx) {
-    const picked = this.picked(ws);
-    if (picked.has(login)) picked.delete(login);
-    else picked.add(login);
-    this.pickedByWorkspace = { ...this.pickedByWorkspace, [ws.name]: [...picked] };
-    this.rememberPicked();
-    cx.notify();
   }
 
   /**

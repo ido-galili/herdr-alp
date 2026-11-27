@@ -19,13 +19,25 @@ import {
   normalizeWorkspace,
   tildePath,
 } from "./config.js";
-import { filterChips } from "./my-day.js";
-import { summaryWords, toggleTerm } from "./search-terms.js";
+import { summaryWords } from "./search-terms.js";
 import { boardFields, discover, findClones, guessRoles, repoDetails, saveSettings } from "./settings-data.js";
-import { Chip, FilterControl, Note, TextButton, Toggle, statusColor, warningColor } from "./ui.js";
+import { Chip, Note, TextButton, Toggle, statusColor, warningColor } from "./ui.js";
 
 /** A deep copy of plain JSON data. */
 const copy = (value) => JSON.parse(JSON.stringify(value));
+
+/**
+ * Sets one value deep in plain JSON data, by its path.
+ * @param {object} target The data; changed in place.
+ * @param {(string | number)[]} path The keys down to the value.
+ * @param {unknown} value The value.
+ * @returns {void}
+ */
+function setPath(target, path, value) {
+  let holder = target;
+  for (const key of path.slice(0, -1)) holder = holder[key] ??= {};
+  holder[path[path.length - 1]] = value;
+}
 
 /** A comma-separated field's values. */
 const splitList = (text) =>
@@ -202,16 +214,8 @@ export class SettingsForm {
     this.inputs.autoSaveDelay.set_step(100);
     this.inputs.autoSaveDelay.set_min(AUTO_SAVE_DELAY_RANGE.min);
     this.inputs.autoSaveDelay.set_max(AUTO_SAVE_DELAY_RANGE.max);
-    // Card filters edits one card's search at a time, in this one field.
-    this.filterInput = InputState.new({ placeholder: "A GitHub search, such as is:pr is:open" });
-    this.filterInput.on("change", (_event, cx) => {
-      this.filterRow()?.set(this.filterInput.value());
-      cx.notify();
-    });
-    this.filterInput.on("submit", (_event, cx) => this.applyFilter(cx));
-    /** The Card filters row whose editor is open, by its id, or null. */
-    this.filterOpen = null;
-    this.filterMessage = null;
+    /** Opens the filter dialog on a Card filters row; set by the view: `(row, cx) => void`. */
+    this.onEditFilter = null;
     this.draft = null;
     this.saved = null;
     this.snapshot = null;
@@ -249,7 +253,6 @@ export class SettingsForm {
     this.wsIndex = Math.min(this.wsIndex, Math.max(0, config.workspaces.length - 1));
     if (this.page === "workspace" && !config.workspaces.length) this.page = "github";
     this.removeArmed = false;
-    this.filterOpen = null;
     this.syncInputs();
   }
 
@@ -298,8 +301,6 @@ export class SettingsForm {
     this.wsIndex = index;
     this.open = null;
     this.removeArmed = false;
-    this.filterOpen = null;
-    this.filterMessage = null;
     this.scrollTop = true;
     this.inputs.filter.set_value("");
     if (this.draft) this.syncInputs();
@@ -548,10 +549,11 @@ export class SettingsForm {
   /**
    * Every card's filter, as Card filters lists them: the Daypack's three, then each workspace's
    * Open bugs and Triage bugs (with a repository) and Open PRs (with a repository and no board,
-   * where the Overview lists them). Each row reads and writes the draft.
-   * @returns {{ id: string, key: string, group: string, groupKey: string, label: string, value: string,
-   *   saved: string, fallback: string, set(value: string): void }[]} `saved` is the file's value
-   *   and `fallback` the default.
+   * where the Overview lists them). Each row reads the draft.
+   * @returns {{ id: string, key: string, workspace: string | null, group: string, groupKey: string,
+   *   label: string, value: string, saved: string, fallback: string, path: (string | number)[] }[]}
+   *   `workspace` is the workspace's name (null for the Daypack's), `saved` the file's value,
+   *   `fallback` the default and `path` where the settings keep it.
    */
   filterRows() {
     if (!this.draft) return [];
@@ -564,120 +566,57 @@ export class SettingsForm {
     ].map(([key, label]) => ({
       id: `stf-${key}`,
       key,
+      workspace: null,
       group: "Daypack",
       groupKey: "daypack",
       label,
       value: account.queries[key] ?? DEFAULT_QUERIES[key],
       saved: file.account?.queries?.[key] ?? DEFAULT_QUERIES[key],
       fallback: DEFAULT_QUERIES[key],
-      set: (value) => (account.queries[key] = value),
+      path: ["account", "queries", key],
     }));
     this.draft.workspaces.forEach((ws, index) => {
       if (!ws.repo) return;
       const before = file.workspaces?.[index];
-      const row = (key, label, value, saved, set) => ({
+      const row = (key, label, value, saved, path) => ({
         id: `stf-ws${index}-${key}`,
         key,
+        workspace: ws.name,
         group: ws.name || "Unnamed",
         groupKey: `ws${index}`,
         label,
         value,
         saved: saved ?? WORKSPACE_QUERY_DEFAULTS[key],
         fallback: WORKSPACE_QUERY_DEFAULTS[key],
-        set,
+        path: ["workspaces", index, ...path],
       });
-      rows.push(row("bugs", "Open bugs", ws.bugs.query, before?.bugs?.query, (value) => (ws.bugs.query = value)));
-      rows.push(row("triage", "Triage bugs", ws.queries.triage, before?.queries?.triage, (value) => (ws.queries.triage = value)));
+      rows.push(row("bugs", "Open bugs", ws.bugs.query, before?.bugs?.query, ["bugs", "query"]));
+      rows.push(row("triage", "Triage bugs", ws.queries.triage, before?.queries?.triage, ["queries", "triage"]));
       if (!ws.board) {
-        rows.push(row("prs", "Open PRs", ws.queries.prs, before?.queries?.prs, (value) => (ws.queries.prs = value)));
+        rows.push(row("prs", "Open PRs", ws.queries.prs, before?.queries?.prs, ["queries", "prs"]));
       }
     });
     return rows;
   }
 
-  /** The Card filters row whose editor is open, or null. */
-  filterRow() {
-    return this.filterOpen ? (this.filterRows().find((row) => row.id === this.filterOpen) ?? null) : null;
-  }
-
   /**
-   * Opens or shuts one row's editor. Opening puts its search in the field and moves the keyboard
-   * there; only one is open at a time.
-   * @param {object} row The row, from `filterRows()`.
-   * @param {object} cx The context.
+   * Takes a filter the filter dialog saved from one row: the row's value in the draft and, when
+   * it was written (or in the demo), in the saved settings and the file's text too, so the Save
+   * bar doesn't count it as unsaved. The rest of the draft stays as it was.
+   * @param {string} id The row's id, from `filterRows()`.
+   * @param {string} value The search saved.
+   * @param {string | null} written The file's text after the write, or null when nothing was written.
    * @returns {void}
    */
-  toggleFilter(row, cx) {
-    this.filterMessage = null;
-    if (this.filterOpen === row.id) {
-      this.filterOpen = null;
-      this.filterInput.blur();
-    } else {
-      this.filterOpen = row.id;
-      this.filterInput.set_value(row.value);
-      // The field mounts on the next frame; focus it once it is there. Kept on the form: a
-      // dropped task would not fire.
-      this.focusTask = cx.timer.after(100, () => this.filterInput.focus());
-    }
-    cx.notify();
-  }
-
-  /**
-   * Puts a search in the open row's draft value and its field.
-   * @param {string} query The search.
-   * @param {object} cx The context.
-   * @returns {void}
-   */
-  setFilter(query, cx) {
-    this.filterRow()?.set(query);
-    this.filterInput.set_value(query);
-    this.filterMessage = null;
-    cx.notify();
-  }
-
-  /** Takes what the open row's field holds, trimmed. */
-  applyFilter(cx) {
-    this.setFilter(this.filterInput.value().trim(), cx);
-  }
-
-  /**
-   * Starts a label term in the open row's search, before a sort at its end, with the cursor after
-   * it, so the label's name can be typed.
-   * @param {object} cx The context.
-   * @returns {void}
-   */
-  addFilterLabel(cx) {
-    const text = this.filterInput.value().trim();
-    const sort = text.search(/(^|\s)sort:\S*$/);
-    const head = `${(sort < 0 ? text : text.slice(0, sort)).trim()} label:`.trimStart();
-    const tail = sort < 0 ? "" : ` ${text.slice(sort).trim()}`;
-    this.filterRow()?.set(head + tail);
-    this.filterInput.set_value(head + tail);
-    this.filterInput.set_selected_range({ start: head.length, end: head.length });
-    this.filterInput.focus();
-    this.filterMessage = { text: "Type the label's name." };
-    cx.notify();
-  }
-
-  /**
-   * A row's chips: the card's own (the same the card's filter on the Daypack or the Overview
-   * offers), then one per label in the search, then "+ Label".
-   * @param {object} row The row.
-   * @param {string} typed The search as it stands in the field.
-   * @returns {object[]} The chips, as FilterControl takes them.
-   */
-  filterChipsOf(row, typed) {
-    const chips = filterChips(row.key, typed);
-    return [
-      ...chips.map((chip, index) => ({
-        id: `${row.id}-chip-${index}`,
-        label: chip.label,
-        on: chip.on,
-        tooltip: chip.term,
-        onPress: (cx) => this.setFilter(toggleTerm(this.filterInput.value(), chip.term), cx),
-      })),
-      { id: `${row.id}-label`, label: "+ Label", on: false, add: true, onPress: (cx) => this.addFilterLabel(cx) },
-    ];
+  filterSaved(id, value, written) {
+    const row = this.filterRows().find((entry) => entry.id === id);
+    if (!row) return;
+    setPath(this.draft, row.path, value);
+    if (written === null && !this.demo) return;
+    const saved = JSON.parse(this.saved);
+    setPath(saved, row.path, value);
+    this.saved = JSON.stringify(saved);
+    if (written !== null) this.snapshot = written;
   }
 
   /** Toggles a picker open or shut, clearing its filter. */
@@ -1544,54 +1483,45 @@ export class SettingsForm {
 
   /**
    * The Card filters page: every card's filter in one list, grouped by where the card is, each
-   * with its summary, its search and, while open, the same editor the Daypack cards have. Edits
-   * go into the draft, saved with the rest.
+   * with its summary, its search and an Edit button that opens the filter dialog, the same one
+   * the cards open. The dialog's Save writes that one filter to the file at once, as on the
+   * cards; it doesn't wait for the Save bar.
    * @param {object} t The theme.
    * @returns {object} The page's body.
    */
   filtersSection(t) {
     const rows = this.filterRows();
     const groups = [...new Set(rows.map((row) => row.groupKey))];
-    const words = { default: "The default", edited: "Changed, not saved yet", saved: "Saved in your settings" };
     const line = (row) => {
-      const open = this.filterOpen === row.id;
-      const look = row.value !== row.saved ? "edited" : row.value === row.fallback ? "default" : "saved";
-      const control = FilterControl(row.id, {
-        summary: summaryWords(row.value),
-        look,
-        lookWords: words,
-        open,
-        onToggle: (cx) => this.toggleFilter(row, cx),
-        chips: open ? this.filterChipsOf(row, this.filterInput.value()) : [],
-        input: this.filterInput,
-        onApply: (cx) => this.applyFilter(cx),
-        onSave: (cx) => {
-          this.applyFilter(cx);
-          this.toggleFilter(row, cx);
-        },
-        saveLabel: "Done",
-        onReset: (cx) => this.setFilter(row.fallback, cx),
-        message: open ? this.filterMessage : null,
-      });
-      return v_flex()
-        .gap(6)
+      const unsaved = row.value !== row.saved;
+      const color = unsaved ? warningColor(t) : row.value === row.fallback ? t.muted : t.accent;
+      return h_flex()
+        .h(30)
+        .gap(12)
+        .items_center()
+        .child(div().flex_none().w(180).truncate().text_size(12).text_color(t.foreground).child(row.label))
         .child(
-          h_flex()
-            .h(30)
-            .gap(12)
-            .items_center()
-            .child(div().flex_none().w(180).truncate().text_size(12).text_color(t.foreground).child(row.label))
-            .child(control.summary)
-            .child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(t.dim).child(row.value || "(empty)")),
+          div()
+            .flex_none()
+            .max_w(280)
+            .truncate()
+            .text_size(11.5)
+            .text_color(color)
+            .child(unsaved ? `${summaryWords(row.value)} · not saved yet` : summaryWords(row.value)),
         )
-        .when(Boolean(control.panel), (el) => el.child(control.panel));
+        .child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(t.dim).child(row.value || "(empty)"))
+        .child(
+          TextButton(`${row.id}-edit`, "Edit", (cx) => this.onEditFilter?.(row, cx), {
+            tooltip: `Change what ${row.label} shows`,
+          }),
+        );
     };
     return v_flex()
       .gap(14)
       .child(
         Note(
-          "What each card lists, as a GitHub search. The Daypack and Overview cards edit the same filters on the card. " +
-            "The workspace cards add their repository; Open PRs adds a sort when it has none.",
+          "What each card lists, as a GitHub search. The Daypack and Overview cards open the same filter from their corner. " +
+            "Its Save writes that filter at once. The workspace cards add their repository; Open PRs adds a sort when it has none.",
         ),
       )
       .children(

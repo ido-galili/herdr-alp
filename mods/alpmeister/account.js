@@ -16,10 +16,10 @@ const PR_LIMIT = 10;
 
 /**
  * The account's four tiles, four across when `wide`, else two by two. Each list ends in "See all
- * N →" with the GitHub mark, then its filter's summary when `filter` gives one (the Daypack
- * card's filter: the same search), its editor under the row while open.
+ * N →" with the GitHub mark, and has its filter icon in the corner when `filter` gives one (the
+ * Daypack card's filter: the same search).
  * @param {object} account The account model.
- * @param {{ wide: boolean, filter?(key: "review" | "myPrs" | "mine"): { summary: object, panel: object | null } | null }} options
+ * @param {{ wide: boolean, filter?(key: "review" | "myPrs" | "mine"): object | null }} options
  * @returns {object} The row of tiles.
  */
 export function AccountTiles(account, { wide, filter }) {
@@ -42,7 +42,7 @@ export function AccountTiles(account, { wide, filter }) {
       counts.reviews ? t.blocked : t.foreground,
       searchUrl(null, account.queries.review),
       undefined,
-      { link: seeAll(counts.reviews), linkIcon: ICONS.github, filter: filters.review?.summary },
+      { link: seeAll(counts.reviews), linkIcon: ICONS.github, filter: filters.review },
     ),
     Tile(
       "tile-my-prs",
@@ -52,7 +52,7 @@ export function AccountTiles(account, { wide, filter }) {
       t.foreground,
       searchUrl(null, account.queries.myPrs),
       undefined,
-      { link: seeAll(counts.myPrs), linkIcon: ICONS.github, filter: filters.myPrs?.summary },
+      { link: seeAll(counts.myPrs), linkIcon: ICONS.github, filter: filters.myPrs },
     ),
     Tile(
       "tile-mine",
@@ -62,7 +62,7 @@ export function AccountTiles(account, { wide, filter }) {
       t.foreground,
       searchUrl(null, account.queries.mine),
       undefined,
-      { link: seeAll(counts.mine), linkIcon: ICONS.github, filter: filters.mine?.summary },
+      { link: seeAll(counts.mine), linkIcon: ICONS.github, filter: filters.mine },
     ),
     Tile(
       "tile-red",
@@ -73,8 +73,7 @@ export function AccountTiles(account, { wide, filter }) {
       null,
     ),
   ];
-  const panels = [filters.review, filters.myPrs, filters.mine, null].map((entry) => entry?.panel ?? null);
-  return TileRows(tiles, panels, wide);
+  return TileRows(tiles, wide);
 }
 
 /**
@@ -161,7 +160,7 @@ export function Repos(config, account, options) {
  * @param {object} ws The workspace.
  * @param {object} model The workspace's model.
  * @param {object} actions `{ pinButton, launch, prompt, expanded, onToggleGroup, filter? }`; `filter`
- *   is the card's filter, from `FilterControl`: its summary on the header, its editor over the list.
+ *   is the card's filter icon (`FilterIcon`), for the header's right end.
  * @returns {object} The card.
  */
 export function OpenPrs(ws, model, actions) {
@@ -186,7 +185,6 @@ export function OpenPrs(ws, model, actions) {
     }),
   );
   const more = prs.length - PR_LIMIT;
-  const filter = actions.filter ?? null;
   const list = v_flex()
     .gap(2)
     .when(!rows.length, (el) =>
@@ -203,7 +201,7 @@ export function OpenPrs(ws, model, actions) {
   return Card(
     "open-prs",
     "Open PRs",
-    [...(filter ? [filter.summary] : []), Chip(String(model.openPrsTotal ?? prs.length), { color: t.muted })],
-    filter?.panel ? v_flex().gap(10).child(filter.panel).child(list) : list,
+    [Chip(String(model.openPrsTotal ?? prs.length), { color: t.muted }), actions.filter ?? null].filter(Boolean),
+    list,
   );
 }

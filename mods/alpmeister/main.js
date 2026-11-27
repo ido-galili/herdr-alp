@@ -49,6 +49,7 @@ import {
 import { MODEL_VERSION, loadAll, loadCardSearch, loadPickStates, loadWorkspaceCard } from "./data.js";
 import { FocusStore, pickId } from "./focus.js";
 import { FocusList } from "./focus-list.js";
+import { FilterDialog, openFilterDialog } from "./filter-dialog.js";
 import { loadDemoHerds } from "./demo-herds.js";
 import { demoCardSearch, demoConfig, demoDiscovery, demoFocus, demoModel, demoWorkspaceCard } from "./demo-data.js";
 import { loadHerds, saveTabLink, sessionsDir } from "./herds-data.js";
@@ -63,7 +64,7 @@ import { Milestone, Tiles } from "./project.js";
 import { SettingsForm } from "./settings-view.js";
 import {
   Card,
-  FilterControl,
+  FilterIcon,
   ICONS,
   IconButton,
   LinkLabel,
@@ -72,6 +73,7 @@ import {
   ago,
   announceBackgroundTab,
   fillPrompt,
+  filterTooltip,
   sessionName,
   tabIdsNamed,
   warningColor,
@@ -107,11 +109,37 @@ const VIEW_NAMES = { [TABS.dashboard]: "Overview", [TABS.board]: "Board", [TABS.
 const WORK_STACK = "work-stack";
 const WORK_BODY = "work-body";
 const ALPMEISTER_VIEW = "alpmeister-view";
-/** The Daypack cards with a filter, by the key `account.queries` keeps each one's search under. */
-const CARD_FILTER_KEYS = ["review", "myPrs", "mine"];
+/** Bumped after a filter dialog saved, so the copy that opened it redraws. */
+const FILTER_STAMP_KEY = "alpmeister.filterStamp";
+/** Where each Daypack card's count sits in the account's `counts`, by its search's key. */
+const CARD_LISTS = { review: "reviews", myPrs: "myPrs", mine: "mine" };
+/** Each filtered card's name, as its title and the filter dialog's title say it. */
+const CARD_NAMES = {
+  review: "Waiting for your review",
+  myPrs: "Your open PRs",
+  mine: "Your issues",
+  bugs: "Open bugs",
+  triage: "Triage bugs",
+  customer: "Customer issues",
+  prs: "Open PRs",
+};
 
 /**
- * The id of a workspace Overview card's filter, as `cardFilters` keeps it.
+ * The count a workspace's Overview card shows, from the workspace's model.
+ * @param {object | undefined} wsModel The workspace's model.
+ * @param {"bugs" | "triage" | "customer" | "prs"} key The card.
+ * @returns {number | null} The count, or null before the card is loaded.
+ */
+function workspaceCardCount(wsModel, key) {
+  if (!wsModel) return null;
+  if (key === "bugs") return wsModel.bugs?.total ?? null;
+  if (key === "triage") return wsModel.counts?.triage ?? null;
+  if (key === "customer") return wsModel.customer?.count ?? null;
+  return wsModel.openPrsTotal ?? null;
+}
+
+/**
+ * The id of a workspace Overview card's filter, as `filterTarget` reads it.
  * @param {string} name The workspace's name.
  * @param {"bugs" | "triage" | "customer" | "prs"} key The card.
  * @returns {string} Such as "ws:Website:bugs".
@@ -238,6 +266,9 @@ function rememberedReposActiveOnly() {
 
 export default class Alpmeister extends View {
   init(_props, cx) {
+    // A copy opened with `props.part` "filter" is the filter dialog another copy opened.
+    this.dialog = props()?.part === "filter" ? new FilterDialog(cx) : null;
+    if (this.dialog) return;
     this.config = null;
     this.configError = null;
     this.model = null;
@@ -286,18 +317,15 @@ export default class Alpmeister extends View {
     this.todoEdit = InputState.new({ placeholder: "The todo" });
     this.todoEdit.on("submit", (_event, cx) => this.saveTodoEdit(cx));
     this.todoEdit.on("blur", (_event, cx) => this.saveTodoEdit(cx));
-    // Each card's filter, by its id (see `filterState`): the Daypack's three are made here, a
-    // workspace card's on its first open. An edit lives only while this copy is open.
-    this.cardFilters = Object.fromEntries(
-      CARD_FILTER_KEYS.map((key) => {
-        const input = InputState.new({ placeholder: "A GitHub search, such as is:pr is:open author:@me" });
-        input.on("submit", (_event, cx) => this.applyCardFilter(key, cx));
-        return [key, { input, open: false, edit: null, busy: false, message: null }];
-      }),
-    );
-    // The Overview's one open filter editor, by its filter's id, or null.
-    this.overviewFilter = null;
+    // What a filter dialog (another copy) left for this copy's own context: see `runQueued`.
+    this.queued = [];
     this.settings = new SettingsForm((cx) => this.announceSettings(cx));
+    // Settings › Card filters' Edit opens the same dialog as the cards; its Save writes at once.
+    this.settings.onEditFilter = (row) =>
+      this.openFilter(row.workspace === null ? row.key : wsFilterId(row.workspace, row.key), {
+        start: row.value,
+        after: (query, written) => this.settings.filterSaved(row.id, query, written),
+      });
     if (this.demo) this.settings.useDemo(demoDiscovery(demoConfig().config));
     this.settingsStamp = shared(SETTINGS_STAMP_KEY) ?? null;
     this.openSettingsStamp = shared(OPEN_SETTINGS_KEY) ?? null;
@@ -613,8 +641,7 @@ export default class Alpmeister extends View {
         try {
           const config = await this.loadSettings();
           if (config) {
-            const searched = this.boardState.withEdits(this.withCardEdits(config));
-            this.model = this.demo ? demoModel(searched) : await loadAll(searched);
+            this.model = this.demo ? demoModel(config) : await loadAll(config);
             this.failure = null;
             if (!this.demo) {
               await this.saveCache(this.model);
@@ -629,29 +656,6 @@ export default class Alpmeister extends View {
       this.loading = false;
       cx.notify();
     });
-  }
-
-  /**
-   * The settings with each card's unsaved filter edit in place of its saved search, for a fetch
-   * that keeps those edits: the Daypack's searches and each workspace's Overview cards.
-   * @param {object} config The settings.
-   * @returns {object} The same settings when nothing is edited, else a copy.
-   */
-  withCardEdits(config) {
-    const edited = Object.entries(this.cardFilters).filter(([, filter]) => filter.edit !== null);
-    if (!edited.length) return config;
-    let next = config;
-    for (const [id, filter] of edited) {
-      const { ws, key } = this.filterTarget(id);
-      if (id.startsWith("ws:") && !ws) continue;
-      if (!ws) {
-        next = { ...next, account: { ...next.account, queries: { ...next.account.queries, [key]: filter.edit } } };
-        continue;
-      }
-      const workspaces = next.workspaces.map((each) => (each.name === ws.name ? withWorkspaceSearch(each, key, filter.edit) : each));
-      next = { ...next, workspaces };
-    }
-    return next;
   }
 
   /**
@@ -673,204 +677,140 @@ export default class Alpmeister extends View {
   }
 
   /**
-   * A card filter's state: its field (made on first open: a field needs a live host call), an
-   * edit applied but not saved (`edit`, null without one), and its busy flag and message. An
-   * edit lives only while this copy is open.
+   * Whether a card's saved filter is other than its default: its filter icon then has a dot. An
+   * edit lives only in the filter dialog; the card always shows the saved filter.
    * @param {string} id The filter's id.
-   * @returns {{ input: object | null, open: boolean, edit: string | null, busy: boolean, message: object | null }}
-   */
-  filterState(id) {
-    this.cardFilters[id] ??= { input: null, open: false, edit: null, busy: false, message: null };
-    return this.cardFilters[id];
-  }
-
-  /**
-   * The field of a card's filter, made the first time it opens. Call from an event handler.
-   * @param {string} id The filter's id.
-   * @returns {object} The InputState.
-   */
-  filterInput(id) {
-    const filter = this.filterState(id);
-    if (!filter.input) {
-      const customer = id.endsWith(":customer");
-      filter.input = InputState.new({
-        placeholder: customer ? "Part of a label's name, such as customer" : "A GitHub search, such as is:issue is:open type:Bug",
-      });
-      filter.input.on("submit", (_event, cx) => this.applyCardFilter(id, cx));
-    }
-    return filter.input;
-  }
-
-  /**
-   * A card's filter state: "edited" while an applied edit isn't saved, "saved" when the
-   * settings hold a search other than the default, else "default".
-   * @param {string} id The filter's id.
-   * @returns {"default" | "edited" | "saved"}
-   */
-  cardFilterLook(id) {
-    const { saved, fallback } = this.filterTarget(id);
-    const { edit } = this.filterState(id);
-    if (edit !== null && edit !== saved) return "edited";
-    return saved !== fallback ? "saved" : "default";
-  }
-
-  /**
-   * The search a card shows: its edit, else the saved one.
-   * @param {string} id The filter's id.
-   * @returns {string}
-   */
-  cardQuery(id) {
-    return this.filterState(id).edit ?? this.filterTarget(id).saved;
-  }
-
-  /**
-   * Whether a card's filter editor is open. The Overview shows one at a time (`overviewFilter`);
-   * the Daypack cards each keep their own.
-   * @param {string} id The filter's id.
-   * @param {boolean} overview Whether the card is on the Overview.
    * @returns {boolean}
    */
-  filterOpen(id, overview) {
-    return overview ? this.overviewFilter === id : this.filterState(id).open;
+  cardFilterSaved(id) {
+    const { saved, fallback } = this.filterTarget(id);
+    return saved !== fallback;
   }
 
   /**
-   * Opens or shuts a card's filter. Opening puts the card's search in the field and moves the
-   * keyboard there; on the Overview it shuts the one open before.
-   * @param {string} id The filter's id.
-   * @param {object} cx The context.
-   * @param {boolean} [overview] Whether the card is on the Overview.
-   * @returns {void}
-   */
-  toggleCardFilter(id, cx, overview = false) {
-    const filter = this.filterState(id);
-    const open = !this.filterOpen(id, overview);
-    if (overview) {
-      if (this.overviewFilter) this.cardFilters[this.overviewFilter]?.input?.blur();
-      this.overviewFilter = open ? id : null;
-    } else {
-      filter.open = open;
-    }
-    filter.message = null;
-    const input = this.filterInput(id);
-    if (open) {
-      input.set_value(this.cardQuery(id));
-      // The field mounts on the next frame; focus it once it is there.
-      cx.timer.after(100, () => input.focus());
-    } else {
-      input.blur();
-    }
-    cx.notify();
-  }
-
-  /**
-   * Applies a search to a card: kept as an edit in memory (none when it is the saved one) and
-   * fetched for that card only. The settings file is not touched.
+   * A card's filter in words, for its icon's tooltip: "bugs only · open"; Customer issues
+   * filters by part of a label's name: "labels with customer".
    * @param {string} id The filter's id.
    * @param {string} query The search.
-   * @param {object} cx The context.
-   * @returns {void}
+   * @returns {string}
    */
-  setCardQuery(id, query, cx) {
-    const filter = this.filterState(id);
-    filter.edit = query === this.filterTarget(id).saved ? null : query;
-    filter.message = null;
-    filter.input?.set_value(query);
-    this.fetchCard(id, query, cx);
+  filterWords(id, query) {
+    if (this.filterTarget(id).key !== "customer") return summaryWords(query);
+    return query ? `labels with ${query}` : "any label";
   }
 
   /**
-   * Applies what the field of a card's filter holds.
+   * The count a card shows now, from the loaded data.
    * @param {string} id The filter's id.
-   * @param {object} cx The context.
-   * @returns {void}
+   * @returns {number | null} The count, or null before the card is loaded.
    */
-  applyCardFilter(id, cx) {
-    this.setCardQuery(id, this.filterInput(id).value().trim(), cx);
+  cardCount(id) {
+    const { ws, key } = this.filterTarget(id);
+    if (!ws) return this.model?.account?.counts?.[CARD_LISTS[key]] ?? null;
+    return workspaceCardCount(this.model?.workspaces?.[ws.name], key);
   }
 
   /**
-   * Turns one term of a card's search on or off, from a chip, and applies it.
+   * What the filter dialog draws for a card: its title, the chips (the card's own under Show, the
+   * search's labels and "+ Label" under Labels), the field and the card's count now. Customer
+   * issues filters by part of a label's name, not a search, so it has no chips.
    * @param {string} id The filter's id.
-   * @param {string} term The chip's term.
-   * @param {object} cx The context.
-   * @returns {void}
+   * @param {{ query: string }} draft The dialog's edit.
+   * @returns {import("./filter-dialog.js").DialogSpec}
    */
-  toggleCardTerm(id, term, cx) {
-    this.setCardQuery(id, toggleTerm(this.filterInput(id).value(), term), cx);
-  }
-
-  /**
-   * Starts a label term in a card's search, before a sort at its end, the cursor after it, so
-   * the label's name can be typed and Enter applies it.
-   * @param {string} id The filter's id.
-   * @param {object} cx The context.
-   * @returns {void}
-   */
-  addCardLabel(id, cx) {
-    const input = this.filterInput(id);
-    // Before a sort term at the end, so the sort stays last.
-    const text = input.value().trim();
-    const sort = text.search(/(^|\s)sort:\S*$/);
-    const head = `${(sort < 0 ? text : text.slice(0, sort)).trim()} label:`.trimStart();
-    const tail = sort < 0 ? "" : ` ${text.slice(sort).trim()}`;
-    input.set_value(head + tail);
-    input.set_selected_range({ start: head.length, end: head.length });
-    input.focus();
-    this.filterState(id).message = { text: "Type the label's name, then press Enter." };
-    cx.notify();
-  }
-
-  /**
-   * Fetches one card with a search, leaving the others as they are. In the demo it filters the
-   * made-up items instead. A search GitHub refuses keeps the card's rows and shows GitHub's
-   * message in the filter.
-   * @param {string} id The filter's id.
-   * @param {string} query The search.
-   * @param {object} cx The context.
-   * @returns {void}
-   */
-  fetchCard(id, query, cx) {
-    const filter = this.filterState(id);
-    if (this.demo) {
-      this.searchCard(id, query);
-      return cx.notify();
-    }
-    filter.busy = true;
-    cx.notify();
-    cx.spawn(async (cx) => {
-      await this.searchCard(id, query);
-      filter.busy = false;
-      cx.notify();
+  filterSpec(id, draft) {
+    const { ws, key } = this.filterTarget(id);
+    const prefix = id.replace(/[^\w-]/g, "_");
+    // Settings lists every workspace's cards, so its dialog names the workspace too.
+    const where = ws && (this.inSettings || this.tab === TABS.settings) ? ` · ${ws.name}` : "";
+    const customer = key === "customer";
+    const chips = customer ? [] : filterChips(key, draft.query);
+    const own = chips.filter((entry) => !entry.term.startsWith("label:"));
+    const labels = chips.filter((entry) => entry.term.startsWith("label:"));
+    const chip = (entry, index) => ({
+      id: `${prefix}-chip-${index}`,
+      label: entry.label,
+      on: entry.on,
+      tooltip: entry.term,
+      press: (edit) => ({ ...edit, query: toggleTerm(edit.query, entry.term) }),
     });
+    const groups = customer
+      ? []
+      : [
+          { label: "Show", chips: own.map(chip) },
+          {
+            label: "Labels",
+            chips: [
+              ...labels.map((entry, index) => chip(entry, own.length + index)),
+              { id: `${prefix}-label`, label: "+ Label", on: false, add: true, press: "label" },
+            ],
+          },
+        ];
+    return {
+      title: `Filter: ${CARD_NAMES[key]}${where}`,
+      groups,
+      inputLabel: customer ? "Label contains" : "GitHub search",
+      placeholder: customer ? "Part of a label's name, such as customer" : "A GitHub search, such as is:issue is:open type:Bug",
+      hint: customer
+        ? "Counts open issues with a label whose name has this in it. Enter updates the preview."
+        : "The chips write this. Enter updates the preview.",
+      noun: ["review", "myPrs", "prs"].includes(key) ? ["PR", "PRs"] : ["issue", "issues"],
+      now: this.cardCount(id),
+      saveLabel: "Save for this card",
+      demo: this.demo,
+    };
   }
 
   /**
-   * Runs one card's search and puts its result in the model; `fetchCard` without the redraw. A
-   * refused search leaves the card as it was and sets the filter's message.
+   * Counts what a card would show with a search, for the filter dialog, without touching the
+   * card. In the demo it counts the made-up items. A copy that has loaded nothing (the Settings
+   * tab) counts with GitHub's search alone.
+   * @param {string} id The filter's id.
+   * @param {string} query The search.
+   * @returns {Promise<number>}
+   * @throws {Error} With GitHub's message when it refuses the search.
+   */
+  async filterCount(id, query) {
+    const { ws, key } = this.filterTarget(id);
+    const config = this.config;
+    if (!config) throw new Error("The settings aren't read yet.");
+    if (id.startsWith("ws:") && !ws) throw new Error("This workspace isn't in the settings file yet.");
+    const base = this.model ?? (this.demo ? demoModel(config) : null);
+    if (!ws) {
+      const picked = Array.isArray(config.account.repos) ? config.account.repos : [];
+      const account = base?.account ?? { repos: picked.map((repo) => ({ repo })), counts: {}, queries: {} };
+      const next = this.demo ? demoCardSearch(account, key, query) : await loadCardSearch(config, account, key, query);
+      return next.counts[CARD_LISTS[key]] ?? 0;
+    }
+    const wsModel = base?.workspaces?.[ws.name] ?? { queries: {}, errors: {}, counts: {} };
+    const edited = withWorkspaceSearch(ws, key, query);
+    const next = this.demo ? demoWorkspaceCard(edited, wsModel, key) : await loadWorkspaceCard(edited, wsModel, key);
+    return workspaceCardCount(next, key) ?? 0;
+  }
+
+  /**
+   * Runs one card's search and puts its result in the model, leaving the other cards as they
+   * are. In the demo it filters the made-up items instead.
    * @param {string} id The filter's id.
    * @param {string} query The search.
    * @returns {Promise<void>}
+   * @throws {Error} With GitHub's message when it refuses the search.
    */
   async searchCard(id, query) {
     const { ws, key } = this.filterTarget(id);
     if (!this.config || !this.model) return;
-    try {
-      if (!ws) {
-        const account = this.model.account;
-        if (!account) return;
-        const next = this.demo ? demoCardSearch(account, key, query) : await loadCardSearch(this.config, account, key, query);
-        this.model = { ...this.model, account: next };
-        return;
-      }
-      const wsModel = this.model.workspaces?.[ws.name];
-      if (!wsModel) return;
-      const edited = withWorkspaceSearch(ws, key, query);
-      const next = this.demo ? demoWorkspaceCard(edited, wsModel, key) : await loadWorkspaceCard(edited, wsModel, key);
-      this.model = { ...this.model, workspaces: { ...this.model.workspaces, [ws.name]: next } };
-    } catch (error) {
-      this.filterState(id).message = { text: `GitHub: ${error?.message ?? error}`, error: true };
+    if (!ws) {
+      const account = this.model.account;
+      if (!account) return;
+      const next = this.demo ? demoCardSearch(account, key, query) : await loadCardSearch(this.config, account, key, query);
+      this.model = { ...this.model, account: next };
+      return;
     }
+    const wsModel = this.model.workspaces?.[ws.name];
+    if (!wsModel) return;
+    const edited = withWorkspaceSearch(ws, key, query);
+    const next = this.demo ? demoWorkspaceCard(edited, wsModel, key) : await loadWorkspaceCard(edited, wsModel, key);
+    this.model = { ...this.model, workspaces: { ...this.model.workspaces, [ws.name]: next } };
   }
 
   /**
@@ -879,7 +819,7 @@ export default class Alpmeister extends View {
    * else in the file stays as it was.
    * @param {string} id The filter's id.
    * @param {string | null} query The search to save, or null to remove it.
-   * @returns {Promise<void>}
+   * @returns {Promise<string>} The file's text now.
    * @throws {Error} When the file can't be read, has lost the workspace, or changed on disk meanwhile.
    */
   async writeCardFilter(id, query) {
@@ -895,112 +835,95 @@ export default class Alpmeister extends View {
     const next = ws ? withWorkspaceFilter(raw ?? {}, index, key, query) : withCardFilter(raw ?? {}, key, query);
     const written = await saveSettings(next, text);
     this.settingsSaved(normalizeConfig(next), written);
+    return written;
   }
 
   /**
-   * "Save for this card": applies the field's search and writes it to the settings file; the
-   * default search removes the card's setting instead. In the demo, nothing is saved.
+   * The filter dialog's Save: writes the card's search to the settings file at once (only that
+   * card's key; the default removes it), then fetches that card again. Unchanged, nothing is
+   * written. In the demo the settings change for this copy only, and nothing is written.
    * @param {string} id The filter's id.
-   * @param {object} cx The context.
-   * @returns {void}
+   * @param {string} query The search.
+   * @returns {Promise<string | null>} The file's text after the write, or null when nothing was written.
+   * @throws {Error} When the workspace isn't saved yet, or the write fails.
    */
-  saveCardFilter(id, cx) {
-    const filter = this.filterState(id);
-    const query = this.filterInput(id).value().trim();
+  async saveCardFilter(id, query) {
+    const { ws, key, saved, fallback } = this.filterTarget(id);
+    if (id.startsWith("ws:") && !ws) throw new Error("Save this workspace in Settings first: it isn't in the settings file yet.");
+    if (query === saved) return null;
+    let written = null;
     if (this.demo) {
-      this.setCardQuery(id, query, cx);
-      filter.message = { text: "Demo settings: nothing is saved." };
-      return cx.notify();
+      const config = this.config;
+      this.config = ws
+        ? { ...config, workspaces: config.workspaces.map((each) => (each.name === ws.name ? withWorkspaceSearch(each, key, query) : each)) }
+        : { ...config, account: { ...config.account, queries: { ...config.account.queries, [key]: query } } };
+    } else {
+      written = await this.writeCardFilter(id, query === fallback ? null : query);
     }
-    const { fallback } = this.filterTarget(id);
-    const shown = this.cardQuery(id);
-    filter.busy = true;
-    filter.message = null;
-    cx.notify();
-    cx.spawn(async (cx) => {
-      try {
-        await this.writeCardFilter(id, query === fallback ? null : query);
-        filter.edit = null;
-        if (shown !== query) await this.searchCard(id, query);
-      } catch (error) {
-        filter.message = { text: String(error?.message ?? error), error: true };
-      }
-      filter.busy = false;
-      cx.notify();
-    });
+    try {
+      await this.searchCard(id, query);
+    } catch (error) {
+      console.log(`alpmeister: ${id} not fetched after its filter was saved: ${error?.message ?? error}`);
+    }
+    return written;
   }
 
   /**
-   * "Reset to default": drops the card's edit and removes its saved search from the settings
-   * file, when it has one, then shows the default search. In the demo, nothing is saved.
+   * Opens the filter dialog on a card. It starts on the saved filter, or on `start`; Save writes
+   * it and `after` then hears what was saved (Settings › Card filters keeps its draft in step).
    * @param {string} id The filter's id.
-   * @param {object} cx The context.
+   * @param {{ start?: string, after?(query: string, written: string | null): void }} [options]
    * @returns {void}
    */
-  resetCardFilter(id, cx) {
-    const filter = this.filterState(id);
+  openFilter(id, { start, after } = {}) {
     const { saved, fallback } = this.filterTarget(id);
-    if (this.demo || saved === fallback) {
-      this.setCardQuery(id, fallback, cx);
-      if (this.demo && saved !== fallback) filter.message = { text: "Demo settings: nothing is saved." };
-      return;
-    }
-    const shown = this.cardQuery(id);
-    filter.busy = true;
-    filter.message = null;
-    cx.notify();
-    cx.spawn(async (cx) => {
-      try {
-        await this.writeCardFilter(id, null);
-        filter.edit = null;
-        filter.input?.set_value(fallback);
-        if (shown !== fallback) await this.searchCard(id, fallback);
-      } catch (error) {
-        filter.message = { text: String(error?.message ?? error), error: true };
-      }
-      filter.busy = false;
-      cx.notify();
+    openFilterDialog({
+      start: { query: start ?? saved },
+      fallback: { query: fallback },
+      spec: (draft) => this.filterSpec(id, draft),
+      count: (draft) => this.filterCount(id, draft.query.trim()),
+      save: async (draft) => {
+        const written = await this.saveCardFilter(id, draft.query);
+        after?.(draft.query, written);
+        this.filterDone();
+      },
     });
   }
 
   /**
-   * A card's filter: the summary for its header (or a tile's last line) and, while open, its
-   * editor. Customer issues filters by part of a label's name, not a search, so it has no chips.
-   * @param {string} id The filter's id.
-   * @param {boolean} [overview] Whether the card is on the Overview, where one editor opens at a time.
-   * @returns {{ summary: object, panel: object | null }}
+   * Redraws this copy after its filter dialog saved: the dialog is another copy, so it can't
+   * redraw this one; shared state changing redraws every copy.
+   * @returns {void}
    */
-  cardFilter(id, overview = false) {
-    const filter = this.filterState(id);
-    const open = this.filterOpen(id, overview);
-    const { key } = this.filterTarget(id);
-    const shown = this.cardQuery(id);
-    const prefix = `cf-${overview ? "ov-" : ""}${id.replace(/[^\w-]/g, "_")}`;
-    const customer = key === "customer";
-    const typed = open && filter.input ? filter.input.value() : shown;
-    const chips = customer
-      ? []
-      : filterChips(key, typed).map((chip, index) => ({
-          id: `${prefix}-chip-${index}`,
-          label: chip.label,
-          on: chip.on,
-          tooltip: chip.term,
-          onPress: (cx) => this.toggleCardTerm(id, chip.term, cx),
-        }));
-    if (!customer) chips.push({ id: `${prefix}-label`, label: "+ Label", on: false, add: true, onPress: (cx) => this.addCardLabel(id, cx) });
-    return FilterControl(prefix, {
-      summary: customer ? (shown ? `labels with ${shown}` : "any label") : summaryWords(shown),
-      look: this.cardFilterLook(id),
-      open,
-      onToggle: (cx) => this.toggleCardFilter(id, cx, overview),
-      chips,
-      input: filter.input,
-      inputLabel: customer ? "Label contains" : undefined,
-      onApply: (cx) => this.applyCardFilter(id, cx),
-      onSave: (cx) => this.saveCardFilter(id, cx),
-      onReset: (cx) => this.resetCardFilter(id, cx),
-      busy: filter.busy,
-      message: filter.message,
+  filterDone() {
+    setShared(FILTER_STAMP_KEY, Date.now());
+  }
+
+  /**
+   * Runs what the filter dialog left for this copy's own context, such as keeping the Board's
+   * people on this computer. Called from `render`.
+   * @param {object} _cx The render's context.
+   * @returns {void}
+   */
+  runQueued(_cx) {
+    shared(FILTER_STAMP_KEY);
+    const queued = this.queued.splice(0);
+    for (const task of queued) task();
+  }
+
+  /**
+   * A card's filter icon, for a tile's or a card header's top-right corner: it opens the filter
+   * dialog, has a dot when the saved filter isn't the default, and says the filter on hover.
+   * @param {string} id The filter's id.
+   * @returns {object} The icon button.
+   */
+  cardFilter(id) {
+    const { saved: query } = this.filterTarget(id);
+    const saved = this.cardFilterSaved(id);
+    return FilterIcon(`cf-${id.replace(/[^\w-]/g, "_")}`, {
+      saved,
+      tooltip: filterTooltip(this.filterWords(id, query), saved),
+      onOpen: () => this.openFilter(id),
     });
   }
 
@@ -1641,7 +1564,6 @@ export default class Alpmeister extends View {
     const state = this.boardState;
     const { boards, ws } = state.workspace();
     if (!ws) return NoBoard((cx) => this.addBoard(cx));
-    state.sync(ws);
     const switcher = this.workspaceSwitch(theme(), { boards, shown: ws.name });
     const wsModel = model.workspaces?.[ws.name];
     const people = (wsModel?.boardView?.items ?? []).flatMap((item) => item.assignees);
@@ -1655,7 +1577,7 @@ export default class Alpmeister extends View {
       .gap(14)
       .when(Boolean(switcher), (el) => el.child(switcher))
       .child(
-        Board(state.effective(ws), wsModel, {
+        Board(ws, wsModel, {
           ...this.launchActions(),
           loading: this.loading,
           avatarPath: (login) => this.avatars.path(login),
@@ -1689,7 +1611,7 @@ export default class Alpmeister extends View {
       const firstRun = this.firstRunCard(t);
       if (firstRun) content = content.child(firstRun);
       if (!account) return content.child(Note(this.loading ? "Loading from GitHub…" : "No data yet."));
-      return content.child(AccountTiles(account, { wide, filter: (key) => this.cardFilter(key, true) })).child(
+      return content.child(AccountTiles(account, { wide, filter: (key) => this.cardFilter(key) })).child(
         Repos(config, account, {
           expanded: this.expandedGroups,
           onToggleGroup,
@@ -1709,7 +1631,7 @@ export default class Alpmeister extends View {
           Tiles(ws, wsModel, {
             wide,
             onSettings: (cx) => this.openSettings({ workspace: ws.name }, cx),
-            filter: (key) => this.cardFilter(wsFilterId(ws.name, key), true),
+            filter: (key) => this.cardFilter(wsFilterId(ws.name, key)),
           }),
         )
         .child(
@@ -1739,7 +1661,7 @@ export default class Alpmeister extends View {
           pinButton: this.pinFor("op"),
           expanded: this.expandedGroups,
           onToggleGroup,
-          filter: this.cardFilter(wsFilterId(ws.name, "prs"), true),
+          filter: this.cardFilter(wsFilterId(ws.name, "prs")),
         }),
       );
     }
@@ -1881,12 +1803,22 @@ export default class Alpmeister extends View {
   }
 
   /**
+   * Forgets a filter dialog's session once its copy closes.
+   * @returns {Promise<void>}
+   */
+  async close() {
+    this.dialog?.close();
+  }
+
+  /**
    * Draws the header and the shown view, or Settings in place of it. Settings scrolls only its
    * page: the header, its side list and its save bar stay put.
    * @param {object} cx The render's context.
    * @returns {object} The tab.
    */
   render(cx) {
+    if (this.dialog) return this.dialog.render(cx);
+    this.runQueued(cx);
     this.syncFocus(cx);
     this.syncSettings(cx);
     this.syncOpenSettings(cx);

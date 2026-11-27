@@ -109,9 +109,12 @@ the Overview starts on all your repositories, with a card that offers to add a w
   7 →", with the GitHub mark); a missing nightly or customer label opens Settings on that
   workspace instead ("Set up in Settings →", with the gear). Every tile and card that lists a
   GitHub search (open bugs, triage bugs, customer issues, open PRs, and All repos' review
-  requests, PRs and issues) ends in its filter's summary, the same filter the Daypack cards
-  have: it opens an editor under the row, an edit shows at once, and "Save for this card" writes
-  the setting Settings › Card filters edits.
+  requests, PRs and issues) has a small filter icon in its top-right corner, as the Daypack cards
+  do, with a dot when its saved filter isn't the default; hovering says the filter in words. The
+  icon opens the filter dialog: chips, the GitHub search, a live "Shows 3 issues · now 0" count,
+  and Reset to default, Cancel and "Save for this card", which writes the setting Settings › Card
+  filters edits. Cancel, Esc or a click outside drops the edit; the card only ever shows the
+  saved filter.
   - **All repos:** four tiles (review requests, your open PRs, your assigned issues, red
     checks), then every repository in scope with its open issues and PRs, the default branch's
     checks, and when it was last pushed. With open work hides the rest, and stays as you left it.
@@ -127,12 +130,12 @@ the Overview starts on all your repositories, with a card that offers to add a w
   button, from every repository in scope. Both buttons open a Claude Code tab running the prompt set in
   Settings, in that repository's local clone, and show only when the prompt is set.
 - **Board:** a workspace's board items, a column per status, with each card's assignee avatars.
-  The filter's summary on the header ("Filter: current iteration · 5 columns") opens its editor:
-  chips for Type, Columns and People, and the board filter in the board's own syntax, such as
-  `type:Bug iteration:@current`. A chip or Enter applies it as a preview; nothing is saved until
-  "Save for this board", which writes the filter and the columns (the Show on board ticks in
-  Settings). Reset or Esc goes back to the saved one. People are remembered on this computer
-  only. A card names its iteration, unless the filter already asks for that one. Drag a card to
+  The filter in words on the header ("Filter: current iteration · 5 columns") opens the same
+  filter dialog: chips for Type, Columns and People, and the board filter in the board's own
+  syntax, such as `type:Bug iteration:@current`, with a count of the cards it shows. The board
+  keeps the saved filter until "Save for this board", which writes the filter and the columns
+  (the Show on board ticks in Settings); a filter GitHub refuses shows its error in the dialog and
+  isn't saved. People are remembered on this computer only. A card names its iteration, unless the filter already asks for that one. Drag a card to
   another column to move it to that status; its ⋯ (or a right click) moves it, or changes its
   iteration or milestone. These write to GitHub at once, so `gh` needs the `project` scope; after
   a move, a toast offers Undo.
@@ -193,7 +196,7 @@ a page per workspace and "+ Add workspace".
 | GitHub | the repos in scope: all your repositories (new ones join on their own; archived ones optional), or only the ones you pick |
 | Local folders | each repository's clone, where its Claude buttons open; clones found under `~/projects`, `~/code` and the like are offered |
 | Claude buttons | what they type into the new Claude tab. `{repo}` and `{number}` are filled in; a `/command` works too |
-| Card filters | every card's filter in one list, with the same editor the Daypack and Overview cards have: Waiting for your review, Your open PRs and Your issues, then each workspace's Open bugs, Triage bugs and Open PRs (`queries.prs`, `is:pr is:open` by default; the repository and a sort are added). "Save for this card" on a Daypack or Overview card writes the same setting |
+| Card filters | every card's filter in one list, each with an Edit button that opens the same filter dialog the Daypack and Overview cards open (its Save writes that one filter at once, not through the Save bar): Waiting for your review, Your open PRs and Your issues, then each workspace's Open bugs, Triage bugs and Open PRs (`queries.prs`, `is:pr is:open` by default; the repository and a sort are added). "Save for this card" on a Daypack or Overview card writes the same setting |
 | Workspace: *name* | its name, repository and project board, then sections that fold, each with a line saying what it is set to: Board columns (per status: what it means and whether the Board shows it; "More per-status options" adds hidden from Your issues and on hold; the status and iteration fields), Nightly (the workflow, its branch and the runs that count), Bugs and triage, Spotlight and Customer issues |
 
 Nightly checks (one row per job or step) are edited in the file: see

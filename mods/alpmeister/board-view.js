@@ -1,6 +1,6 @@
 // Board: a workspace's board items that match the Board tab filter, one column per status, as
 // GitHub's board shows them. Each card carries its assignees' avatars. The filter's summary sits
-// on the header and opens its editor. Dragging a card to another column moves it to that status,
+// on the header and opens the filter dialog. Dragging a card to another column moves it to that status,
 // and a toast offers Undo; the ⋯ on a card (shown on hover or focus), or a right click, opens its
 // menu to move it or set its iteration and milestone.
 
@@ -349,7 +349,7 @@ export function peopleOf(items) {
  * @param {Set<string>} picked The picked logins.
  * @returns {boolean}
  */
-function pickedItem(item, picked) {
+export function pickedItem(item, picked) {
   if (!picked.size) return true;
   if (!item.assignees.length) return picked.has(UNASSIGNED);
   return item.assignees.some((person) => picked.has(person.login));
@@ -457,12 +457,12 @@ export function NoBoard(onAdd) {
 }
 
 /**
- * The Board tab's card for one workspace: the filter's summary on the header and its editor
- * while open, the toast after a move, then a column per status, each with its count.
- * @param {object} ws The workspace, with a board, its applied filter in place of the saved one.
+ * The Board tab's card for one workspace: the filter in words on the header (a button that opens
+ * the filter dialog), the toast after a move, then a column per status, each with its count.
+ * @param {object} ws The workspace, with a board.
  * @param {object | undefined} wsModel The workspace's last load.
  * @param {{ loading: boolean, avatarPath(login: string): string | null,
- *   filter: { summary: object, panel: object | null }, onChooseColumns(cx: object): void,
+ *   filter: object, onChooseColumns(cx: object): void,
  *   onClearFilters(cx: object): void, picked: Set<string>, toast: object | null, onUndo(cx: object): void,
  *   pinFor(prefix: string): Function, launch: Function, prompt: Function }} options The rest
  *   come from `BoardState.options()`.
@@ -474,7 +474,7 @@ export function Board(ws, wsModel, options) {
   const items = view ? view.items.filter((item) => pickedItem(item, options.picked)) : [];
   const extras = [
     view ? Chip(items.length === view.total ? String(view.total) : `${items.length} of ${view.total}`, { color: t.dim }) : null,
-    options.filter.summary,
+    options.filter,
     TextButton("bv-choose-columns", "Choose columns ▾", (cx) => options.onChooseColumns(cx), {
       tooltip: "Pick the board's columns, with its filter",
     }),
@@ -483,7 +483,6 @@ export function Board(ws, wsModel, options) {
       : null,
   ].filter(Boolean);
   let body = v_flex().gap(10);
-  if (options.filter.panel) body = body.child(options.filter.panel);
   const toast = MoveToast(t, options.toast, options.onUndo);
   const notice = wsModel?.errors?.boardView
     ? Note(`GitHub: ${wsModel.errors.boardView}`, t.blocked)
