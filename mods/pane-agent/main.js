@@ -1,8 +1,9 @@
 // A pane's header, for layouts that frame their panes:
 //   { "tab": "active", "pane": { "header": { "content": { "mod": "pane-agent" } } } }
-// Shows the program's icon (the app's program table), the agent's name or
-// the terminal's title, its status, then one muted line: "folder · branch", or in a linked
-// worktree "⎇ <worktree> (worktree) · branch" (the worktree first, never cut off).
+// Shows the program's icon (the app's program table; its name is the icon's tooltip, the tab
+// bar names the tab), its status, then one muted line: "folder · [branch icon] branch", or in a
+// linked worktree "[worktree icon] <worktree> · [branch icon] branch" (the worktree first,
+// never cut off).
 // Split, zoom and close show while the header is hovered or the pane is focused.
 // Props from the app: { pane, terminal }. Click: focus the pane.
 // For agents that report to ~/.local/state/herdr-agents/<terminal>.json (see the
@@ -179,32 +180,40 @@ export default class Pane extends View {
   }
 
   /**
-   * The muted line: "folder · branch", or in a linked worktree the worktree first, with its
-   * icon: "⎇ herdr-alp-p6 (worktree) · feat/pane-header". The folder shows after it only when
-   * it isn't the worktree's own (the shell is in a subfolder). The folder · branch rest has no
-   * width of its own (flex basis 0), so a narrow pane cuts all of it before the worktree's name
-   * starts to truncate. Hover: the full path, and the worktree's repo.
+   * The muted line: "folder · [branch icon] branch", or in a linked worktree the worktree first,
+   * with its icon: "[worktree icon] herdr-alp-p6 · [branch icon] feat/pane-header". The folder
+   * shows after the worktree only when it isn't the worktree's own (the shell is in a subfolder).
+   * Outside git it's just the folder. The rest after the worktree has no width of its own (flex
+   * basis 0), so a narrow pane cuts all of it before the worktree's name starts to truncate.
+   * Hover: the full path, and the worktree's repo.
    * @param {Record<string, string>} t The theme.
    * @param {object} p The pane.
    * @returns {object} The line.
    */
   where(t, p) {
     const dir = folderName(p.cwd);
-    const parts = [this.wt && dir === this.wt ? null : dir, p.branch].filter(Boolean).join(" \u00b7 ");
-    // the dot after the worktree goes with the rest, so it never dangles
-    const rest = this.wt && parts ? `\u00b7 ${parts}` : parts;
+    const shown = this.wt && dir === this.wt ? null : dir;
+    // the dots go with the rest, so none dangles after the worktree or before the branch
+    const lead = [this.wt ? "" : null, shown, p.branch ? "" : null].filter((x) => x != null).join(" \u00b7 ").trim();
     const tip = [folder(p.cwd), this.wt && this.wtRepo && `Linked worktree of ${folder(this.wtRepo)}`].filter(Boolean).join("\n");
     return h_flex().id(`ph-where-${p.pane}`).flex_1().min_w(0).overflow_hidden().items_center().gap(4).text_color(t.dim)
       .when(Boolean(tip), (el) => el.tooltip(tip))
       .when(Boolean(this.wt), (el) => el
         .child(svg("mods/pane-agent/worktree.svg").size(13).flex_none().text_color(t.dim))
-        .child(div().min_w(0).truncate().child(`${this.wt} (worktree)`)))
-      .child(div().flex_1().min_w(0).truncate().child(rest));
+        .child(div().min_w(0).truncate().child(this.wt)))
+      // the branch name gives way before the folder and the dots (they barely shrink)
+      .child(h_flex().flex_1().min_w(0).overflow_hidden().items_center().gap(4)
+        // a lone dot never shrinks, so a cut-off branch still reads "worktree · ⑂"
+        .when(Boolean(lead), (el) => el.child(shown ? div().min_w(0).flex_shrink(0.01).truncate().child(lead) : div().flex_none().child(lead)))
+        .when(Boolean(p.branch), (el) => el
+          // the footer's branch icon (alp-status), muted like the text
+          .child(svg("mods/workspace-chrome/branch.svg").size(13).flex_none().text_color(t.dim))
+          .child(div().min_w(0).truncate().child(p.branch))));
   }
 
   /**
-   * The header: icon, name, status, the muted folder · branch line (worktree first), the model chip,
-   * the context bar, and (hovered or focused) split, zoom and close.
+   * The header: icon (its tooltip names the program), status, the muted worktree · folder · branch
+   * line, the model chip, the context bar, and (hovered or focused) split, zoom and close.
    * @param {object} cx The view context.
    * @returns {object} The header row.
    */
@@ -237,8 +246,10 @@ export default class Pane extends View {
       .text_size(12)
       .on_hover((hovered, cx) => { this.hovered = hovered; cx.notify(); })
       .on_click(() => run("pane.focus", { pane }))
-      .when(Boolean(pic), (el) => el.child(pic))
-      .child(div().flex_none().truncate().max_w(260).font_medium().text_color(t.foreground).child(name))
+      .child(pic
+        ? div().id(`ph-icon-${pane}`).flex_none().flex().items_center().tooltip(name).child(pic)
+        // no icon in the program table: the name stands in, so the header never starts blank
+        : div().flex_none().truncate().max_w(260).font_medium().text_color(t.foreground).child(name))
       .when(Boolean(state), el => el.child(state))
       .child(this.where(t, p))
       .when(Boolean(model), el => el.child(this.chip(t, model, t.foreground)))
