@@ -1,22 +1,79 @@
-// The Board tab's own state: the filter field, applied and saved from the tab, the people
-// picked in each workspace, remembered in localStorage for this copy, a card being dragged to
-// another status, and the card menu that sets the iteration or the milestone. A move shows at
-// once, and goes back with an error when GitHub refuses it.
+// The Board tab's own state: its filter (Type, Columns and People chips and the raw board
+// filter), a card being dragged to another status, the card menu that moves it or sets its
+// iteration or milestone, and the toast with Undo after a move.
+//
+// Applying the filter only previews it: the board is fetched with it and nothing is saved. Save
+// writes the board filter and the columns to the settings file (`boardView.query`,
+// `boardView.statuses`); the people picked stay on this computer, in localStorage. A filter
+// GitHub refuses keeps the last good board and shows GitHub's error. A move shows at once, goes
+// back with an error when GitHub refuses it, and can be undone from the toast.
 
 import { InputState } from "gpui-base";
+import { readTextFile } from "herdr";
 import { openMilestones, setIteration, setMilestone, setPosition, setStatus } from "./board-actions.js";
-import { CARD_GAP, COLUMN_PADDING } from "./board-view.js";
+import { boardSummary, boardTypes, withBoardTypes } from "./board-terms.js";
+import { CARD_GAP, COLUMN_PADDING, NO_STATUS, UNASSIGNED, peopleOf } from "./board-view.js";
 import { CardMenu } from "./board-menu.js";
-import { loadConfig } from "./config.js";
-import { loadBoardView } from "./data.js";
+import { configPath, normalizeConfig } from "./config.js";
+import { boardStatuses, loadBoardView } from "./data.js";
 import { saveSettings } from "./settings-data.js";
-import { demoMilestones } from "./demo-data.js";
+import { demoBoardView, demoMilestones } from "./demo-data.js";
+import { valuesOf } from "./search-terms.js";
+import { FilterControl } from "./ui.js";
 
 const PICKED_KEY = "alpmeister.boardPeople";
 /** A press that moves less than this is a click (open the card), not a drag. */
 const DRAG_SLOP = 5;
 /** A card's height before it has been measured. */
 const CARD_HEIGHT = 90;
+/** The Board filter a workspace has when the settings name none. */
+const DEFAULT_QUERY = "iteration:@current";
+/** How long the toast after a move stays, with its Undo. */
+const UNDO_TOAST_MS = 10000;
+/** How long the toast after an Undo stays. */
+const DONE_TOAST_MS = 4000;
+
+/**
+ * Whether two lists hold the same entries in the same order.
+ * @param {string[]} one
+ * @param {string[]} other
+ * @returns {boolean}
+ */
+const sameList = (one, other) => one.length === other.length && one.every((entry, index) => entry === other[index]);
+
+/**
+ * Whether two Board filters are the same: the filter text and the columns.
+ * @param {{ query: string, statuses: string[] }} one
+ * @param {{ query: string, statuses: string[] }} other
+ * @returns {boolean}
+ */
+const sameView = (one, other) => one.query.trim() === other.query.trim() && sameList(one.statuses, other.statuses);
+
+/**
+ * How a toast names a card: its number, or a draft's title.
+ * @param {{ number: number | null, title: string }} item The board item.
+ * @returns {string}
+ */
+const cardName = (item) => (item.number != null ? `#${item.number}` : `"${item.title}"`);
+
+/**
+ * The settings file's contents with one workspace's Board filter and columns saved. Everything
+ * else stays as the file had it. A file in the one-repo shape keeps its one workspace's keys at
+ * its top level, so they go there.
+ * @param {object} raw The parsed file.
+ * @param {string} name The workspace's name, as the settings show it.
+ * @param {{ query: string, statuses: string[] }} view The filter and the columns.
+ * @returns {object} A new object to write; `raw` is not changed.
+ * @throws {Error} When the file has no such workspace with a board.
+ */
+function withBoardView(raw, name, view) {
+  const next = JSON.parse(JSON.stringify(raw ?? {}));
+  const index = normalizeConfig(next).workspaces.findIndex((ws) => ws.name === name && ws.board);
+  if (index < 0) throw new Error(`The workspace ${name} has no board in the settings file.`);
+  const holder = next.repo || next.project ? next : next.workspaces[index];
+  holder.boardView = { ...holder.boardView, query: view.query, statuses: view.statuses };
+  return next;
+}
 
 export class BoardState {
   /**
@@ -25,11 +82,18 @@ export class BoardState {
   constructor(view) {
     this.view = view;
     this.input = InputState.new({ placeholder: "The board's filter, such as type:Bug iteration:@current" });
-    this.input.on("submit", (_event, cx) => this.apply(cx));
-    /** The workspace and saved filter the field last showed, so typing is never overwritten. */
+    this.input.on("submit", (_event, cx) => this.applyTyped(cx));
+    /** The workspace and filter the field last showed, so typing is never overwritten. */
     this.shownKey = null;
+    /** Whether the filter's editor is open. */
+    this.filterOpen = false;
+    /** Each workspace's applied filter that is not saved, by name: `{ query, statuses }`. */
+    this.edits = {};
+    /** Each workspace's types seen on its cards in this copy, so a Type chip stays offered once its cards are filtered out. */
+    this.seenTypes = {};
     this.busy = false;
-    this.error = null;
+    /** The filter's line under the field: `{ text, error? }` or null. */
+    this.message = null;
     this.pickedByWorkspace = {};
     /**
      * The card being dragged, or null: `{ item, start, moved, over, grab, size, pointer }`. `grab` is
@@ -37,12 +101,20 @@ export class BoardState {
      * pointer is over the columns.
      */
     this.drag = null;
-    /** The card whose menu is open, by board item id, or null. */
+    /** The card whose menu is open, by board item id, or null; and the last one opened. */
     this.menuFor = null;
-    /** The open submenu of the card menu: "iteration", "milestone" or null. */
+    this.lastMenuFor = null;
+    /** The open submenu of the card menu: "status", "iteration", "milestone" or null. */
     this.submenu = null;
     /** A press outside the main menu waits a frame to learn whether it was in the submenu. */
     this.closePending = false;
+    /** The focus handles of the menu's first row, its submenu's first row and the ⋯ it opened from; made on first use. */
+    this.focus = null;
+    /** The card under the pointer, by board item id, so its ⋯ shows. */
+    this.hoverCard = null;
+    /** The toast after a move: `{ seq, text, status, tail, undo }`, or null. */
+    this.toast = null;
+    this.toastSeq = 0;
     /** Each repository's open milestones: `{ list }`, `{ loading: true }` or `{ error }`. */
     this.milestones = {};
     /** Each card's drawn height, by board item id, and a column header's, for finding the drop spot. */
@@ -75,25 +147,28 @@ export class BoardState {
   }
 
   /**
-   * The Board options this state answers: the filter field, the picked people, the drag, the
-   * card menu and the writes under way.
+   * The Board options this state answers: the filter, the picked people, the drag, the card
+   * menu, the toast and the writes under way.
    * @param {object} ws The workspace the Board shows.
    * @returns {object} Options for `Board`.
    */
   options(ws) {
     return {
-      filterInput: this.input,
-      filterBusy: this.busy,
-      filterError: this.error,
-      onFilterRevert: (cx) => this.revert(cx),
+      filter: this.filterControl(ws),
+      onChooseColumns: (cx) => this.toggleFilter(cx),
+      onClearFilters: (cx) => this.clearFilters(ws, cx),
       picked: this.picked(ws),
-      onTogglePerson: (login, cx) => this.togglePerson(ws, login, cx),
-      onClearPeople: (cx) => this.clearPeople(ws, cx),
       draggedId: this.drag?.moved ? this.drag.item.itemId : null,
       dragOver: this.drag?.over ?? null,
       writing: this.writing,
       writeError: this.writeError,
       menuFor: this.menuFor,
+      hoverCard: this.hoverCard,
+      focus: this.focus,
+      dotsFor: this.menuFor ?? this.lastMenuFor,
+      onCardHover: (itemId, hovered, cx) => this.hover(itemId, hovered, cx),
+      toast: this.toast,
+      onUndo: (cx) => this.toast?.undo?.(cx),
       isClick: () => this.isClick(),
       onCardDown: (item, event) => this.dragStart(item, event),
       onDragMove: (event, column, cardWidth, columnItems, cx) => this.dragMove(event, column, cardWidth, columnItems, cx),
@@ -104,118 +179,443 @@ export class BoardState {
       ghost: this.ghost(),
       onDrop: (cx) => this.drop(ws, cx),
       onDragEnd: (cx) => this.dragEnd(cx),
-      onCardMenu: (item, cx) => this.openMenu(item, cx),
-      cardMenu: (item, flip) =>
+      onCardMenu: (item, cx, keyboard) => this.toggleMenu(item, cx, keyboard),
+      cardMenu: (item, flip, columns) =>
         CardMenu(item, {
           flip,
+          columns,
           meta: this.meta(ws),
           milestones: this.milestones[item.repo],
           submenu: this.submenu,
-          onSubmenu: (name, cx) => {
-            if (this.submenu === name) return;
-            this.submenu = name;
-            cx.notify();
-          },
+          focus: this.focus,
+          onSubmenu: (name, cx, keyboard) => this.openSubmenu(name, cx, keyboard),
+          onMove: (status, cx) => this.moveTo(ws, item, status, cx),
           onIteration: (iteration, cx) => this.pickIteration(ws, item, iteration, cx),
           onMilestone: (milestone, cx) => this.pickMilestone(item, milestone, cx),
-          onClose: (cx) => this.closeMenu(cx),
+          onClose: (cx, keyboard) => this.closeMenu(cx, keyboard),
           onOutside: (cx) => this.pressOutsideMenu(cx),
           onInside: () => this.pressInsideMenu(),
         }),
     };
   }
 
-  /** Shows the workspace's saved filter in the field when the workspace or its filter changed. */
-  sync(ws) {
-    const key = `${ws.name}\n${ws.boardView.query}`;
-    if (key === this.shownKey) return;
-    this.shownKey = key;
-    this.input.set_value(ws.boardView.query);
+  //#region Filter
+
+  /**
+   * A workspace's saved Board filter and columns.
+   * @param {object} ws The workspace.
+   * @returns {{ query: string, statuses: string[] }}
+   */
+  saved(ws) {
+    return { query: ws.boardView.query, statuses: ws.boardView.statuses };
   }
 
-  /** Puts the saved filter back in the field. */
-  revert(cx) {
+  /**
+   * The Board filter and columns a workspace's board shows: the applied edit, else the saved one.
+   * @param {object} ws The workspace.
+   * @returns {{ query: string, statuses: string[] }}
+   */
+  shown(ws) {
+    return this.edits[ws.name] ?? this.saved(ws);
+  }
+
+  /**
+   * The workspace as its board is shown: with the applied edit in place of the saved filter.
+   * @param {object} ws The workspace.
+   * @returns {object} The same workspace without an edit, else a copy.
+   */
+  effective(ws) {
+    const edit = this.edits[ws.name];
+    return edit ? { ...ws, boardView: { ...ws.boardView, ...edit } } : ws;
+  }
+
+  /**
+   * The settings with every workspace's applied Board filter in place, for a fetch that keeps
+   * the previews.
+   * @param {object} config The settings.
+   * @returns {object} The same settings without edits, else a copy.
+   */
+  withEdits(config) {
+    if (!Object.keys(this.edits).length) return config;
+    return { ...config, workspaces: config.workspaces.map((ws) => this.effective(ws)) };
+  }
+
+  /**
+   * The filter's state: "edited" while a preview isn't saved, "saved" when the settings hold a
+   * filter or columns other than the default, else "default".
+   * @param {object} ws The workspace.
+   * @returns {"default" | "edited" | "saved"}
+   */
+  look(ws) {
+    if (this.edits[ws.name]) return "edited";
+    const saved = this.saved(ws);
+    return saved.query.trim() !== DEFAULT_QUERY || saved.statuses.length ? "saved" : "default";
+  }
+
+  /**
+   * Shows the board's filter in the field when the workspace or its filter changed.
+   * @param {object} ws The workspace.
+   * @returns {void}
+   */
+  sync(ws) {
+    const key = `${ws.name}\n${this.shown(ws).query}`;
+    if (key === this.shownKey) return;
+    this.shownKey = key;
+    this.input.set_value(this.shown(ws).query);
+  }
+
+  /**
+   * Opens or shuts the filter's editor. Opening puts the shown filter in the field and moves the
+   * keyboard there.
+   * @param {object} cx The context.
+   * @returns {void}
+   */
+  toggleFilter(cx) {
     const { ws } = this.workspace();
-    if (ws) this.input.set_value(ws.boardView.query);
-    this.error = null;
+    this.filterOpen = !this.filterOpen;
+    this.message = null;
+    if (this.filterOpen) {
+      if (ws) this.input.set_value(this.shown(ws).query);
+      // The field mounts on the next frame; focus it once it is there.
+      cx.timer.after(100, () => this.input.focus());
+    } else {
+      this.input.blur();
+    }
     cx.notify();
   }
 
   /**
-   * Fetches the board with the typed filter, then saves the filter to the settings file. A filter
-   * GitHub refuses stays in the field with the error, and the file keeps the old one.
+   * Shows the board with a filter and columns, as a preview: it is fetched (in the demo, the
+   * made-up cards are filtered) and nothing is saved. The same as the saved filter drops the
+   * edit. A filter GitHub refuses keeps the last good board and the old edit, and shows
+   * GitHub's error.
+   * @param {object} ws The workspace.
+   * @param {{ query: string, statuses: string[] }} next The filter and the columns.
+   * @param {object} cx The context.
+   * @returns {void}
    */
-  apply(cx) {
-    const { ws } = this.workspace();
-    if (!ws || this.busy) return;
-    const query = this.input.value().trim();
+  preview(ws, next, cx) {
+    if (this.busy) return;
+    const view = { query: next.query.trim(), statuses: next.statuses };
+    const target = { ...ws, boardView: { ...ws.boardView, ...view } };
+    this.input.set_value(view.query);
+    this.message = null;
+    const keep = (boardView) => {
+      if (sameView(view, this.saved(ws))) delete this.edits[ws.name];
+      else this.edits[ws.name] = view;
+      this.shownKey = `${ws.name}\n${view.query}`;
+      this.putBoard(ws, boardView);
+    };
     if (this.view.demo) {
-      // The demo has no board on GitHub to filter: the field keeps what was typed.
-      this.error = "The demo board does not filter.";
-      cx.notify();
-      return;
+      keep(demoBoardView(target));
+      return cx.notify();
     }
     this.busy = true;
-    this.error = null;
     cx.notify();
     cx.spawn(async (cx) => {
       try {
-        const { config, error, text } = await loadConfig();
-        if (!config) throw new Error(error ?? "The settings file could not be read.");
-        const target = config.workspaces.find((candidate) => candidate.name === ws.name);
-        if (!target?.board) throw new Error(`The workspace ${ws.name} has no board in the settings file.`);
-        target.boardView.query = query;
-        const boardView = await loadBoardView(target);
-        const written = query === ws.boardView.query ? text : await saveSettings(config, text);
-        this.view.settingsSaved(config, written);
-        this.shownKey = `${ws.name}\n${query}`;
-        const model = this.view.model;
-        if (model?.workspaces?.[ws.name]) {
-          const { boardView: _failed, ...errors } = model.workspaces[ws.name].errors ?? {};
-          model.workspaces[ws.name] = { ...model.workspaces[ws.name], boardView, errors };
-          await this.view.saveCache(model);
-        }
+        keep(await loadBoardView(target));
       } catch (error) {
-        this.error = String(error?.message ?? error);
+        this.message = { text: `GitHub: ${error?.message ?? error}`, error: true };
       }
       this.busy = false;
       cx.notify();
     });
   }
 
-  /** The people picked in a workspace. */
+  /**
+   * Puts a fetched board in the model in place of the workspace's last one, and notes its types.
+   * @param {object} ws The workspace.
+   * @param {object | null} boardView The board, in `loadBoardView()`'s shape.
+   * @returns {void}
+   */
+  putBoard(ws, boardView) {
+    const seen = (this.seenTypes[ws.name] ??= new Set());
+    for (const item of boardView?.items ?? []) if (item.type) seen.add(item.type);
+    const model = this.view.model;
+    if (!model?.workspaces?.[ws.name]) return;
+    const { boardView: _failed, ...errors } = model.workspaces[ws.name].errors ?? {};
+    model.workspaces[ws.name] = { ...model.workspaces[ws.name], boardView, errors };
+  }
+
+  /**
+   * Applies what the field holds, with the shown columns.
+   * @param {object} cx The context.
+   * @returns {void}
+   */
+  applyTyped(cx) {
+    const { ws } = this.workspace();
+    if (ws) this.preview(ws, { query: this.input.value(), statuses: this.shown(ws).statuses }, cx);
+  }
+
+  /**
+   * Turns one type on or off in the field's filter, from a chip, and applies it.
+   * @param {object} ws The workspace.
+   * @param {string} type The type.
+   * @param {object} cx The context.
+   * @returns {void}
+   */
+  toggleType(ws, type, cx) {
+    const query = this.input.value();
+    const types = boardTypes(query);
+    const next = types.includes(type) ? types.filter((entry) => entry !== type) : [...types, type];
+    this.preview(ws, { query: withBoardTypes(query, next), statuses: this.shown(ws).statuses }, cx);
+  }
+
+  /**
+   * Turns one column on or off, from a chip, and applies it. With no columns ticked every
+   * status is a column, so the first click leaves out the one clicked; every column ticked is
+   * the same as none (or as the saved columns, when those are every one). The last column stays.
+   * @param {object} ws The workspace.
+   * @param {string} status The status.
+   * @param {object} cx The context.
+   * @returns {void}
+   */
+  toggleColumn(ws, status, cx) {
+    const ticked = boardStatuses(this.effective(ws));
+    const current = ticked.length ? ticked : ws.statuses;
+    const next = current.includes(status) ? current.filter((entry) => entry !== status) : ws.statuses.filter((entry) => entry === status || current.includes(entry));
+    if (!next.length) {
+      this.message = { text: "Keep at least one column." };
+      return cx.notify();
+    }
+    const saved = this.saved(ws).statuses;
+    const all = next.length === ws.statuses.length;
+    const statuses = !all ? next : boardStatuses(ws).length === ws.statuses.length ? saved : [];
+    this.preview(ws, { query: this.input.value(), statuses }, cx);
+  }
+
+  /**
+   * "Reset", or Esc: drops the preview and shows the saved filter again.
+   * @param {object} cx The context.
+   * @returns {void}
+   */
+  reset(cx) {
+    const { ws } = this.workspace();
+    if (!ws) return;
+    if (!this.edits[ws.name]) {
+      this.input.set_value(this.saved(ws).query);
+      this.message = null;
+      return cx.notify();
+    }
+    this.preview(ws, this.saved(ws), cx);
+  }
+
+  /**
+   * Esc in the filter: resets a preview and keeps the editor open, or closes the editor.
+   * @param {object} cx The context.
+   * @returns {boolean} Whether it reset a preview.
+   */
+  escape(cx) {
+    const { ws } = this.workspace();
+    if (!ws || !this.edits[ws.name]) return false;
+    this.reset(cx);
+    return true;
+  }
+
+  /**
+   * "Save for this board": applies the field's filter with the shown columns and writes both to
+   * the settings file (`boardView.query`, `boardView.statuses`), through `saveSettings`, which
+   * keeps the old file as alpmeister.json.bak. A filter GitHub refuses is not saved. In the demo
+   * the settings change for this copy only, and nothing is written.
+   * @param {object} cx The context.
+   * @returns {void}
+   */
+  save(cx) {
+    const { ws } = this.workspace();
+    if (!ws || this.busy) return;
+    const view = { query: this.input.value().trim(), statuses: this.shown(ws).statuses };
+    if (this.view.demo) {
+      const config = this.view.config;
+      this.view.config = {
+        ...config,
+        workspaces: config.workspaces.map((entry) => (entry.name === ws.name ? { ...entry, boardView: { ...entry.boardView, ...view } } : entry)),
+      };
+      delete this.edits[ws.name];
+      this.putBoard(ws, demoBoardView({ ...ws, boardView: { ...ws.boardView, ...view } }));
+      this.message = { text: "Demo settings: nothing is written to the file." };
+      return cx.notify();
+    }
+    this.busy = true;
+    this.message = null;
+    cx.notify();
+    cx.spawn(async (cx) => {
+      try {
+        const text = await readTextFile(configPath());
+        let raw = {};
+        try {
+          raw = text ? JSON.parse(text) : {};
+        } catch (error) {
+          throw new Error(`${configPath()} is not valid JSON: ${error}`);
+        }
+        const next = withBoardView(raw ?? {}, ws.name, view);
+        const config = normalizeConfig(next);
+        const boardView = await loadBoardView(config.workspaces.find((entry) => entry.name === ws.name));
+        const written = await saveSettings(next, text);
+        this.view.settingsSaved(config, written);
+        delete this.edits[ws.name];
+        this.shownKey = `${ws.name}\n${view.query}`;
+        this.putBoard(ws, boardView);
+        if (this.view.model) await this.view.saveCache(this.view.model);
+      } catch (error) {
+        this.message = { text: String(error?.message ?? error), error: true };
+      }
+      this.busy = false;
+      cx.notify();
+    });
+  }
+
+  /**
+   * "Clear filters", from an empty board: everyone, and when the board itself came back empty,
+   * no board filter either (a preview; the columns stay).
+   * @param {object} ws The workspace.
+   * @param {object} cx The context.
+   * @returns {void}
+   */
+  clearFilters(ws, cx) {
+    this.pickedByWorkspace = { ...this.pickedByWorkspace, [ws.name]: [] };
+    this.rememberPicked();
+    const items = this.view.model?.workspaces?.[ws.name]?.boardView?.items ?? [];
+    if (items.length) return cx.notify();
+    this.preview(ws, { query: "", statuses: this.shown(ws).statuses }, cx);
+  }
+
+  /**
+   * The types the Type chips offer: those on the board's cards (now or earlier in this copy),
+   * those the filter names, and those the workspace's settings name.
+   * @param {object} ws The workspace.
+   * @param {object[]} items The board's cards.
+   * @returns {string[]} The types, in alphabetical order.
+   */
+  typeOptions(ws, items) {
+    const types = new Set([
+      ...items.map((item) => item.type).filter(Boolean),
+      ...(this.seenTypes[ws.name] ?? []),
+      ...boardTypes(this.input.value()),
+      ...valuesOf(ws.bugs?.query ?? "", "type"),
+      ...(ws.spotlight?.featureTypes ?? []),
+      ...(ws.inFlight?.excludeTypes ?? []),
+    ]);
+    return [...types].sort((one, other) => one.localeCompare(other));
+  }
+
+  /**
+   * The Board's filter: the summary for its header and, while open, its editor with the Type,
+   * Columns and People chips and the raw board filter.
+   * @param {object} ws The workspace.
+   * @returns {{ summary: object, panel: object | null }}
+   */
+  filterControl(ws) {
+    const items = this.view.model?.workspaces?.[ws.name]?.boardView?.items ?? [];
+    for (const item of items) if (item.type) (this.seenTypes[ws.name] ??= new Set()).add(item.type);
+    const shown = this.effective(ws);
+    const ticked = boardStatuses(shown);
+    const picked = this.picked(ws);
+    const types = boardTypes(this.filterOpen ? this.input.value() : this.shown(ws).query);
+    const people = peopleOf(items);
+    // Someone picked whose cards the filter hides stays offered, so they can be unpicked.
+    for (const login of picked) if (!people.some((person) => person.login === login)) people.push({ login, count: 0 });
+    const groups = [
+      {
+        label: "Type",
+        chips: this.typeOptions(ws, items).map((type) => ({
+          id: `bv-f-type-${type}`,
+          label: type,
+          on: types.includes(type),
+          onPress: (cx) => this.toggleType(ws, type, cx),
+        })),
+      },
+      {
+        label: "Columns",
+        chips: ws.statuses.map((status) => ({
+          id: `bv-f-col-${status}`,
+          label: status,
+          on: !ticked.length || ticked.includes(status),
+          onPress: (cx) => this.toggleColumn(ws, status, cx),
+        })),
+      },
+      {
+        label: "People",
+        note: "kept on this computer",
+        chips: people.map((person) => ({
+          id: `bv-f-who-${person.login || "unassigned"}`,
+          label: person.login === UNASSIGNED ? "Unassigned" : person.login,
+          on: picked.has(person.login),
+          tooltip: `${person.count} card${person.count === 1 ? "" : "s"}`,
+          onPress: (cx) => this.togglePerson(ws, person.login, cx),
+        })),
+      },
+    ].filter((group) => group.chips.length);
+    const look = this.look(ws);
+    return FilterControl("bv-filter", {
+      summary: boardSummary(this.shown(ws).query, ticked, ws.statuses.length, [...picked]),
+      look,
+      open: this.filterOpen,
+      onToggle: (cx) => this.toggleFilter(cx),
+      chips: [],
+      groups,
+      input: this.input,
+      inputLabel: "Board filter",
+      onApply: (cx) => this.applyTyped(cx),
+      onSave: look === "edited" || this.input.value().trim() !== this.shown(ws).query.trim() ? (cx) => this.save(cx) : null,
+      onReset: look === "edited" ? (cx) => this.reset(cx) : null,
+      onEscape: (cx) => this.escape(cx),
+      saveLabel: "Save for this board",
+      resetLabel: "Reset",
+      resetTooltip: "Back to the saved filter (Esc)",
+      lookWords: { edited: "Applied as a preview, not saved", saved: "Saved for this board" },
+      busy: this.busy,
+      message: this.message,
+    });
+  }
+
+  /**
+   * The people picked in a workspace.
+   * @param {object} ws The workspace.
+   * @returns {Set<string>}
+   */
   picked(ws) {
     return new Set(this.pickedByWorkspace[ws.name] ?? []);
   }
 
-  /** Picks or unpicks one person in a workspace. */
+  /**
+   * Picks or unpicks one person in a workspace.
+   * @param {object} ws The workspace.
+   * @param {string} login The login; "" is Unassigned.
+   * @param {object} cx The context.
+   * @returns {void}
+   */
   togglePerson(ws, login, cx) {
     const picked = this.picked(ws);
     if (picked.has(login)) picked.delete(login);
     else picked.add(login);
-    this.savePicked(ws, picked, cx);
-  }
-
-  /** Unpicks everyone in a workspace. */
-  clearPeople(ws, cx) {
-    this.savePicked(ws, new Set(), cx);
-  }
-
-  /** Keeps a workspace's picked people for this copy, then redraws. */
-  savePicked(ws, picked, cx) {
     this.pickedByWorkspace = { ...this.pickedByWorkspace, [ws.name]: [...picked] };
-    if (this.view.demo) return cx.notify();
+    this.rememberPicked();
+    cx.notify();
+  }
+
+  /**
+   * Keeps the picked people on this computer, for this copy; the demo keeps them in memory only.
+   * @returns {void}
+   */
+  rememberPicked() {
+    if (this.view.demo) return;
     try {
       localStorage.setItem(PICKED_KEY, JSON.stringify(this.pickedByWorkspace));
     } catch (error) {
       console.log(`alpmeister: picked people not remembered: ${error}`);
     }
-    cx.notify();
   }
+
+  //#endregion
 
   //#region Moves
 
-  /** The board load's ids for a workspace, or null before a load that read them. */
+  /**
+   * The board load's ids for a workspace, or null before a load that read them.
+   * @param {object} ws The workspace.
+   * @returns {object | null}
+   */
   meta(ws) {
     return this.view.model?.workspaces?.[ws.name]?.boardView?.meta ?? null;
   }
@@ -227,18 +627,24 @@ export class BoardState {
    * @param {{ apply(): void, revert(): void }} change What the board shows before GitHub answers.
    * @param {() => Promise<void>} write The GitHub write.
    * @param {object} cx The view's context.
+   * @param {(cx: object) => void} [done] Called once GitHub took it (in the demo, at once).
+   * @returns {void}
    */
-  write(item, change, write, cx) {
+  write(item, change, write, cx, done) {
     change.apply();
-    // The demo board is made up: the change shows, and nothing is written.
-    if (this.view.demo) return cx.notify();
-    this.writing.add(item.itemId);
     this.writeError = null;
+    // The demo board is made up: the change shows, and nothing is written.
+    if (this.view.demo) {
+      done?.(cx);
+      return cx.notify();
+    }
+    this.writing.add(item.itemId);
     cx.notify();
     cx.spawn(async (cx) => {
       try {
         await write();
         await this.view.saveCache(this.view.model);
+        done?.(cx);
       } catch (error) {
         change.revert();
         this.writeError = `${item.title}: ${error?.message ?? error}`;
@@ -246,6 +652,125 @@ export class BoardState {
       this.writing.delete(item.itemId);
       cx.notify();
     });
+  }
+
+  /**
+   * Shows a toast over the board for a while; a newer one replaces it.
+   * @param {{ text: string, status: string, tail: string, undo?: (cx: object) => void }} toast
+   *   The words around the status, which is drawn bold, and what Undo does.
+   * @param {number} ms How long it stays.
+   * @param {object} cx The context.
+   * @returns {void}
+   */
+  showToast(toast, ms, cx) {
+    const seq = ++this.toastSeq;
+    this.toast = { ...toast, seq };
+    cx.timer.after(ms, (later) => {
+      if (this.toast?.seq !== seq) return;
+      this.toast = null;
+      (later ?? cx).notify();
+    });
+  }
+
+  /**
+   * The toast after a card moved to another status, with an Undo that writes the old status
+   * back, and the old place when the move changed it.
+   * @param {object} ws The workspace.
+   * @param {object} item The board item.
+   * @param {{ from: string | null, to: string | null, order: object[] | null }} move The status
+   *   before and after (null is No status), and the board order before a drag (null when the
+   *   move kept the order).
+   * @param {object} cx The context.
+   * @returns {void}
+   */
+  movedToast(ws, item, move, cx) {
+    this.showToast(
+      {
+        text: `Moved ${cardName(item)} to`,
+        status: move.to ?? NO_STATUS,
+        tail: this.view.demo ? "(demo: nothing written to GitHub)" : "on GitHub",
+        undo: (cx) => this.undoMove(ws, item, move, cx),
+      },
+      UNDO_TOAST_MS,
+      cx,
+    );
+  }
+
+  /**
+   * Undo, from the toast: puts the card back in its old status, and its old place after a drag.
+   * @param {object} ws The workspace.
+   * @param {object} item The board item.
+   * @param {{ from: string | null, to: string | null, order: object[] | null }} move The move to undo.
+   * @param {object} cx The context.
+   * @returns {void}
+   */
+  undoMove(ws, item, move, cx) {
+    this.toast = null;
+    const items = this.view.model?.workspaces?.[ws.name]?.boardView?.items;
+    const meta = this.meta(ws);
+    if (!items || !meta) return cx.notify();
+    const now = items.slice();
+    const before = move.order ? move.order[move.order.indexOf(item) - 1] ?? null : null;
+    const status = this.fieldChange(item, { status: move.from });
+    const change = {
+      apply: () => {
+        status.apply();
+        if (move.order) items.splice(0, items.length, ...move.order.filter((entry) => items.includes(entry)));
+      },
+      revert: () => {
+        status.revert();
+        items.splice(0, items.length, ...now);
+      },
+    };
+    this.write(
+      item,
+      change,
+      async () => {
+        await setStatus(meta, item, move.from);
+        if (move.order) await setPosition(meta, item, before);
+      },
+      cx,
+      (cx) =>
+        this.showToast(
+          { text: `Moved ${cardName(item)} back to`, status: move.from ?? NO_STATUS, tail: this.view.demo ? "(demo)" : "on GitHub" },
+          DONE_TOAST_MS,
+          cx,
+        ),
+    );
+  }
+
+  /**
+   * "Move to…", from the card menu: moves the card to another status, keeping its place in the
+   * board order, then shows the toast with Undo.
+   * @param {object} ws The workspace.
+   * @param {object} item The board item.
+   * @param {string} column The column; No status takes the status off.
+   * @param {object} cx The context.
+   * @returns {void}
+   */
+  moveTo(ws, item, column, cx) {
+    this.menuFor = null;
+    const to = column === NO_STATUS ? null : column;
+    const meta = this.meta(ws);
+    if (!meta || to === item.status) return cx.notify();
+    const from = item.status;
+    this.write(item, this.fieldChange(item, { status: to }), () => setStatus(meta, item, to), cx, (cx) =>
+      this.movedToast(ws, item, { from, to, order: null }, cx),
+    );
+  }
+
+  /**
+   * Keeps which card is under the pointer, so its ⋯ shows.
+   * @param {string | null} itemId The card's board item id.
+   * @param {boolean} hovered Whether the pointer came onto it or left it.
+   * @param {object} cx The context.
+   * @returns {void}
+   */
+  hover(itemId, hovered, cx) {
+    const next = hovered ? itemId : this.hoverCard === itemId ? null : this.hoverCard;
+    if (next === this.hoverCard) return;
+    this.hoverCard = next;
+    cx.notify();
   }
 
   /**
@@ -259,12 +784,21 @@ export class BoardState {
     return { apply: () => Object.assign(item, fields), revert: () => Object.assign(item, before) };
   }
 
-  /** Keeps a card's drawn height, for finding the drop spot. */
+  /**
+   * Keeps a card's drawn height, for finding the drop spot.
+   * @param {string} itemId The card's board item id.
+   * @param {number} height Its height, in measured units.
+   * @returns {void}
+   */
   measureCard(itemId, height) {
     this.cardHeights.set(itemId, height);
   }
 
-  /** Keeps a column header's drawn height, for finding the drop spot. */
+  /**
+   * Keeps a column header's drawn height, for finding the drop spot.
+   * @param {number} height Its height, in measured units.
+   * @returns {void}
+   */
   measureHeader(height) {
     this.headerHeight = height;
   }
@@ -353,7 +887,13 @@ export class BoardState {
     return !this.drag?.moved;
   }
 
-  /** Drops a dragged card on the column under the pointer: it moves to that status. */
+  /**
+   * Drops a dragged card on the column under the pointer: it moves to that status and place, and
+   * a move to another status shows the toast with Undo.
+   * @param {object} ws The workspace.
+   * @param {object} cx The context.
+   * @returns {void}
+   */
   drop(ws, cx) {
     const drag = this.drag;
     this.drag = null;
@@ -364,7 +904,7 @@ export class BoardState {
     const before = overItems[index] ?? null;
     const items = this.view.model?.workspaces?.[ws.name]?.boardView?.items;
     if (!items) return;
-    const sameStatus = item.status === column;
+    const sameStatus = (item.status ?? NO_STATUS) === column;
     const at = items.indexOf(item);
     if (sameStatus && (after ? items.indexOf(after) === at - 1 : before ? items.indexOf(before) === at + 1 : true)) return;
     const meta = this.meta(ws);
@@ -373,7 +913,9 @@ export class BoardState {
       return;
     }
     const order = items.slice();
-    const status = this.fieldChange(item, { status: column });
+    const from = item.status;
+    const to = column === NO_STATUS ? null : column;
+    const status = this.fieldChange(item, { status: to });
     const change = {
       apply: () => {
         status.apply();
@@ -390,10 +932,13 @@ export class BoardState {
       item,
       change,
       async () => {
-        if (!sameStatus) await setStatus(meta, item, column);
+        if (!sameStatus) await setStatus(meta, item, to);
         await setPosition(meta, item, after);
       },
       cx,
+      (cx) => {
+        if (!sameStatus) this.movedToast(ws, item, { from, to, order }, cx);
+      },
     );
   }
 
@@ -405,15 +950,37 @@ export class BoardState {
     if (moved) cx.notify();
   }
 
-  /** Opens a card's menu, and reads its repository's milestones the first time. */
-  openMenu(item, cx) {
+  /**
+   * The ⋯ on a card, or a right click: opens its menu, or closes it when it is the open one.
+   * @param {object} item The board item.
+   * @param {object} cx The context.
+   * @param {boolean} [keyboard] Opened from the keyboard: the keyboard moves into the menu.
+   * @returns {void}
+   */
+  toggleMenu(item, cx, keyboard = false) {
+    if (this.menuFor !== null && this.menuFor === item.itemId) return this.closeMenu(cx, keyboard);
+    this.openMenu(item, cx, keyboard);
+  }
+
+  /**
+   * Opens a card's menu, and reads its repository's milestones the first time.
+   * @param {object} item The board item.
+   * @param {object} cx The context.
+   * @param {boolean} [keyboard] Opened from the keyboard: the keyboard moves to its first row.
+   * @returns {void}
+   */
+  openMenu(item, cx, keyboard = false) {
     if (!item.itemId) {
       this.writeError = "Refresh to load the board's ids before changing a card.";
       cx.notify();
       return;
     }
+    this.focus ??= { main: cx.focus_handle(), sub: cx.focus_handle(), dots: cx.focus_handle() };
+    this.closePending = false;
     this.menuFor = item.itemId;
+    this.lastMenuFor = item.itemId;
     this.submenu = null;
+    if (keyboard) cx.timer.after(50, () => this.focus.main.focus());
     const repo = item.repo;
     if (this.view.demo && repo) this.milestones[repo] = { list: demoMilestones(repo) };
     if (item.kind !== "draft" && repo && !this.milestones[repo]) {
@@ -443,19 +1010,51 @@ export class BoardState {
     });
   }
 
-  /** A press in the submenu: the menu stays open. */
+  /**
+   * A press in the submenu: the menu stays open.
+   * @returns {void}
+   */
   pressInsideMenu() {
     this.closePending = false;
   }
 
-  /** Closes the card menu. */
-  closeMenu(cx) {
-    if (this.menuFor === null) return;
-    this.menuFor = null;
+  /**
+   * Opens one of the card menu's submenus, or shuts it (null). From the keyboard, the keyboard
+   * moves to its first row, or back to the main menu.
+   * @param {"status" | "iteration" | "milestone" | null} name The submenu.
+   * @param {object} cx The context.
+   * @param {boolean} [keyboard] Whether a key opened it.
+   * @returns {void}
+   */
+  openSubmenu(name, cx, keyboard = false) {
+    if (keyboard && this.focus) cx.timer.after(50, () => (name ? this.focus.sub : this.focus.main).focus());
+    if (this.submenu === name) return;
+    this.submenu = name;
     cx.notify();
   }
 
-  /** Puts a card in an iteration, or in none, from its menu. */
+  /**
+   * Closes the card menu. Closed from the keyboard, the keyboard goes back to the card's ⋯.
+   * @param {object} cx The context.
+   * @param {boolean} [keyboard] Whether a key closed it.
+   * @returns {void}
+   */
+  closeMenu(cx, keyboard = false) {
+    if (this.menuFor === null) return;
+    this.menuFor = null;
+    this.closePending = false;
+    if (keyboard && this.focus) cx.timer.after(50, () => this.focus.dots.focus());
+    cx.notify();
+  }
+
+  /**
+   * Puts a card in an iteration, or in none, from its menu.
+   * @param {object} ws The workspace.
+   * @param {object} item The board item.
+   * @param {object | null} iteration The iteration, or null for none.
+   * @param {object} cx The context.
+   * @returns {void}
+   */
   pickIteration(ws, item, iteration, cx) {
     this.menuFor = null;
     const meta = this.meta(ws);
@@ -468,7 +1067,13 @@ export class BoardState {
     );
   }
 
-  /** Sets a card's milestone, or none, from its menu. */
+  /**
+   * Sets a card's milestone, or none, from its menu.
+   * @param {object} item The board item.
+   * @param {object | null} milestone The milestone, or null for none.
+   * @param {object} cx The context.
+   * @returns {void}
+   */
   pickMilestone(item, milestone, cx) {
     this.menuFor = null;
     if ((milestone?.id ?? null) === (item.milestone?.id ?? null)) return cx.notify();

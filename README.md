@@ -119,12 +119,15 @@ the Overview starts on all your repositories.
   button, from every repository in scope. Both buttons open a Claude Code tab running the prompt set in
   Settings, in that repository's local clone, and show only when the prompt is set.
 - **Board:** a workspace's board items, a column per status, with each card's assignee avatars.
-  Its filter field takes the board's own syntax, such as `type:Bug iteration:@current`: Enter
-  applies and saves it, Esc puts the saved one back. The avatars on top pick whose items show,
-  several at once. A card names its iteration, unless the filter already asks for that one.
-  Settings holds an On Board tick per status that picks the columns. Drag a card
-  to another column to move it to that status; right-click it to change its iteration or
-  milestone. Both write to GitHub at once, so `gh` needs the `project` scope.
+  The filter's summary on the header ("Filter: current iteration · 5 columns") opens its editor:
+  chips for Type, Columns and People, and the board filter in the board's own syntax, such as
+  `type:Bug iteration:@current`. A chip or Enter applies it as a preview; nothing is saved until
+  "Save for this board", which writes the filter and the columns (the On Board ticks in
+  Settings). Reset or Esc goes back to the saved one. People are remembered on this computer
+  only. A card names its iteration, unless the filter already asks for that one. Drag a card to
+  another column to move it to that status; its ⋯ (or a right click) moves it, or changes its
+  iteration or milestone. These write to GitHub at once, so `gh` needs the `project` scope; after
+  a move, a toast offers Undo.
 - **Herds:** your Claude Code sessions and their agents, and how they are linked. A session that messaged others
   (`SendMessage`) or made their worktrees is a herdsman, marked with a crook: drawn on top, with a line down to each
   of its herd, labelled `msg 12:36` for its latest message or dotted `worktree`. Who and when

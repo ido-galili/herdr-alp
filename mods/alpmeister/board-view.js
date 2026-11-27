@@ -1,9 +1,11 @@
 // Board: a workspace's board items that match the Board tab filter, one column per status, as
-// GitHub's board shows them. Each card carries its assignees' avatars. Dragging a card to another
-// column moves it to that status; a right click opens its menu for the iteration and milestone.
+// GitHub's board shows them. Each card carries its assignees' avatars. The filter's summary sits
+// on the header and opens its editor. Dragging a card to another column moves it to that status,
+// and a toast offers Undo; the ⋯ on a card (shown on hover or focus), or a right click, opens its
+// menu to move it or set its iteration and milestone.
 
 import { div, image, svg } from "gpui-kit";
-import { h_flex, v_flex, Input, Popup } from "gpui-base";
+import { h_flex, v_flex, Popup } from "gpui-base";
 import { theme } from "herdr";
 import { boardFilter, boardStatuses } from "./data.js";
 import { prChip } from "./in-flight.js";
@@ -24,9 +26,9 @@ import {
   warningColor,
 } from "./ui.js";
 
-const NO_STATUS = "No status";
+/** The column of items with no status. */
+export const NO_STATUS = "No status";
 const AVATAR_SIZE = 20;
-const PICKER_SIZE = 26;
 const COLUMN_GAP = 8;
 /** A column's padding on each side, between its edge and its cards. */
 export const COLUMN_PADDING = 4;
@@ -191,6 +193,7 @@ function ItemCard(t, item, options) {
     .border_color(options.ghost || options.menuFor === item.itemId ? t.accent : t.border)
     .hover((style) => style.border_color(t.accent))
     .when(options.writing.has(item.itemId), (el) => el.opacity(0.6))
+    .when(!options.ghost, (el) => el.on_hover((hovered, cx) => options.onCardHover(item.itemId, hovered, cx)))
     .on_mouse_down("left", (event) => options.onCardDown(item, event))
     .on_mouse_down("right", (_event, cx) => {
       cx.stop_propagation();
@@ -236,7 +239,8 @@ function ItemCard(t, item, options) {
             .when(Boolean(session), (el) => el.child(SessionButton(`${id}-session`, session)))
             .when(linked, (el) =>
               el.children([options.pinFor("bv")(item), ClaudeButton("bv", item, options)].filter(Boolean)),
-            ),
+            )
+            .when(Boolean(item.itemId) && !options.ghost, (el) => el.child(MoreButton(t, item, id, options))),
         ),
     )
     .child(
@@ -269,7 +273,52 @@ function ItemCard(t, item, options) {
       ),
     );
   if (options.menuFor !== item.itemId) return card;
-  return Popup.new(`${id}-popup`, card).w_full().anchor("top_left").content(options.cardMenu(item, options.flipMenu));
+  return Popup.new(`${id}-popup`, card).w_full().anchor("top_left").content(options.cardMenu(item, options.flipMenu, options.columns));
+}
+
+/**
+ * The ⋯ on a card: it opens the card menu. It shows while the pointer is on the card, while
+ * its menu is open, and while it has the keyboard; it is a Tab stop, and Enter or Space opens the
+ * menu with the keyboard in it.
+ * @param {object} t The theme.
+ * @param {object} item The board item.
+ * @param {string} id The card's element id.
+ * @param {object} options The Board options.
+ * @returns {object} The button.
+ */
+function MoreButton(t, item, id, options) {
+  const open = options.menuFor === item.itemId;
+  const shown = open || options.hoverCard === item.itemId;
+  return div()
+    .id(`${id}-more`)
+    .flex_none()
+    .w(22)
+    .h(20)
+    .flex()
+    .items_center()
+    .justify_center()
+    .rounded(5)
+    .text_size(14)
+    .text_color(open ? t.foreground : t.muted)
+    .when(open, (el) => el.bg(t.hover))
+    .when(!shown, (el) => el.opacity(0))
+    .cursor_pointer()
+    .tab_index(0)
+    .when(Boolean(options.focus) && options.dotsFor === item.itemId, (el) => el.track_focus(options.focus.dots))
+    .hover((style) => style.bg(t.hover).text_color(t.foreground))
+    .focus((style) => style.opacity(1).bg(t.hover).text_color(t.foreground))
+    .tooltip("Move, iteration, milestone")
+    .on_mouse_down("left", (_event, cx) => cx.stop_propagation())
+    .on_click((_event, cx) => {
+      cx.stop_propagation();
+      options.onCardMenu(item, cx);
+    })
+    .on_key_down((event, cx) => {
+      if (event.key !== "enter" && event.key !== "space") return;
+      cx.stop_propagation();
+      options.onCardMenu(item, cx, true);
+    })
+    .child("⋯");
 }
 
 /**
@@ -277,7 +326,7 @@ function ItemCard(t, item, options) {
  * @param {object[]} items The board items.
  * @returns {{ login: string, avatar: string | null, count: number }[]}
  */
-function peopleOf(items) {
+export function peopleOf(items) {
   const people = new Map();
   for (const item of items) {
     const assignees = item.assignees.length ? item.assignees : [{ login: UNASSIGNED, avatar: null }];
@@ -306,84 +355,76 @@ function pickedItem(item, picked) {
 }
 
 /**
- * The filter field: the board's filter syntax, applied and saved on Enter, reverted on Esc.
+ * The toast after a move: what moved where, with Undo while it can be undone.
  * @param {object} t The theme.
- * @param {object} options The Board options.
- * @returns {object} The field.
+ * @param {{ text: string, status: string, tail: string, undo?: Function } | null} toast The toast.
+ * @param {(cx: object) => void} onUndo Undoes the move.
+ * @returns {object | null} The toast, or null without one.
  */
-function FilterField(t, options) {
+function MoveToast(t, toast, onUndo) {
+  if (!toast) return null;
   return h_flex()
-    .gap(8)
+    .id("bv-toast")
+    .self_center()
+    .h(34)
+    .pl(12)
+    .pr(toast.undo ? 5 : 12)
+    .gap(12)
     .items_center()
-    .child(div().flex_none().text_size(11.5).text_color(t.dim).child("Filter"))
+    .rounded(8)
+    .bg(t.selected)
+    .border_1()
+    .border_color(t.input)
+    .shadow_lg()
+    .text_size(12)
+    .text_color(t.foreground)
     .child(
-      div()
-        .flex_1()
-        .min_w(0)
-        .on_key_down((event, cx) => {
-          if (event.key !== "escape") return;
-          cx.stop_propagation();
-          options.onFilterRevert(cx);
-        })
-        .child(
-          Input.new(options.filterInput)
-            .h(26)
-            .px(8)
-            .rounded(6)
-            .border_1()
-            .border_color(options.filterError ? t.blocked : t.border)
-            .bg(t.canvas)
-            .text_size(12)
-            .text_color(t.foreground),
-        ),
+      h_flex()
+        .gap(4)
+        .child(div().child(toast.text))
+        .child(div().font_semibold().child(toast.status))
+        .child(div().text_color(t.muted).child(toast.tail)),
     )
-    .when(Boolean(options.filterBusy), (el) => el.child(div().flex_none().text_size(11.5).text_color(t.dim).child("Applying…")));
+    .when(Boolean(toast.undo), (el) =>
+      el.child(
+        h_flex()
+          .id("bv-toast-undo")
+          .h(24)
+          .px(10)
+          .items_center()
+          .rounded(6)
+          .bg(t.hover)
+          .font_semibold()
+          .cursor_pointer()
+          .tab_index(0)
+          .hover((style) => style.bg(t.input))
+          .focus((style) => style.bg(t.input))
+          .on_click((_event, cx) => {
+            cx.stop_propagation();
+            onUndo(cx);
+          })
+          .on_key_down((event, cx) => {
+            if (event.key !== "enter" && event.key !== "space") return;
+            cx.stop_propagation();
+            onUndo(cx);
+          })
+          .child("Undo"),
+      ),
+    );
 }
 
 /**
- * The people picker: every assignee's avatar with their item count, then Unassigned. A click
- * picks or unpicks one; with any picked, the board shows only their items.
+ * "Nothing matches. Clear filters", for a board the filter empties.
  * @param {object} t The theme.
- * @param {{ login: string, avatar: string | null, count: number }[]} people The people on the board.
- * @param {object} options The Board options.
- * @returns {object} The picker.
+ * @param {(cx: object) => void} onClear Clears the filters.
+ * @returns {object}
  */
-function PeoplePicker(t, people, options) {
-  const picked = options.picked;
+function NothingMatches(t, onClear) {
   return h_flex()
-    .flex_wrap()
     .gap(6)
     .items_center()
-    .children(
-      people.map((person) => {
-        const on = picked.has(person.login);
-        const key = person.login || "unassigned";
-        const label = person.login || "Unassigned";
-        return h_flex()
-          .id(`bv-pick-${key}`)
-          .flex_none()
-          .gap(4)
-          .p(2)
-          .pr(6)
-          .items_center()
-          .rounded_full()
-          .border_1()
-          .border_color(on ? t.accent : t.border)
-          .bg(on ? t.selected : t.background)
-          .cursor_pointer()
-          .when(picked.size > 0 && !on, (el) => el.opacity(0.5))
-          .hover((style) => style.border_color(t.accent))
-          .tooltip(`${label}: ${person.count} item${person.count === 1 ? "" : "s"}. Click to ${on ? "unpick" : "pick"}.`)
-          .on_click((_event, cx) => options.onTogglePerson(person.login, cx))
-          .child(
-            person.login
-              ? Avatar(t, person, `bv-pick-av-${key}`, options.avatarPath, PICKER_SIZE - 6)
-              : div().size(PICKER_SIZE - 6).rounded_full().border_1().border_color(t.dim),
-          )
-          .child(div().text_size(11.5).text_color(on ? t.foreground : t.muted).child(String(person.count)));
-      }),
-    )
-    .when(picked.size > 0, (el) => el.child(TextButton("bv-pick-clear", "Everyone", (cx) => options.onClearPeople(cx))));
+    .child(div().text_size(12).text_color(t.muted).child("Nothing matches."))
+    .child(TextButton("bv-clear-filters", "Clear filters", (cx) => onClear(cx)));
 }
 
 /**
@@ -415,14 +456,15 @@ export function NoBoard(onAdd) {
 }
 
 /**
- * The Board tab's card for one workspace: the filter field, the people picker, then a column
- * per status, each with its count.
- * @param {object} ws The workspace, with a board.
+ * The Board tab's card for one workspace: the filter's summary on the header and its editor
+ * while open, the toast after a move, then a column per status, each with its count.
+ * @param {object} ws The workspace, with a board, its applied filter in place of the saved one.
  * @param {object | undefined} wsModel The workspace's last load.
- * @param {{ loading: boolean, avatarPath(login: string): string | null, onEditStatuses(cx: object): void,
- *   filterInput: object, filterBusy: boolean, filterError: string | null, onFilterRevert(cx: object): void,
- *   picked: Set<string>, onTogglePerson(login: string, cx: object): void, onClearPeople(cx: object): void,
- *   pinFor(prefix: string): Function, launch: Function, prompt: Function }} options
+ * @param {{ loading: boolean, avatarPath(login: string): string | null,
+ *   filter: { summary: object, panel: object | null }, onChooseColumns(cx: object): void,
+ *   onClearFilters(cx: object): void, picked: Set<string>, toast: object | null, onUndo(cx: object): void,
+ *   pinFor(prefix: string): Function, launch: Function, prompt: Function }} options The rest
+ *   come from `BoardState.options()`.
  * @returns {object} The card.
  */
 export function Board(ws, wsModel, options) {
@@ -431,25 +473,31 @@ export function Board(ws, wsModel, options) {
   const items = view ? view.items.filter((item) => pickedItem(item, options.picked)) : [];
   const extras = [
     view ? Chip(items.length === view.total ? String(view.total) : `${items.length} of ${view.total}`, { color: t.dim }) : null,
-    TextButton("bv-statuses", "Statuses", (cx) => options.onEditStatuses(cx), {
-      tooltip: "Pick the Board's columns in Settings, in the status table's On Board column",
+    options.filter.summary,
+    TextButton("bv-choose-columns", "Choose columns ▾", (cx) => options.onChooseColumns(cx), {
+      tooltip: "Pick the board's columns, with its filter",
     }),
     wsModel?.boardUrl
       ? IconButton("bv-github", ICONS.github, () => openUrl(wsModel.boardUrl), { tooltip: "Open the board on GitHub" })
       : null,
   ].filter(Boolean);
-  let body = v_flex().gap(10).child(FilterField(t, options));
-  if (options.filterError) body = body.child(Note(options.filterError, t.blocked));
+  let body = v_flex().gap(10);
+  if (options.filter.panel) body = body.child(options.filter.panel);
+  const toast = MoveToast(t, options.toast, options.onUndo);
   const notice = wsModel?.errors?.boardView
     ? Note(`GitHub: ${wsModel.errors.boardView}`, t.blocked)
-    : !boardFilter(ws)
-      ? Note("Type a filter, or tick the Board's statuses in Settings.")
-      : !view
-        ? Note(options.loading ? "Loading from GitHub…" : "Refresh to load the board.")
-        : !view.items.length
-          ? Note(`Nothing matches ${view.filter}.`)
-          : null;
-  if (notice) return Card("board-view", ws.board.title || ws.name, extras, body.child(notice));
+    : !view
+      ? Note(
+          !boardFilter(ws)
+            ? "Type a board filter, or choose the columns."
+            : options.loading
+              ? "Loading from GitHub…"
+              : "Refresh to load the board.",
+        )
+      : !view.items.length
+        ? NothingMatches(t, options.onClearFilters)
+        : null;
+  if (notice) return Card("board-view", ws.board.title || ws.name, extras, body.when(Boolean(toast), (el) => el.child(toast)).child(notice));
   const cardOptions = {
     ...options,
     repo: ws.repo,
@@ -462,7 +510,8 @@ export function Board(ws, wsModel, options) {
   const shownIn = (column) =>
     items.filter((item) => (item.status ?? NO_STATUS) === column && item.itemId !== options.draggedId);
   body = body
-    .child(PeoplePicker(t, peopleOf(view.items), options))
+    .when(Boolean(toast), (el) => el.child(toast))
+    .when(!items.length, (el) => el.child(NothingMatches(t, options.onClearFilters)))
     .when(view.total > view.items.length, (el) =>
       el.child(Note(`Showing the first ${view.items.length} of ${view.total} items.`, warningColor(t))),
     )
@@ -486,7 +535,7 @@ export function Board(ws, wsModel, options) {
           columns.map((column, index) => {
             const columnItems = shownIn(column);
             const target = ghost !== null && options.dragOver === column;
-            const columnOptions = { ...cardOptions, flipMenu: index >= columns.length / 2 };
+            const columnOptions = { ...cardOptions, columns, flipMenu: index >= columns.length / 2 };
             const cards = columnItems.map((item) => ItemCard(t, item, columnOptions));
             if (target) {
               const slot = div()

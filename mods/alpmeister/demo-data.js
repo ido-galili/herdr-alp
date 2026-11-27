@@ -11,6 +11,7 @@ import { normalizeConfig } from "./config.js";
 import { MODEL_VERSION, boardFilter, workspaceQueries } from "./data.js";
 import { today } from "./focus.js";
 import { matchesSearch } from "./search-terms.js";
+import { matchesBoard } from "./board-terms.js";
 
 const MIN = 60000;
 const HOUR = 60 * MIN;
@@ -460,6 +461,35 @@ export function demoCardSearch(account, key, query) {
   return next;
 }
 
+/** Each demo workspace's model, by its name. */
+const WORKSPACES = { Website: website, "Herdr core": herdrCore, Alphorn: alphorn };
+
+/**
+ * A demo workspace's model with its board's cards filtered by the workspace's Board filter, as
+ * GitHub would: `loadBoardView()` on the made-up cards.
+ * @param {object} model The workspace's model, as built.
+ * @param {object} ws The normalized workspace.
+ * @returns {object} The model, its `boardView` holding only the matching cards.
+ */
+function filteredBoard(model, ws) {
+  if (!model.boardView) return model;
+  const filter = boardFilter(ws);
+  const context = { viewer: VIEWER, iteration: model.iteration?.title ?? null };
+  const items = model.boardView.items.filter((item) => matchesBoard(item, filter, context));
+  return { ...model, boardView: { ...model.boardView, filter, total: items.length, items } };
+}
+
+/**
+ * A demo workspace's board with another filter, for a filter applied on the Board: nothing is
+ * fetched, the made-up cards are filtered again, and a move made earlier is not kept.
+ * @param {object} ws The normalized workspace, with the filter in `boardView`.
+ * @returns {object | null} The board, in `loadBoardView()`'s shape; null for a workspace without one.
+ */
+export function demoBoardView(ws) {
+  const build = WORKSPACES[ws.name];
+  return build ? (filteredBoard(build(ws, Date.now()), ws).boardView ?? null) : null;
+}
+
 /**
  * The whole demo model, in `loadAll()`'s shape.
  * @param {object} config The demo settings, from `demoConfig()`.
@@ -467,13 +497,14 @@ export function demoCardSearch(account, key, query) {
  */
 export function demoModel(config) {
   const now = Date.now();
-  const build = { Website: website, "Herdr core": herdrCore, Alphorn: alphorn };
   return {
     version: MODEL_VERSION,
     fetchedAt: now,
     errors: {},
     account: account(config, now),
-    workspaces: Object.fromEntries(config.workspaces.map((ws) => [ws.name, build[ws.name]?.(ws, now) ?? { fetchedAt: now, errors: {} }])),
+    workspaces: Object.fromEntries(
+      config.workspaces.map((ws) => [ws.name, WORKSPACES[ws.name] ? filteredBoard(WORKSPACES[ws.name](ws, now), ws) : { fetchedAt: now, errors: {} }]),
+    ),
   };
 }
 

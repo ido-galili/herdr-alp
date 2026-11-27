@@ -557,7 +557,7 @@ export default class Alpmeister extends View {
         try {
           const config = await this.loadSettings();
           if (config) {
-            const searched = this.withCardEdits(config);
+            const searched = this.boardState.withEdits(this.withCardEdits(config));
             this.model = this.demo ? demoModel(searched) : await loadAll(searched);
             this.failure = null;
             if (!this.demo) {
@@ -1437,11 +1437,10 @@ export default class Alpmeister extends View {
       .gap(14)
       .when(Boolean(switcher), (el) => el.child(switcher))
       .child(
-        Board(ws, wsModel, {
+        Board(state.effective(ws), wsModel, {
           ...this.launchActions(),
           loading: this.loading,
           avatarPath: (login) => this.avatars.path(login),
-          onEditStatuses: (cx) => this.openSettings({ workspace: ws.name }, cx),
           ...state.options(ws),
           pinFor: (prefix) => this.pinFor(prefix),
         }),

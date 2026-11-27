@@ -646,17 +646,23 @@ export function filterColor(t, look) {
  *   open: boolean,
  *   onToggle(cx: object): void,
  *   chips: { id: string, label: string, on: boolean, add?: boolean, tooltip?: string, onPress(cx: object): void }[],
+ *   groups?: { label: string, chips: object[], note?: string }[],
  *   input: object,
  *   inputLabel?: string,
  *   onApply(cx: object): void,
- *   onSave(cx: object): void,
- *   onReset(cx: object): void,
+ *   onSave: ((cx: object) => void) | null,
+ *   onReset: ((cx: object) => void) | null,
+ *   onEscape?(cx: object): boolean,
  *   saveLabel?: string,
+ *   resetLabel?: string,
+ *   resetTooltip?: string,
  *   busy?: boolean,
  *   message?: { text: string, error?: boolean } | null,
  *   lookWords?: { default?: string, edited?: string, saved?: string },
  * }} options `input` is the raw search's InputState; `lookWords` names the three states in the
- *   status line.
+ *   status line. `groups`, in place of `chips`, draws the chips in labelled rows, each with an
+ *   optional dim note. A null `onSave` or `onReset` leaves that button out. `onEscape` runs
+ *   first on Esc; when it answers true, the editor stays open.
  * @returns {{ summary: object, panel: object | null }} The header's summary, and the editor (null when shut).
  */
 export function FilterControl(id, options) {
@@ -666,6 +672,7 @@ export function FilterControl(id, options) {
   const close = (event, cx) => {
     if (event.key !== "escape") return;
     cx.stop_propagation();
+    if (options.onEscape?.(cx)) return;
     if (options.open) options.onToggle(cx);
   };
   const summary = h_flex()
@@ -727,7 +734,7 @@ export function FilterControl(id, options) {
       .on_key_down(pressOnKey(press))
       .child(entry.on ? `✓ ${entry.label}` : entry.label);
   };
-  const button = (name, label, press, primary) =>
+  const button = (name, label, press, primary, tooltip) =>
     h_flex()
       .id(`${id}-${name}`)
       .flex_none()
@@ -742,6 +749,7 @@ export function FilterControl(id, options) {
       .tab_index(0)
       .focus((style) => (primary ? style.opacity(0.85) : style.bg(t.hover).text_color(t.foreground)))
       .when(Boolean(options.busy), (el) => el.opacity(0.6))
+      .when(Boolean(tooltip), (el) => el.tooltip(tooltip))
       .on_click((_event, cx) => {
         cx.stop_propagation();
         if (!options.busy) press(cx);
@@ -757,7 +765,27 @@ export function FilterControl(id, options) {
     .border_color(t.input)
     .bg(t.canvas)
     .on_key_down(close)
-    .child(h_flex().flex_wrap().gap(6).children(options.chips.map(chip)))
+    .when(!options.groups, (el) => el.child(h_flex().flex_wrap().gap(6).children(options.chips.map(chip))))
+    .when(Boolean(options.groups), (el) =>
+      el.children(
+        options.groups.map((group) =>
+          h_flex()
+            .gap(8)
+            .items_start()
+            .child(div().flex_none().w(64).h(24).flex().items_center().text_size(11.5).text_color(t.dim).child(group.label))
+            .child(
+              h_flex()
+                .flex_1()
+                .min_w(0)
+                .flex_wrap()
+                .gap(6)
+                .items_center()
+                .children(group.chips.map(chip))
+                .when(Boolean(group.note), (row) => row.child(div().h(24).flex().items_center().text_size(11.5).text_color(t.dim).child(group.note))),
+            ),
+        ),
+      ),
+    )
     .child(
       h_flex()
         .gap(8)
@@ -792,8 +820,10 @@ export function FilterControl(id, options) {
         .child(div().flex_none().size(7).rounded(4).bg(options.look === "default" ? t.dim : color))
         .child(div().text_color(options.look === "default" ? t.dim : color).child(options.busy ? "Fetching…" : words[options.look]))
         .child(div().flex_1())
-        .child(button("reset", "Reset to default", options.onReset, false))
-        .child(button("save", options.saveLabel ?? "Save for this card", options.onSave, true)),
+        .when(Boolean(options.onReset), (row) =>
+          row.child(button("reset", options.resetLabel ?? "Reset to default", options.onReset, false, options.resetTooltip)),
+        )
+        .when(Boolean(options.onSave), (row) => row.child(button("save", options.saveLabel ?? "Save for this card", options.onSave, true))),
     );
   return { summary, panel };
 }
