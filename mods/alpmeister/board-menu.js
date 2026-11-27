@@ -62,9 +62,9 @@ function Row(t, id, { label, note, ticked, onPick }) {
       cx.stop_propagation();
       onPick(cx);
     })
-    .child(div().w(12).text_size(11).text_color(t.accent).child(ticked ? "✓" : ""))
+    .child(div().w(12).text_size(11.5).text_color(t.accent).child(ticked ? "✓" : ""))
     .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(t.foreground).child(label))
-    .when(Boolean(note), (el) => el.child(div().flex_none().text_size(10.5).text_color(t.dim).child(note)));
+    .when(Boolean(note), (el) => el.child(div().flex_none().text_size(11.5).text_color(t.dim).child(note)));
 }
 
 /** A menu panel. */
@@ -77,6 +77,10 @@ const Line = (t, text, color) => div().px(8).py(4).text_size(11.5).text_color(co
 /**
  * A top-level row: its name, the card's current value, and a chevron. Pointing at it or
  * clicking it opens its menu.
+ * @param {object} t The theme.
+ * @param {string} id A unique element id.
+ * @param {{ icon?: string, label: string, value: string, open: boolean, onOpen: Function }} row Its icon, name, current value, whether its menu is open, and what opens it.
+ * @returns {object} The row.
  */
 function SubmenuRow(t, id, { icon, label, value, open, onOpen }) {
   return h_flex()
@@ -99,7 +103,7 @@ function SubmenuRow(t, id, { icon, label, value, open, onOpen }) {
     })
     .child(svg(icon).flex_none().size(13).text_color(t.muted))
     .child(div().flex_none().text_size(12).text_color(t.foreground).child(label))
-    .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(value))
+    .child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(t.dim).child(value))
     .child(div().flex_none().text_size(12).text_color(t.dim).child("›"));
 }
 

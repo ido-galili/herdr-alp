@@ -81,6 +81,16 @@ export function formatTime(time) {
 /** Whole days from now until `time`, never below zero. */
 export const daysUntil = (time) => Math.max(0, Math.ceil((time - Date.now()) / DAY));
 
+/**
+ * The warning color: orange, for cautions that are not errors (stale data, unsaved edits,
+ * "Unassigned"). Yellow stays for working and red for "act now".
+ * @param {object} t The theme.
+ * @returns {string} The theme's `warning`, or orange when the theme has none.
+ */
+export function warningColor(t) {
+  return t.warning ?? "#ffb86c";
+}
+
 /** The theme color for a board status, matching the agents list: working, review, done. */
 export function statusColor(t, status) {
   if (!status) return t.dim;
@@ -102,17 +112,23 @@ export function typeColor(t, type) {
   return t.muted;
 }
 
-/** A chip as the pane header draws them: 18px, rounded, `hover` fill. */
+/**
+ * A chip as the pane header draws them: 20px, rounded, `hover` fill.
+ * @param {string | object} text The chip's label, or an element.
+ * @param {{ color?: string, fill?: string, tooltip?: string, id?: string }} [options] Its text color,
+ *   fill, and a tooltip (shown only with an id).
+ * @returns {object} The chip.
+ */
 export function Chip(text, { color, fill, tooltip, id } = {}) {
   const t = theme();
   const chip = h_flex()
     .flex_none()
     .px(6)
-    .h(18)
+    .h(20)
     .items_center()
     .rounded(5)
     .bg(fill ?? t.hover)
-    .text_size(10.5)
+    .text_size(11.5)
     .text_color(color ?? t.muted)
     .child(text);
   return tooltip && id ? chip.id(id).tooltip(tooltip) : chip;
@@ -193,7 +209,14 @@ export function Card(id, title, extras, body, note) {
     .child(body);
 }
 
-/** A small text button in the agents list's style. */
+/**
+ * A small text button in the agents list's style.
+ * @param {string} id A unique element id.
+ * @param {string} label The label.
+ * @param {Function} onClick Called with the window context.
+ * @param {{ icon?: string, tooltip?: string }} [options] An icon before the label, and a tooltip.
+ * @returns {object} The button.
+ */
 export function TextButton(id, label, onClick, { icon, tooltip } = {}) {
   const t = theme();
   const button = h_flex()
@@ -204,7 +227,7 @@ export function TextButton(id, label, onClick, { icon, tooltip } = {}) {
     .h(20)
     .items_center()
     .rounded(5)
-    .text_size(10.5)
+    .text_size(11.5)
     .text_color(t.dim)
     .cursor_pointer()
     .hover((style) => style.bg(t.hover).text_color(t.foreground))
@@ -380,7 +403,7 @@ export function Segmented(id, options, value, onPick) {
           .gap(5)
           .items_center()
           .rounded(5)
-          .text_size(10.5)
+          .text_size(11.5)
           .cursor_pointer()
           .bg(option.value === value ? t.selected : t.canvas)
           .text_color(option.value === value ? t.foreground : t.dim)
@@ -396,7 +419,15 @@ export function Segmented(id, options, value, onPick) {
     );
 }
 
-/** A filter toggle: a checkbox-like dot and its label, in the accent color while on. */
+/**
+ * A filter toggle: a checkbox-like dot and its label, in the accent color while on.
+ * @param {string} id A unique element id.
+ * @param {string} label The label.
+ * @param {boolean} on Whether it is on.
+ * @param {Function} onToggle Called with the window context.
+ * @param {string} [tooltip] A tooltip.
+ * @returns {object} The toggle.
+ */
 export function Toggle(id, label, on, onToggle, tooltip) {
   const t = theme();
   return h_flex()
@@ -407,7 +438,7 @@ export function Toggle(id, label, on, onToggle, tooltip) {
     .h(20)
     .items_center()
     .rounded(5)
-    .text_size(10.5)
+    .text_size(11.5)
     .text_color(on ? t.foreground : t.dim)
     .cursor_pointer()
     .hover((style) => style.bg(t.hover))
@@ -468,14 +499,20 @@ export const Note = (text, color) =>
     .text_color(color ?? theme().dim)
     .child(text);
 
-/** A group heading inside a card: a status name and its count. */
+/**
+ * A group heading inside a card: a status name and its count.
+ * @param {string} name The status name.
+ * @param {number} count How many items it has.
+ * @param {string} color The status color.
+ * @returns {object} The heading.
+ */
 export function GroupHeading(name, count, color) {
   const t = theme();
   return h_flex()
     .pt(6)
     .gap(6)
     .items_center()
-    .text_size(11)
+    .text_size(11.5)
     .child(div().size(7).rounded(4).bg(color))
     .child(div().font_medium().text_color(t.foreground).child(name))
     .child(div().text_color(t.dim).child(String(count)));

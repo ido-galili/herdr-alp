@@ -79,18 +79,23 @@ export function branchOf(session) {
   return session.branch ?? null;
 }
 
-/** The branch tag at the bottom of a card, drawn like the pane header's: icon and name. */
+/**
+ * The branch tag at the bottom of a card, drawn like the pane header's chips: icon and name.
+ * @param {object} t The theme.
+ * @param {string} branch The branch name.
+ * @returns {object} The tag.
+ */
 function BranchTag(t, branch) {
   return h_flex()
     .max_w_full()
     .min_w(0)
     .gap(4)
     .px(6)
-    .h(18)
+    .h(20)
     .items_center()
     .rounded(5)
     .bg(t.hover)
-    .text_size(10.5)
+    .text_size(11.5)
     .text_color(t.muted)
     .child(svg("mods/workspace-chrome/git-branch.svg").size(11).flex_none())
     .child(div().min_w(0).truncate().child(branch));
@@ -117,7 +122,15 @@ export function RoleIcon(t, id, role, color) {
   return div().id(id).flex_none().text_color(color ?? t.muted).tooltip(tooltip).child(svg(icon).size(14));
 }
 
-/** The tabs to link a background session to: tabs viewing a background session first. */
+/**
+ * The tabs to link a background session to: tabs viewing a background session first.
+ * @param {object} t The theme.
+ * @param {string} sessionId The background session to link.
+ * @param {object[]} sessions Every session.
+ * @param {Map} live The live tabs by terminal.
+ * @param {object} actions The tab's callbacks.
+ * @returns {object} The picker.
+ */
 function TabPicker(t, sessionId, sessions, live, actions) {
   const viewers = new Set(sessions.filter((session) => session.viewer).map((session) => session.terminal));
   const tabs = [...live.values()]
@@ -132,7 +145,7 @@ function TabPicker(t, sessionId, sessions, live, actions) {
     .border_1()
     .border_color(t.border)
     .bg(t.background)
-    .child(div().px(6).py(2).text_size(10.5).text_color(t.dim).child("Which tab shows it?"))
+    .child(div().px(6).py(2).text_size(11.5).text_color(t.dim).child("Which tab shows it?"))
     .children(
       tabs.map((agent) =>
         h_flex()
@@ -148,7 +161,7 @@ function TabPicker(t, sessionId, sessions, live, actions) {
           .on_click((_event, cx) => actions.link(sessionId, agent.address, cx))
           .child(div().flex_1().min_w(0).truncate().child(`${agent.space_name} / ${agent.title || agent.tab_name}`))
           .when(viewers.has(agent.address), (el) =>
-            el.child(div().text_size(10).text_color(t.accent).child("shows a background session")),
+            el.child(div().text_size(11.5).text_color(t.accent).child("shows a background session")),
           ),
       ),
     )
@@ -215,6 +228,11 @@ function sortedBySpace(grazing, live, model) {
  * A grazing session as a card: a stripe in its space's color down the left edge, its status and
  * name, the space's avatar in the corner (its name on hover), and below what its tab is called,
  * or the space's name when the tab is titled with the session's own. A click opens its tab.
+ * @param {object} t The theme.
+ * @param {object} session The session.
+ * @param {Map} live The live tabs by terminal.
+ * @param {object} actions The tab's callbacks.
+ * @returns {object} The card.
  */
 function GrazingCard(t, session, live, actions) {
   const agent = live.get(session.terminal);
@@ -267,7 +285,7 @@ function GrazingCard(t, session, live, actions) {
             .h(20)
             .gap(6)
             .items_center()
-            .child(div().flex_1().min_w(0).truncate().text_size(10.5).text_color(t.dim).child(second))
+            .child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(t.dim).child(second))
             .children([LinkButton(session, actions, "hg")].filter(Boolean)),
         )
         .when(Boolean(branchOf(session)), (el) => el.child(h_flex().pt(2).child(BranchTag(t, branchOf(session))))),
@@ -342,7 +360,7 @@ export function Herds(model, actions) {
                 el.child(
                   v_flex()
                     .gap(2)
-                    .text_size(10.5)
+                    .text_size(11.5)
                     .text_color(t.dim)
                     .children(
                       others.map((link) =>

@@ -150,6 +150,11 @@ export default class Agents extends View {
     return RANK[a.status] ?? 0;
   }
 
+  /**
+   * The sort popup: a row per sort order, the current one ticked.
+   * @param {Record<string, string>} t The theme.
+   * @returns {object}
+   */
   sortMenu(t) {
     const on = sortOf().id;
     return v_flex()
@@ -157,7 +162,7 @@ export default class Agents extends View {
       .p(5)
       .bg(t.popover)
       .text_size(12.8)
-      .child(div().px(8).pt(4).pb(6).text_size(11).text_color(t.dim).child("Sort agents"))
+      .child(div().px(8).pt(4).pb(6).text_size(11.5).text_color(t.dim).child("Sort agents"))
       .children(SORTS.map((s) => h_flex()
         .id(`sort-${s.id}`)
         .h(31)
@@ -218,12 +223,19 @@ export default class Agents extends View {
       .child(this.status(t, { status: st }, compact));
   }
 
-  // compact: a ! for blocked where a header already says "Needs you".
+  /**
+   * An agent's status mark: a spinner while working, "Needs you" (compact: a "!" where a header
+   * already says it), a dot when done, a ring when idle.
+   * @param {Record<string, string>} t The theme.
+   * @param {{ status: string }} a The agent, or just its status.
+   * @param {boolean} [compact] Show a "!" tile instead of "Needs you".
+   * @returns {object}
+   */
   status(t, a, compact = false) {
     const color = t[a.status] ?? t.dim;
     if (a.status === "working") return svg("mods/workspace-chrome/spinner.svg").size(12).mx(1).flex_none().text_color(t.working).spin(900);
     if (a.status === "blocked" && compact) return div().size(14).flex_none().rounded(4).bg(t.blocked + "26").text_size(10.5).font_bold().text_color(t.blocked).flex().items_center().justify_center().child("!");
-    if (a.status === "blocked") return div().flex_none().px(6).h(18).rounded(5).bg(t.blocked + "26").text_size(10.5).font_semibold().text_color(t.blocked).flex().items_center().child("Needs you");
+    if (a.status === "blocked") return div().flex_none().px(6).h(18).rounded(5).bg(t.blocked + "26").text_size(11.5).font_semibold().text_color(t.blocked).flex().items_center().child("Needs you");
     // Idle: a ring; done: a dot.
     if (a.status === "idle") return div().size(7).mx(3).flex_none().rounded(4).border(1.5).border_color(t.idle ?? t.dim);
     return div().size(7).mx(3).flex_none().rounded(4).bg(a.status === "done" ? color : t.dim + "00");
@@ -281,7 +293,7 @@ export default class Agents extends View {
         .flex()
         .items_center()
         .rounded(4)
-        .text_size(11)
+        .text_size(11.5)
         .text_color(open ? t.dim : (t[top] ?? t.dim))
         .cursor_pointer()
         .hover((s) => s.bg(t.hover).text_color(t.foreground))
@@ -349,7 +361,7 @@ export default class Agents extends View {
           .child(div().relative().flex_none()
             .child(h_flex().size(22).rounded(6).items_center().justify_center()
               .bg(quiet ? fill + "33" : fill)
-              .text_size(11).font_bold().text_color(quiet ? fill : "#ffffff")
+              .text_size(11.5).font_bold().text_color(quiet ? fill : "#ffffff")
               .child(String(i + 1)))
             .when(Boolean(badge), (el) => el.child(badge)));
       }
@@ -403,10 +415,10 @@ export default class Agents extends View {
         .child(h_flex().flex_1().min_w(0).gap(7).items_center()
           .when(full, el => el.child(avatar(t, colors, `ag-space-${a.address}`, a.space, a.space_name, 14).tooltip(a.space_name || "")))
           .child(div().min_w(0).max_w(200).truncate().text_color(idle ? t.muted : t.foreground).child(name)))
-        .when(Boolean(machine), el => el.child(div().text_size(10).text_color(t.dim).child(machine)))
+        .when(Boolean(machine), el => el.child(div().text_size(11.5).text_color(t.dim).child(machine)))
         .when(subs.length > 0, el => el.child(fold(a, subs)))
         .when(this.hovered === a.address, el => el.child(pin))
-        .when(this.hovered !== a.address && Boolean(when), el => el.child(div().flex_none().text_size(11).text_color(t.dim).child(duration(now - when))))
+        .when(this.hovered !== a.address && Boolean(when), el => el.child(div().flex_none().text_size(11.5).text_color(t.dim).child(duration(now - when))))
         .child(this.status(t, a, byPriority && !isPinned));
     };
 
@@ -432,7 +444,7 @@ export default class Agents extends View {
         .flex_none()
         .gap(6)
         .items_center()
-        .text_size(11)
+        .text_size(11.5)
         .font_medium()
         .cursor_pointer()
         .hover((s) => s.text_color(t.foreground))
@@ -473,7 +485,7 @@ export default class Agents extends View {
             .child(
               div()
                 .id("ag-sort")
-                .text_size(11)
+                .text_size(11.5)
                 .text_color(t.dim)
                 .hover((s) => s.text_color(t.foreground))
                 .on_click(() => openOverlay({ mod: "alp-agents", kind: "popup", width: 200, height: 140, props: { sortMenu: true } }))

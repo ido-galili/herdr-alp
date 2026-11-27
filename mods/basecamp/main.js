@@ -67,6 +67,12 @@ export default class Basecamp extends View {
     });
   }
 
+  /**
+   * The Basecamp tab strip: a tab per stack child, with its count (open trail items, or runs
+   * still running in the working colour).
+   * @param {object} cx The view's context.
+   * @returns {object}
+   */
   render(cx) {
     this.syncTrail(cx);
     const t = theme();
@@ -96,7 +102,7 @@ export default class Basecamp extends View {
         .when(count > 0, (el) =>
           el.child(
             div()
-              .text_size(10.5)
+              .text_size(11.5)
               .text_color(item.child === "basecamp-run" ? t.working : t.accent)
               .child(String(count)),
           ),

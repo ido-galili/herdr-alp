@@ -77,6 +77,13 @@ export function glyph(status) {
   return status === "blocked" || status === "done" ? "●" : "·";
 }
 
+/**
+ * The theme's warning colour (orange): a theme may not carry `warning`, so fall back to Alp's.
+ * @param {Record<string, string>} t The theme.
+ * @returns {string} The warning colour.
+ */
+const warning = (t) => t.warning ?? "#ffb86c";
+
 export function tone(t, status) {
   return t[status] ?? t.unknown;
 }
@@ -357,7 +364,12 @@ export default class Spaces extends View {
     return out.filter(r => this.shown.has(r.w.id));
   }
 
-  // The rows, under a header per machine once one isn't this computer.
+  /**
+   * The rows, under a header per machine once one isn't this computer.
+   * @param {Record<string, string>} t The theme.
+   * @param {boolean} collapsed Whether the sidebar is the rail.
+   * @returns {object[]} The headers and rows, in order.
+   */
   grouped(t, collapsed) {
     const rows = this.ordered();
     const draw = (r) => (collapsed ? this.compact(r, t) : this.row(r, t));
@@ -388,7 +400,7 @@ export default class Spaces extends View {
       const folded = this.folded.has(m);
       const icon = svg(`mods/workspace-chrome/${m ? "server" : "monitor"}.svg`).size(13).flex_none();
       const badge = div().absolute().right(-3).bottom(-2).size(6).rounded(3).border_1().border_color(t.chrome).bg(connected ? t.ansi2 : t.dim);
-      const head = h_flex().id(`machine-${m ?? "local"}`).h(26).flex_none().px(collapsed ? 0 : 8).gap(7).items_center().text_size(11).text_color(t.dim)
+      const head = h_flex().id(`machine-${m ?? "local"}`).h(26).flex_none().px(collapsed ? 0 : 8).gap(7).items_center().text_size(11.5).text_color(t.dim)
         .when(collapsed, el => el.mt(4).w(RAIL_CELL).justify_center().rounded(6).tooltip(login ? `${m} needs a login: run ${login}. Click for Copy.` : m ? `${m} · ${connected ? "connected" : (machine?.state ?? "asleep").replace(/_/g, " ")}` : "This computer"))
         .cursor_pointer().hover(s => s.bg(t.hover))
         .on_click((_e, cx) => {
@@ -398,7 +410,7 @@ export default class Spaces extends View {
           cx.notify();
         })
         .when(machine?.keeps_running_after_logout === false, el => el.child(div().id(`machine-logout-${m}`)
-          .flex_none().text_color(t.blocked).tooltip("Agents stop when you disconnect. Click for the fix.")
+          .flex_none().text_color(warning(t)).tooltip("Agents stop when you disconnect. Click for the fix.")
           .on_click((_e, cx) => { cx.stop_propagation(); openOverlay({ mod: "machine-add", kind: "dialog", width: 560 }); }).child("⚠")))
         .when(!collapsed, el => el.child(icon))
         .when(collapsed, el => el.child(div().relative().flex_none().child(icon).when(Boolean(m), el => el.child(badge))))
@@ -425,11 +437,11 @@ export default class Spaces extends View {
       if (!collapsed && rebuilt) { before += 1; return [head]; }
       const cell = collapsed ? railCell : (el) => el;
       const guidance = !collapsed && login ? [v_flex().px(8).pb(6).gap(3).flex_none()
-        .child(div().text_size(11).text_color(t.blocked).child("needs a login: run"))
+        .child(div().text_size(11.5).text_color(t.blocked).child("needs a login: run"))
         .child(h_flex().gap(5).items_center()
-          .child(div().flex_1().min_w(0).truncate().tooltip(login).text_size(11).text_color(t.muted).child(login))
+          .child(div().flex_1().min_w(0).truncate().tooltip(login).text_size(11.5).text_color(t.muted).child(login))
           .child(div().id(`machine-login-copy-${m}`).flex_none().px(5).py(2).rounded(4)
-            .text_size(11).text_color(t.foreground).bg(t.raised).cursor_pointer().hover(s => s.bg(t.hover))
+            .text_size(11.5).text_color(t.foreground).bg(t.raised).cursor_pointer().hover(s => s.bg(t.hover))
             .on_click((_e, cx) => { cx.stop_propagation(); cx.write_to_clipboard(login); this.copiedLogin = login; cx.notify(); })
             .child(this.copiedLogin === login ? "Copied" : "Copy")))] : [];
       const items = [cell(head), ...guidance, ...(folded ? [] : mine.length ? mine.map(draw) : [loading(m) ? loadingRow(m) : cell(empty)])];
@@ -440,10 +452,18 @@ export default class Spaces extends View {
     });
   }
 
-  // Only what's unusual, after the name: "herdr \u00b7 spike \u21912 \u21931". The repo or
-  // branch goes when the name already says it (a worktree is named after its branch),
-  // and master/main go: nearly every space is on one. When the row is full, it
-  // and the name both start from their text's width and give way in proportion.
+  /**
+   * Only what's unusual, after the name: "herdr \u00b7 spike \u21912 \u21931". The repo or
+   * branch goes when the name already says it (a worktree is named after its branch),
+   * and master/main go: nearly every space is on one. When the row is full, it
+   * and the name both start from their text's width and give way in proportion.
+   * Ahead is green; behind is orange, a caution (pull), not an error.
+   * @param {{ name: string, branch: string | null, ahead: number, behind: number }} g The space's git facts.
+   * @param {boolean} tree Whether the row is a worktree under its repo's space.
+   * @param {string} name The space's name.
+   * @param {Record<string, string>} t The theme.
+   * @returns {object}
+   */
   gitTail(g, tree, name, t) {
     const raw = g.branch ?? "detached";
     const fullName = name.toLowerCase();
@@ -466,7 +486,7 @@ export default class Spaces extends View {
       .text_color(t.dim)
       .when(Boolean(where), (el) => el.child(div().min_w(0).truncate().child(where)))
       .when(g.ahead > 0, (el) => el.child(div().flex_none().text_color(t.ansi2).child(`\u2191${g.ahead}`)))
-      .when(g.behind > 0, (el) => el.child(div().flex_none().text_color(t.ansi1).child(`\u2193${g.behind}`)));
+      .when(g.behind > 0, (el) => el.child(div().flex_none().text_color(warning(t)).child(`\u2193${g.behind}`)));
   }
 
   row({ w, i, g, tree }, t) {
@@ -526,9 +546,14 @@ export default class Spaces extends View {
       );
   }
 
-  // Rail: the space's avatar, as in the full list, on a cell that marks the active space.
-  // A space that needs you or has news gets a dot on the avatar's corner, ringed in the
-  // chrome color so it reads apart from the tile. A worktree row has no avatar of its own.
+  /**
+   * Rail: the space's avatar, as in the full list, on a cell that marks the active space.
+   * A space that needs you or has news gets a dot on the avatar's corner, ringed in the
+   * chrome color so it reads apart from the tile. A worktree row has no avatar of its own.
+   * @param {{ w: object, tree: boolean }} row The space and whether it's a worktree row.
+   * @param {Record<string, string>} t The theme.
+   * @returns {object}
+   */
   compact({ w, tree }, t) {
     const colors = shared("space.colors") ?? {};
     const color = colors[w.id] ?? "ansi6";
@@ -537,7 +562,7 @@ export default class Spaces extends View {
     const tile = tree
       ? svg("mods/workspace-chrome/branch.svg").size(13).flex_none().text_color(w.active ? t.foreground : t.dim)
       : h_flex().size(20).flex_none().rounded(6).bg(fill).items_center().justify_center()
-        .text_size(11).font_bold().text_color("#ffffff").child(spaceAvatar(w.name));
+        .text_size(11.5).font_bold().text_color("#ffffff").child(spaceAvatar(w.name));
     return railCell(h_flex()
       .id(`space-${w.id}`)
       .w(RAIL_CELL)

@@ -229,6 +229,8 @@ export default class Daypack extends View {
 
   /**
    * Where a PR stands, as of Alpmeister's last refresh: Merged or Closed, else its review decision.
+   * @param {Record<string, string>} t The theme.
+   * @param {object} item The focus-list item.
    * @returns {object | null} The chip, or null for an issue, a todo, or a PR not yet read.
    */
   prStanding(t, item) {
@@ -238,11 +240,11 @@ export default class Daypack extends View {
     const chip = h_flex()
       .flex_none()
       .px(5)
-      .h(16)
+      .h(18)
       .items_center()
       .rounded(4)
       .bg(t.hover)
-      .text_size(10)
+      .text_size(11.5)
       .text_color(t[standing.color] ?? t.muted)
       .child(standing.text);
     return standing.tooltip ? chip.id(`ds-standing-${item.id}`).tooltip(standing.tooltip) : chip;
@@ -329,7 +331,7 @@ export default class Daypack extends View {
       .child(
         v_flex()
           .py(6)
-          .child(div().px(12).pt(6).text_size(10.5).font_semibold().text_color(t.dim).child("Today"))
+          .child(div().px(12).pt(6).text_size(11.5).font_semibold().text_color(t.dim).child("Today"))
           .when(!items.length, (el) =>
             el.child(
               v_flex()
@@ -352,7 +354,13 @@ export default class Daypack extends View {
       );
   }
 
-  /** A section heading: the item type and how many of its items are still open. */
+  /**
+   * A section heading: the item type and how many of its items are still open.
+   * @param {Record<string, string>} t The theme.
+   * @param {string} title The section's title.
+   * @param {object[]} rows The section's items.
+   * @returns {object} The heading row.
+   */
   heading(t, title, rows) {
     return h_flex()
       .px(12)
@@ -360,7 +368,7 @@ export default class Daypack extends View {
       .pb(2)
       .gap(6)
       .items_center()
-      .text_size(11)
+      .text_size(11.5)
       .child(div().font_medium().text_color(t.muted).child(title))
       .child(
         div()

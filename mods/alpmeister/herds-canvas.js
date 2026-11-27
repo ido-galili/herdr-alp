@@ -211,6 +211,8 @@ export class HerdsCanvas {
   /**
    * The controls in the Herds card's title row: the line style, zoom out and in, Fit, Reset layout
    * and Full tab.
+   * @param {object} t The theme.
+   * @returns {object[]} The controls.
    */
   controls(t) {
     return [
@@ -219,7 +221,7 @@ export class HerdsCanvas {
         .flex_none()
         .items_center()
         .child(IconButton("herds-zoom-out", ICONS.zoomOut, (cx) => this.zoomBy(1 / 1.2, cx), { tooltip: "Zoom out (or Cmd-scroll)" }))
-        .child(div().w(34).text_size(10.5).text_color(t.dim).flex().justify_center().child(`${Math.round(this.zoom * 100)}%`))
+        .child(div().w(34).text_size(11.5).text_color(t.dim).flex().justify_center().child(`${Math.round(this.zoom * 100)}%`))
         .child(IconButton("herds-zoom-in", ICONS.zoomIn, (cx) => this.zoomBy(1.2, cx), { tooltip: "Zoom in (or Cmd-scroll)" })),
       IconButton("herds-fit", ICONS.fit, (cx) => this.fit(cx), { tooltip: "Fit: show every card" }),
       Object.keys(this.moved).length
@@ -610,7 +612,7 @@ export class HerdsCanvas {
           .py(2)
           .rounded(5)
           .bg(t.background)
-          .text_size(10)
+          .text_size(11.5)
           .text_color(t.dim)
           .child("drag to pan · scroll to pan · Cmd-scroll to zoom · drag a card to move it and what's under it"),
       );

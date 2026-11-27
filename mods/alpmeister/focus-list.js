@@ -28,7 +28,12 @@ const SECTIONS = [
   { kind: "issue", title: "Issues" },
 ];
 
-/** A section heading: the item type and how many of its items are still open. */
+/**
+ * A section heading: the item type and how many of its items are still open.
+ * @param {string} title The item type's heading.
+ * @param {object[]} rows The section's items.
+ * @returns {object} The heading.
+ */
 function SectionHeading(title, rows) {
   const t = theme();
   return h_flex()
@@ -36,7 +41,7 @@ function SectionHeading(title, rows) {
     .pt(6)
     .gap(6)
     .items_center()
-    .text_size(11)
+    .text_size(11.5)
     .child(div().font_medium().text_color(t.muted).child(title))
     .child(div().text_color(t.dim).child(String(rows.filter((item) => !item.done).length)));
 }

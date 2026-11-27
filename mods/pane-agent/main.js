@@ -25,6 +25,13 @@ function modelName(id) {
   return `${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}${m[3] ? "." + m[3] : ""}`;
 }
 
+/**
+ * The theme's warning colour (orange): a theme may not carry `warning`, so fall back to Alp's.
+ * @param {Record<string, string>} t The theme.
+ * @returns {string} The warning colour.
+ */
+const warning = (t) => t.warning ?? "#ffb86c";
+
 function folder(cwd) {
   if (!cwd) return "";
   const h = home();
@@ -66,17 +73,29 @@ export default class Pane extends View {
     cx.timer.every(3000, load);
   }
 
+  /**
+   * A small rounded label in the header.
+   * @param {Record<string, string>} t The theme.
+   * @param {string} text The label.
+   * @param {string} color Its text colour.
+   * @returns {object} The chip element.
+   */
   chip(t, text, color) {
-    return div().flex_none().px(6).h(18).flex().items_center().rounded(5).bg(t.hover).text_size(10.5).text_color(color).child(text);
+    return div().flex_none().px(6).h(18).flex().items_center().rounded(5).bg(t.hover).text_size(11.5).text_color(color).child(text);
   }
 
-  // Context window usage: a small bar plus percentage.
+  /**
+   * Context window usage: a small bar plus percentage, orange from 70% and red from 90%.
+   * @param {Record<string, string>} t The theme.
+   * @param {number} used Percent of the context window used.
+   * @returns {object} The usage chip.
+   */
   ctx(t, used) {
     const v = Math.max(0, Math.min(100, used));
-    const color = v >= 90 ? t.blocked : v >= 70 ? t.working : t.accent;
+    const color = v >= 90 ? t.blocked : v >= 70 ? warning(t) : t.accent;
     return h_flex().flex_none().items_center().gap(6).h(18).px(6).rounded(5).bg(t.hover)
       .child(div().w(44).h(5).rounded(3).bg(t.border).overflow_hidden().child(div().h(5).w(`${v}%`).rounded(3).bg(color)))
-      .child(div().text_size(10.5).text_color(color).child(`${Math.round(v)}%`));
+      .child(div().text_size(11.5).text_color(color).child(`${Math.round(v)}%`));
   }
 
   me() {
@@ -128,12 +147,12 @@ export default class Pane extends View {
       .when(Boolean(info?.effort), el => el.child(this.chip(t, String(info.effort).replace(/^./, c => c.toUpperCase()), t.accent)))
       .when(info?.context_pct != null, el => el.child(this.ctx(t, info.context_pct)))
       .when(Boolean(this.wt), el => el.child(
-        h_flex().flex_none().gap(4).px(6).h(18).items_center().rounded(5).bg(t.hover).text_size(10.5).text_color(t.working)
-          .child(svg("mods/pane-agent/worktree.svg").size(11).flex_none().text_color(t.working))
+        h_flex().flex_none().gap(4).px(6).h(18).items_center().rounded(5).bg(t.hover).text_size(11.5).text_color(t.muted)
+          .child(svg("mods/pane-agent/worktree.svg").size(11).flex_none().text_color(t.muted))
           .child(this.wt)))
       .when(reporting && Boolean(p.branch), el => el.child(this.chip(t, "\u2387 " + p.branch, t.muted)))
       .when(st === "working", el => el.child(svg("mods/workspace-chrome/spinner.svg").size(12).flex_none().text_color(t.working).spin(900)))
-      .when(st === "blocked", el => el.child(div().flex_none().px(6).h(18).flex().items_center().rounded(5).bg(t.blocked + "26").text_size(10.5).font_semibold().text_color(t.blocked).child("Needs you")))
+      .when(st === "blocked", el => el.child(div().flex_none().px(6).h(18).flex().items_center().rounded(5).bg(t.blocked + "26").text_size(11.5).font_semibold().text_color(t.blocked).child("Needs you")))
       .when(st === "done", el => el.child(div().size(7).flex_none().rounded(4).bg(t.done)))
       .when(true, el => el
         .child(this.button(t, `ph-r-${pane}`, "split-right", "pane.split", { direction: "right", pane }))

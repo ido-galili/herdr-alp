@@ -21,6 +21,7 @@ import {
   shortRepo,
   statusColor,
   typeColor,
+  warningColor,
 } from "./ui.js";
 
 const NO_STATUS = "No status";
@@ -168,7 +169,7 @@ function ItemCard(t, item, options) {
   if (item.iteration && !asked) {
     chips.push(
       Chip(IconLabel(ICONS.iteration, item.iteration), {
-        color: current ? t.accent : t.working,
+        color: current ? t.accent : t.muted,
         id: `${id}-it`,
         tooltip: current ? "The current iteration" : "Iteration",
       }),
@@ -218,7 +219,7 @@ function ItemCard(t, item, options) {
                   .flex_shrink(1)
                   .min_w(0)
                   .truncate()
-                  .text_size(11)
+                  .text_size(11.5)
                   .text_color(t.dim)
                   .child(`${item.kind === "pr" ? "PR " : ""}${item.repo === options.repo ? "" : shortRepo(item.repo)}#${item.number}`),
               ),
@@ -314,7 +315,7 @@ function FilterField(t, options) {
   return h_flex()
     .gap(8)
     .items_center()
-    .child(div().flex_none().text_size(11).text_color(t.dim).child("Filter"))
+    .child(div().flex_none().text_size(11.5).text_color(t.dim).child("Filter"))
     .child(
       div()
         .flex_1()
@@ -336,7 +337,7 @@ function FilterField(t, options) {
             .text_color(t.foreground),
         ),
     )
-    .when(Boolean(options.filterBusy), (el) => el.child(div().flex_none().text_size(11).text_color(t.dim).child("Applying…")));
+    .when(Boolean(options.filterBusy), (el) => el.child(div().flex_none().text_size(11.5).text_color(t.dim).child("Applying…")));
 }
 
 /**
@@ -379,7 +380,7 @@ function PeoplePicker(t, people, options) {
               ? Avatar(t, person, `bv-pick-av-${key}`, options.avatarPath, PICKER_SIZE - 6)
               : div().size(PICKER_SIZE - 6).rounded_full().border_1().border_color(t.dim),
           )
-          .child(div().text_size(11).text_color(on ? t.foreground : t.muted).child(String(person.count)));
+          .child(div().text_size(11.5).text_color(on ? t.foreground : t.muted).child(String(person.count)));
       }),
     )
     .when(picked.size > 0, (el) => el.child(TextButton("bv-pick-clear", "Everyone", (cx) => options.onClearPeople(cx))));
@@ -435,7 +436,7 @@ export function Board(ws, wsModel, options) {
   body = body
     .child(PeoplePicker(t, peopleOf(view.items), options))
     .when(view.total > view.items.length, (el) =>
-      el.child(Note(`Showing the first ${view.items.length} of ${view.total} items.`, t.working)),
+      el.child(Note(`Showing the first ${view.items.length} of ${view.total} items.`, warningColor(t))),
     )
     .when(Boolean(options.writeError), (el) => el.child(Note(options.writeError, t.blocked)))
     .child(
@@ -489,7 +490,7 @@ export function Board(ws, wsModel, options) {
                   .pb(2)
                   .child(div().flex_none().size(8).rounded_full().bg(statusColor(t, column)))
                   .child(div().truncate().text_size(11.5).font_semibold().text_color(t.foreground).child(column))
-                  .child(div().text_size(11).text_color(t.dim).child(String(columnItems.length))),
+                  .child(div().text_size(11.5).text_color(t.dim).child(String(columnItems.length))),
               )
               .children(cards);
           }),

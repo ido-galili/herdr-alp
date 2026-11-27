@@ -33,6 +33,13 @@ const narrow = () => (find(layout(), "sidebar")?.size?.px ?? Infinity) < 160;
 const toSec = (v) => (v == null ? null : typeof v === "number" ? (v > 1e12 ? v / 1000 : v) : Date.parse(v) / 1000);
 const pct = (w) => { const v = w?.used_percentage ?? w?.percentUsed ?? w?.utilization; return v == null ? null : Math.max(0, Math.min(100, v)); };
 
+/**
+ * The theme's warning colour (orange): a theme may not carry `warning`, so fall back to Alp's.
+ * @param {Record<string, string>} t The theme.
+ * @returns {string} The warning colour.
+ */
+const warning = (t) => t.warning ?? "#ffb86c";
+
 function left(sec) {
   if (sec <= 0) return "now";
   const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60);
@@ -69,18 +76,29 @@ export default class UsageLimits extends View {
       .child(div().absolute().top(-2).left(`${c(mark)}%`).w(2).h(12).rounded(1).bg(t.foreground));
   }
 
+  /**
+   * A window's usage, time left and colour: accent, orange from 70% used, red from 90%.
+   * @param {Record<string, string>} t The theme.
+   * @param {{ key: string, span: number }} win The limit window.
+   * @returns {{ used: number | null, remain: number | null, elapsed: number, color: string }} Its numbers and colour.
+   */
   stats(t, win) {
     const w = this.data?.[win.key];
     const used = pct(w);
     const reset = toSec(w?.resets_at ?? w?.resetsAt);
     const remain = reset == null ? null : reset - Date.now() / 1000;
     const elapsed = remain == null ? 0 : 1 - Math.max(0, Math.min(win.span, remain)) / win.span;
-    const color = used == null ? t.dim : used >= 90 ? t.blocked : used >= 70 ? t.working : t.accent;
+    const color = used == null ? t.dim : used >= 90 ? t.blocked : used >= 70 ? warning(t) : t.accent;
     return { used, remain, elapsed, color };
   }
 
-  // Rail: only the session window, in a 32px cell (gauge, %, bar, clock + time to reset);
-  // the full text is in the tooltip.
+  /**
+   * Rail: only the session window, in a 32px cell (gauge, %, bar, clock + time to reset);
+   * the full text is in the tooltip. The time stays at 9.5px: 11.5 doesn't fit the cell.
+   * @param {Record<string, string>} t The theme.
+   * @param {{ key: string, label: string, span: number }} win The limit window.
+   * @returns {object}
+   */
   cell(t, win) {
     const { used, remain, color } = this.stats(t, win);
     const usedText = used == null ? "–" : `${Math.round(used)}%`;
@@ -90,7 +108,7 @@ export default class UsageLimits extends View {
       v_flex().id(`limit-${win.key}`).w(32).py(4).gap(3).items_center().rounded(6)
         .hover((s) => s.bg(t.hover)).tooltip(tip)
         .child(svg("mods/usage-limits/gauge.svg").size(14).flex_none().text_color(color))
-        .child(div().text_size(11).font_semibold().text_color(color).child(usedText))
+        .child(div().text_size(11.5).font_semibold().text_color(color).child(usedText))
         .child(div().w(24).h(3).rounded(2).bg(t.border).overflow_hidden()
           .child(div().h(3).w(`${used ?? 0}%`).rounded(2).bg(color)))
         .when(short != null, (el) => el.child(h_flex().gap(2).items_center().text_size(9.5).text_color(t.dim)

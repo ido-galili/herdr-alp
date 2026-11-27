@@ -55,6 +55,7 @@ import {
   fillPrompt,
   sessionName,
   tabIdsNamed,
+  warningColor,
 } from "./ui.js";
 
 const STALE_AFTER = 2 * 3600000;
@@ -687,6 +688,8 @@ export default class Alpmeister extends View {
    * The header: tabs, title, when the shown tab's data was read, Refresh, and the gear that opens
    * Settings. On Herds, Refresh reads the sessions again; elsewhere it fetches from GitHub. The
    * settings copy shows its title alone.
+   * @param {object} t The theme.
+   * @returns {object} The header row.
    */
   header(t) {
     if (this.tab === TABS.settings) {
@@ -710,8 +713,8 @@ export default class Alpmeister extends View {
       .when(Boolean(fetchedAt), (el) =>
         el.child(
           div()
-            .text_size(11)
-            .text_color(stale ? t.working : t.dim)
+            .text_size(11.5)
+            .text_color(stale ? warningColor(t) : t.dim)
             .child(`updated ${ago(Date.now() - fetchedAt)} ago`),
         ),
       )

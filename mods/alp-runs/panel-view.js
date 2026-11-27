@@ -124,7 +124,7 @@ export class BarPart {
       .when(!session, (el) => el.child(div().flex_1()))
       .when(Boolean(session), (el) =>
         el
-          .child(div().flex_none().text_size(10).text_color(mark.color).child(mark.glyph))
+          .child(div().flex_none().text_size(11.5).text_color(mark.color).child(mark.glyph))
           .child(
             div()
               .id("runs-title")
@@ -166,7 +166,13 @@ export class BarPart {
 export class SessionsPart {
   init() {}
 
-  /** One session: its state, its name, and its close button. */
+  /**
+   * One session: its state, its name, and its close button.
+   * @param {object} t The theme.
+   * @param {object} session From `sessions()`.
+   * @param {boolean} selected Whether its output is the one shown.
+   * @returns {object}
+   */
   row(t, session, selected) {
     const mark = sessionMark(t, session);
     return h_flex()
@@ -182,7 +188,7 @@ export class SessionsPart {
       .bg(selected ? t.selected : t.chrome)
       .hover((style) => style.bg(selected ? t.selected : t.hover))
       .on_click(() => showSession(session.address))
-      .child(div().w(10).flex_none().text_size(10).text_color(mark.color).child(mark.glyph))
+      .child(div().w(12).flex_none().text_size(11.5).text_color(mark.color).child(mark.glyph))
       .child(
         div()
           .flex_1()
@@ -192,7 +198,7 @@ export class SessionsPart {
           .child(session.title),
       )
       .when(!session.running && session.exit !== 0, (el) =>
-        el.child(div().flex_none().text_size(11).text_color(t.dim).child(String(session.exit))),
+        el.child(div().flex_none().text_size(11.5).text_color(t.dim).child(String(session.exit))),
       )
       .child(
         h_flex()
@@ -225,7 +231,7 @@ export class SessionsPart {
     const workspaces = [...new Set(list.map((session) => session.workspace))];
     const rows = workspaces.flatMap((workspace) => [
       ...(workspaces.length > 1
-        ? [div().px(10).pt(8).pb(2).text_size(10.5).text_color(t.dim).truncate().child(workspace.split("/").pop())]
+        ? [div().px(10).pt(8).pb(2).text_size(11.5).text_color(t.dim).truncate().child(workspace.split("/").pop())]
         : []),
       ...list
         .filter((session) => session.workspace === workspace)
@@ -241,12 +247,12 @@ export class SessionsPart {
           .h(28)
           .px(10)
           .items_center()
-          .child(div().flex_1().text_size(10.5).font_semibold().text_color(t.dim).child("Runs"))
+          .child(div().flex_1().text_size(11.5).font_semibold().text_color(t.dim).child("Runs"))
           .when(finished.length > 0, (el) =>
             el.child(
               div()
                 .id("sessions-clear")
-                .text_size(11)
+                .text_size(11.5)
                 .text_color(t.dim)
                 .cursor_pointer()
                 .hover((style) => style.text_color(t.foreground))

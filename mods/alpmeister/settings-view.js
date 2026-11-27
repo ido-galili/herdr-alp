@@ -7,7 +7,7 @@ import { h_flex, v_flex, Input, InputState } from "gpui-base";
 import { pickFolder, theme } from "herdr";
 import { DEFAULT_ISSUE_PROMPT, DEFAULT_PR_PROMPT, inScope, normalizeConfig, normalizeWorkspace, tildePath } from "./config.js";
 import { boardFields, discover, findClones, guessRoles, repoDetails, saveSettings } from "./settings-data.js";
-import { Card, Chip, Note, TextButton, Toggle, statusColor } from "./ui.js";
+import { Card, Chip, Note, TextButton, Toggle, statusColor, warningColor } from "./ui.js";
 
 /** A deep copy of plain JSON data. */
 const copy = (value) => JSON.parse(JSON.stringify(value));
@@ -435,13 +435,18 @@ export class SettingsForm {
       .child(this.workspacesCard(t));
   }
 
-  /** Unsaved changes, the last message, and Revert and Save. */
+  /**
+   * Unsaved changes, the last message, and Revert and Save.
+   * @param {object} t The theme.
+   * @param {{ onRevert: Function }} options What Revert calls.
+   * @returns {object} The bar.
+   */
   saveBar(t, options) {
     const dirty = this.dirty();
     return h_flex()
       .items_center()
       .gap(10)
-      .child(div().text_size(11).text_color(t.dim).child(this.demo ? "Demo settings: Save writes nothing" : "~/.config/alp/alpmeister.json"))
+      .child(div().text_size(11.5).text_color(t.dim).child(this.demo ? "Demo settings: Save writes nothing" : "~/.config/alp/alpmeister.json"))
       .when(Boolean(this.message), (el) =>
         el.child(Note(this.message.text, this.message.error ? t.blocked : t.done)),
       )
@@ -452,7 +457,7 @@ export class SettingsForm {
           tooltip: "Read your repositories, boards and local clones again",
         }),
       )
-      .when(dirty, (el) => el.child(Chip("Unsaved changes", { color: t.working })))
+      .when(dirty, (el) => el.child(Chip("Unsaved changes", { color: warningColor(t) })))
       .when(dirty, (el) => el.child(TextButton("st-revert", "Revert", (cx) => options.onRevert(cx))))
       .child(this.primaryButton(t, "st-save", this.saving ? "Saving…" : "Save", dirty && !this.saving, (cx) => this.save(cx)));
   }
@@ -479,7 +484,14 @@ export class SettingsForm {
       .child(label);
   }
 
-  /** A labelled row of the form: the label on the left, the control filling the rest. */
+  /**
+   * A labelled row of the form: the label on the left, the control filling the rest.
+   * @param {object} t The theme.
+   * @param {string} label The label.
+   * @param {object} control The control.
+   * @param {string} [hint] A line under the control.
+   * @returns {object} The row.
+   */
   field(t, label, control, hint) {
     return h_flex()
       .w_full()
@@ -493,7 +505,7 @@ export class SettingsForm {
           .min_w(0)
           .gap(4)
           .child(control)
-          .when(Boolean(hint), (el) => el.child(div().text_size(10.5).text_color(t.dim).child(hint))),
+          .when(Boolean(hint), (el) => el.child(div().text_size(11.5).text_color(t.dim).child(hint))),
       );
   }
 
@@ -510,12 +522,25 @@ export class SettingsForm {
       .text_color(t.foreground);
   }
 
-  /** A section heading inside a card. */
+  /**
+   * A section heading inside a card, in sentence case.
+   * @param {object} t The theme.
+   * @param {string} text The heading, as written.
+   * @returns {object} The heading.
+   */
   heading(t, text) {
-    return div().pt(8).text_size(10.5).font_semibold().text_color(t.dim).child(text.toUpperCase());
+    return div().pt(8).text_size(11.5).font_semibold().text_color(t.dim).child(text);
   }
 
-  /** A row of pills, one of them picked. `options`: `[{ value, label, tooltip? }]`. */
+  /**
+   * A row of pills, one of them picked. `options`: `[{ value, label, tooltip? }]`.
+   * @param {object} t The theme.
+   * @param {string} id A unique element id prefix.
+   * @param {object[]} options The pills.
+   * @param {string} current The picked value.
+   * @param {Function} onPick Called with the new value.
+   * @returns {object} The row.
+   */
   pills(t, id, options, current, onPick) {
     return h_flex()
       .flex_wrap()
@@ -532,7 +557,7 @@ export class SettingsForm {
             .border_1()
             .border_color(picked ? t.accent : t.border)
             .bg(picked ? t.selected : t.background)
-            .text_size(11)
+            .text_size(11.5)
             .text_color(picked ? t.foreground : t.dim)
             .cursor_pointer()
             .hover((style) => style.text_color(t.foreground))
@@ -600,7 +625,14 @@ export class SettingsForm {
       .when(footer.length > 0, (el) => el.child(h_flex().pt(2).gap(6).children(footer)));
   }
 
-  /** One option row in a dropdown's list: an optional lead (a checkbox), the label, its note. */
+  /**
+   * One option row in a dropdown's list: an optional lead (a checkbox), the label, its note.
+   * @param {object} t The theme.
+   * @param {string} id A unique element id.
+   * @param {object} option The option: its label, and an optional note in `sub`.
+   * @param {{ lead?: object, accent?: boolean, onClick: Function }} row Its lead, whether it is in the accent color, and what a click does.
+   * @returns {object} The row.
+   */
   optionRow(t, id, option, { lead, accent = false, onClick }) {
     return h_flex()
       .id(id)
@@ -621,7 +653,7 @@ export class SettingsForm {
       })
       .when(Boolean(lead), (el) => el.child(lead))
       .child(div().flex_1().min_w(0).truncate().child(option.label))
-      .when(Boolean(option.sub), (el) => el.child(div().flex_none().text_size(10.5).text_color(t.dim).child(option.sub)));
+      .when(Boolean(option.sub), (el) => el.child(div().flex_none().text_size(11.5).text_color(t.dim).child(option.sub)));
   }
 
   /** A dropdown's trigger: the shown text and an arrow, accented while open. */
@@ -791,6 +823,8 @@ export class SettingsForm {
   /**
    * The repositories in scope, as chips with a remove ×, and the dropdown that adds them. With
    * all your repositories in scope, the chips are the ones left out instead.
+   * @param {object} t The theme.
+   * @returns {object} The chips and the dropdown.
    */
   scopeChips(t) {
     const account = this.draft.account;
@@ -813,7 +847,7 @@ export class SettingsForm {
     );
     return v_flex()
       .gap(8)
-      .when(!picked && chosen.length > 0, (el) => el.child(div().text_size(11).text_color(t.dim).child("Left out")))
+      .when(!picked && chosen.length > 0, (el) => el.child(div().text_size(11.5).text_color(t.dim).child("Left out")))
       .when(chips.length > 0, (el) => el.child(h_flex().flex_wrap().gap(6).children(chips)))
       .when(picked && !chips.length, (el) => el.child(Note("No repositories picked yet.")))
       .child(
@@ -922,7 +956,11 @@ export class SettingsForm {
       );
   }
 
-  /** The account card: repositories in scope, local folders, Claude prompts, the @me searches. */
+  /**
+   * The account card: repositories in scope, local folders, Claude prompts, the @me searches.
+   * @param {object} t The theme.
+   * @returns {object} The card.
+   */
   accountCard(t) {
     const account = this.draft.account;
     const picked = Array.isArray(account.repos);
@@ -936,7 +974,7 @@ export class SettingsForm {
       v_flex()
         .gap(10)
         .when(Boolean(this.discoverError), (el) => el.child(Note(`GitHub: ${this.discoverError}`, t.blocked)))
-        .when(Boolean(this.discovery?.warning), (el) => el.child(Note(this.discovery.warning, t.working)))
+        .when(Boolean(this.discovery?.warning), (el) => el.child(Note(this.discovery.warning, warningColor(t))))
         .when(this.discovering && !this.discovery, (el) => el.child(Note("Reading your repositories…")))
         .child(
           this.field(
@@ -1026,7 +1064,11 @@ export class SettingsForm {
 
   // --- workspaces ------------------------------------------------------------------------------
 
-  /** The workspaces card: one switch per workspace, then the one shown. */
+  /**
+   * The workspaces card: one switch per workspace, then the one shown.
+   * @param {object} t The theme.
+   * @returns {object} The card.
+   */
   workspacesCard(t) {
     const workspaces = this.draft.workspaces;
     const ws = this.workspace();
@@ -1041,7 +1083,7 @@ export class SettingsForm {
             .h(22)
             .items_center()
             .rounded(6)
-            .text_size(11)
+            .text_size(11.5)
             .cursor_pointer()
             .bg(index === this.wsIndex ? t.selected : t.background)
             .text_color(index === this.wsIndex ? t.foreground : t.dim)
@@ -1147,7 +1189,12 @@ export class SettingsForm {
       );
   }
 
-  /** The board's fields and how its statuses read. */
+  /**
+   * The board's fields and how its statuses read.
+   * @param {object} t The theme.
+   * @param {object} ws The workspace.
+   * @returns {object} The section.
+   */
   boardSection(t, ws) {
     const fields = this.fields[boardKey(ws.board)];
     const options = this.boardStatuses(ws);
@@ -1194,7 +1241,7 @@ export class SettingsForm {
           h_flex()
             .gap(8)
             .items_center()
-            .child(Note("The board's statuses differ from these.", t.working))
+            .child(Note("The board's statuses differ from these.", warningColor(t)))
             .child(
               TextButton("st-use-statuses", "Use the board's statuses", (cx) => {
                 this.useBoardStatuses(ws);
@@ -1208,7 +1255,12 @@ export class SettingsForm {
       .child(this.field(t, "Board tab filter", this.text(t, "boardView")));
   }
 
-  /** One row per status: its role, whether Your issues hides it, and which one means on hold. */
+  /**
+   * One row per status: its role, whether Your issues hides it, and which one means on hold.
+   * @param {object} t The theme.
+   * @param {object} ws The workspace.
+   * @returns {object} The table.
+   */
   statusTable(t, ws) {
     const role = (status) =>
       ws.notStarted.includes(status) ? "not-started" : ws.inFlight.statuses.includes(status) ? "in-flight" : "other";
@@ -1223,7 +1275,7 @@ export class SettingsForm {
         h_flex()
           .gap(12)
           .px(6)
-          .text_size(10.5)
+          .text_size(11.5)
           .text_color(t.dim)
           .child(div().w(150).child("Status"))
           .child(div().w(230).child("Counts as"))

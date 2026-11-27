@@ -15,6 +15,7 @@ import {
   TextButton,
   ago,
   statusColor,
+  warningColor,
 } from "./ui.js";
 
 const GROUP_LIMIT = 5;
@@ -50,7 +51,7 @@ export function InFlight(config, model, options) {
   // A remembered "Only <milestone>" waits while the workspace has no next milestone.
   const milestoneOnly = options.milestoneOnly && Boolean(nextMilestone);
   const items = (model.inFlight ?? []).filter((item) => !milestoneOnly || item.milestone === nextMilestone);
-  const warning = t.ansi3 ?? t.working;
+  const warning = warningColor(t);
   const extras = nextMilestone
     ? [
         TextButton(

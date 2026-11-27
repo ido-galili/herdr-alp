@@ -6,7 +6,7 @@ import { div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { theme } from "herdr";
 import { priorityColor } from "./project.js";
-import { Card, Chip, GroupHeading, Note, Row, TextButton, itemKey, openUrl, statusColor, typeColor } from "./ui.js";
+import { Card, Chip, GroupHeading, Note, Row, TextButton, itemKey, openUrl, statusColor, typeColor, warningColor } from "./ui.js";
 
 const LANE_LIMIT = 8;
 
@@ -23,6 +23,13 @@ function limited(key, rows, options) {
 /**
  * One issue: its type beside the number, then its priority or prioritizing label, an epic's
  * sub-issue progress, its board status, and a flag when unassigned.
+ * @param {object} t The theme.
+ * @param {object} config The workspace's config.
+ * @param {string} prefix Keeps the row's id unique per list.
+ * @param {object} issue The issue.
+ * @param {object} options The card's options.
+ * @param {object[]} [extraChips] Chips to put first.
+ * @returns {object} The row.
  */
 function issueRow(t, config, prefix, issue, options, extraChips = []) {
   const chips = [...extraChips];
@@ -33,7 +40,7 @@ function issueRow(t, config, prefix, issue, options, extraChips = []) {
     chips.push(Chip(`${issue.subIssues.completed} of ${issue.subIssues.total}`, { color: t.muted }));
   }
   chips.push(Chip(issue.status ?? "No status", { color: statusColor(t, issue.status) }));
-  if (!issue.assignees.length) chips.push(Chip("Unassigned", { color: t.ansi3 ?? t.working }));
+  if (!issue.assignees.length) chips.push(Chip("Unassigned", { color: warningColor(t) }));
   return Row(`${prefix}-${itemKey(issue)}`, {
     number: issue.number,
     lead: [Chip(issue.type ?? "No type", { color: typeColor(t, issue.type) })],
@@ -44,7 +51,14 @@ function issueRow(t, config, prefix, issue, options, extraChips = []) {
   });
 }
 
-/** One milestone's column: its title, then its issues. */
+/**
+ * One milestone's column: its title, then its issues.
+ * @param {object} t The theme.
+ * @param {object} config The workspace's config.
+ * @param {object} lane The milestone and its issues.
+ * @param {object} options The card's options.
+ * @returns {object} The column.
+ */
 function Lane(t, config, lane, options) {
   const prefix = `sp-${lane.title}`;
   const rows = lane.issues.map((issue) => issueRow(t, config, prefix, issue, options));
@@ -61,7 +75,7 @@ function Lane(t, config, lane, options) {
         .cursor_pointer()
         .on_click(() => openUrl(lane.url))
         .child(div().text_size(14).font_semibold().text_color(t.foreground).child(lane.title))
-        .child(div().text_size(11).text_color(t.dim).child(String(lane.issues.length))),
+        .child(div().text_size(11.5).text_color(t.dim).child(String(lane.issues.length))),
     )
     .children(rows.length ? limited(prefix, rows, options) : [Note("Nothing prioritized or planned.")]);
 }

@@ -293,7 +293,16 @@ export class ListPart {
     }
   }
 
-  /** A fold at the end of the list: a toggle with a count, then its rows while open. */
+  /**
+   * A fold at the end of the list: a toggle with a count, then its rows while open.
+   * @param {object} t The theme.
+   * @param {string} id The toggle's element id.
+   * @param {string} label What the rows are, after the count.
+   * @param {object[]} rows The rows it folds.
+   * @param {boolean} open Whether it's open.
+   * @param {() => void} onToggle Flips it.
+   * @returns {object[]} The toggle, then the rows while open; nothing without rows.
+   */
   fold(t, id, label, rows, open, onToggle) {
     if (!rows.length) return [];
     const toggle = h_flex()
@@ -302,7 +311,7 @@ export class ListPart {
       .pt(12)
       .gap(6)
       .items_center()
-      .text_size(11)
+      .text_size(11.5)
       .text_color(t.dim)
       .cursor_pointer()
       .hover((style) => style.text_color(t.muted))
@@ -315,7 +324,13 @@ export class ListPart {
     return [toggle, ...(open ? rows : [])];
   }
 
-  /** One entry: its session's state, its name, and its play button. */
+  /**
+   * One entry: its session's state, its name, and its play button.
+   * @param {object} t The theme.
+   * @param {object} entry The run.
+   * @param {boolean} [hidden] Whether the person hid it.
+   * @returns {object}
+   */
   row(t, entry, hidden = false) {
     const session = this.workspace ? sessionFor(entry.key, this.workspace.root) : null;
     const mark = sessionMark(t, session);
@@ -359,9 +374,9 @@ export class ListPart {
       .on_mouse_down("right", menu)
       .child(
         div()
-          .w(10)
+          .w(12)
           .flex_none()
-          .text_size(10)
+          .text_size(11.5)
           .text_color(mark?.color ?? t.dim)
           .child(mark?.glyph ?? ""),
       )
@@ -378,7 +393,7 @@ export class ListPart {
           div()
             .id(`run-origin-${entry.key}`)
             .flex_none()
-            .text_size(10.5)
+            .text_size(11.5)
             .text_color(t.dim)
             .tooltip(entry.origin === "you" ? "From ~/.config/alp/alp.json" : "Changed in .herdr/alp.local.json")
             .child(originMark),
@@ -399,7 +414,7 @@ export class ListPart {
             .on_click(play)
             .child(
               starting
-                ? div().text_size(11).frames(["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"], 90)
+                ? div().text_size(11.5).frames(["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"], 90)
                 : svg(PLAY_ICON).size(11),
             ),
         ),
@@ -407,13 +422,13 @@ export class ListPart {
   }
 
   /**
-   * A section heading.
+   * A section heading, in the config's own case.
    * @param {object} t The theme.
    * @param {string} title The section's name.
    * @returns {object}
    */
   heading(t, title) {
-    return div().px(10).pt(10).pb(3).text_size(10.5).font_semibold().text_color(t.dim).child(title.toUpperCase());
+    return div().px(10).pt(10).pb(3).text_size(11.5).font_semibold().text_color(t.dim).child(title);
   }
 
   /**
@@ -463,6 +478,12 @@ export class ListPart {
       .child(this.action(t, "run-add-empty", "Add a run…", () => openSaveForm(root)));
   }
 
+  /**
+   * The Run list: the workspace's name, config errors, then the runs under their sections and
+   * the folds for those that can't run here or are hidden.
+   * @param {object} cx The view's context.
+   * @returns {object}
+   */
   render(cx) {
     this.sync(cx);
     const t = theme();
@@ -569,11 +590,11 @@ export class ListPart {
           ),
       )
       .when(Boolean(this.workspace), (el) =>
-        el.child(div().px(10).text_size(11).text_color(t.dim).truncate().child(this.workspace.name)),
+        el.child(div().px(10).text_size(11.5).text_color(t.dim).truncate().child(this.workspace.name)),
       )
       .children(
         (catalog?.errors ?? []).map((error, i) =>
-          div().id(`run-error-${i}`).px(10).pt(4).text_size(11).text_color(t.blocked).child(error),
+          div().id(`run-error-${i}`).px(10).pt(4).text_size(11.5).text_color(t.blocked).child(error),
         ),
       )
       .when(!catalog, (el) =>

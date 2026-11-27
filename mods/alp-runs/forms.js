@@ -51,7 +51,15 @@ const fieldLabel = (t, text) => div().pt(12).pb(6).text_size(11.5).text_color(t.
 const textField = (t, state) =>
   Input.new(state).h(34).px(10).rounded(8).border_1().border_color(t.input).bg(t.background).text_size(12.5);
 
-/** The dialog's frame: a title with Esc, the fields, and the buttons. */
+/**
+ * The dialog's frame: a title with Esc, the fields, and the buttons.
+ * @param {object} t The theme.
+ * @param {object} part The dialog's view, for its focus handle and error.
+ * @param {string} title The dialog's title.
+ * @param {object[]} fields What goes in the scrolling middle.
+ * @param {object[]} buttons The buttons, right-aligned at the bottom.
+ * @returns {object}
+ */
 export function dialog(t, part, title, fields, buttons) {
   return v_flex()
     .id("alp-runs-dialog")
@@ -70,7 +78,7 @@ export function dialog(t, part, title, fields, buttons) {
       h_flex()
         .items_center()
         .child(div().flex_1().text_size(15).font_semibold().truncate().child(title))
-        .child(div().text_size(11).text_color(t.dim).child("Esc")),
+        .child(div().text_size(11.5).text_color(t.dim).child("Esc")),
     )
     .child(v_flex().flex_1().min_h(0).overflow_y_scrollbar().children(fields))
     .when(Boolean(part.error), (el) => el.child(div().pt(8).text_size(11.5).text_color(t.blocked).child(part.error)))
@@ -278,6 +286,10 @@ export class SavePart {
     });
   }
 
+  /**
+   * The add-or-edit form: the run's fields, the file to save to, and what that file means.
+   * @returns {object}
+   */
   render() {
     const t = theme();
     const layers = this.root ? ["repo", "local", "you"] : ["you"];
@@ -299,7 +311,7 @@ export class SavePart {
           cx.notify();
         },
       ),
-      div().pt(6).text_size(11).text_color(t.dim).child(LAYER_HINT[this.layer]),
+      div().pt(6).text_size(11.5).text_color(t.dim).child(LAYER_HINT[this.layer]),
     ];
     return dialog(t, this, this.original ? `Edit ${this.original}` : "Add a run", fields, [
       button(t, "save-cancel", "Cancel", false, () => closeOverlay(props().overlay)),

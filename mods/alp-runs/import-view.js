@@ -13,6 +13,13 @@ import { STAMP_KEY } from "./list-view.js";
 import { readVscode } from "./vscode.js";
 
 /**
+ * The theme's warning colour (orange): a theme may not carry `warning`, so fall back to Alp's.
+ * @param {object} t The theme.
+ * @returns {string} The warning colour.
+ */
+const warning = (t) => t.warning ?? "#ffb86c";
+
+/**
  * A short description of what a run does, for its row.
  * @param {object} run A run in Alp's config shape.
  * @returns {string}
@@ -115,7 +122,7 @@ export class ImportPart {
     const note = item.reason
       ? { text: `can't: it ${item.reason}`, color: t.dim }
       : exists
-        ? { text: on ? "replaces the one in Alp's config" : "already in Alp's config · tick to replace", color: t.working }
+        ? { text: on ? "replaces the one in Alp's config" : "already in Alp's config · tick to replace", color: warning(t) }
         : { text: summary(item.run), color: t.dim };
     return h_flex()
       .id(`import-${item.key}`)
@@ -159,6 +166,10 @@ export class ImportPart {
       .child(div().flex_1().min_w(0).truncate().text_right().text_size(11.5).text_color(note.color).child(note.text));
   }
 
+  /**
+   * The import dialog: the .vscode launch configs and tasks under a heading each, and where to save them.
+   * @returns {object}
+   */
   render() {
     const t = theme();
     const fields = [];
@@ -171,7 +182,7 @@ export class ImportPart {
       const rows = (this.items ?? []).filter((item) => item.group === group);
       if (!rows.length) continue;
       fields.push(
-        div().pt(12).pb(4).px(8).text_size(10.5).font_semibold().text_color(t.dim).child(`${group.toUpperCase()} · .vscode/${file}`),
+        div().pt(12).pb(4).px(8).text_size(11.5).font_semibold().text_color(t.dim).child(`${group} · .vscode/${file}`),
       );
       rows.forEach((item) => fields.push(this.row(t, item)));
     }

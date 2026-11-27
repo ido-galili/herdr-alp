@@ -5,11 +5,16 @@ import { div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { theme } from "herdr";
 import { searchUrl } from "./data.js";
-import { Bar, Card, Chip, NeedsYou, Note, daysUntil, formatDate, formatTime, openUrl, statusColor } from "./ui.js";
+import { Bar, Card, Chip, NeedsYou, Note, daysUntil, formatDate, formatTime, openUrl, statusColor, warningColor } from "./ui.js";
 
 const WEEK_DAYS = 7;
 
-/** The next milestone: X of Y closed, the due date, the status strip and its flags. */
+/**
+ * The next milestone: X of Y closed, the due date, the status strip and its flags.
+ * @param {object} config The workspace's config.
+ * @param {object} model The fetched model.
+ * @returns {object} The card.
+ */
 export function Milestone(config, model) {
   const t = theme();
   const milestone = model.milestone;
@@ -21,7 +26,7 @@ export function Milestone(config, model) {
       ? (Date.now() - milestone.previousDue) / (milestone.due - milestone.previousDue)
       : null;
   const behind = elapsed != null && fraction < elapsed;
-  const color = behind ? t.working : t.accent;
+  const color = behind ? warningColor(t) : t.accent;
   const due = formatDate(milestone.due, { utc: true });
   const order = [
     ...config.statuses,
@@ -31,9 +36,12 @@ export function Milestone(config, model) {
   const flags = [];
   if (milestone.unassigned.length) {
     flags.push(
-      NeedsYou(`${milestone.unassigned.length} unassigned`)
-        .id("flag-unassigned")
-        .tooltip(milestone.unassigned.map((issue) => `#${issue.number} ${issue.title}`).join("\n")),
+      Chip(`${milestone.unassigned.length} unassigned`, {
+        color: warningColor(t),
+        fill: `${warningColor(t)}26`,
+        id: "flag-unassigned",
+        tooltip: milestone.unassigned.map((issue) => `#${issue.number} ${issue.title}`).join("\n"),
+      }),
     );
   }
   if (daysLeft < WEEK_DAYS && milestone.notStarted.length) {
@@ -46,7 +54,7 @@ export function Milestone(config, model) {
   return Card(
     "milestone",
     "Next milestone",
-    [Chip(`Due ${due} · ${daysLeft}d left`, { color: daysLeft < WEEK_DAYS ? t.working : t.muted })],
+    [Chip(`Due ${due} · ${daysLeft}d left`, { color: daysLeft < WEEK_DAYS ? warningColor(t) : t.muted })],
     v_flex()
       .gap(10)
       .child(
@@ -133,18 +141,24 @@ export function Tile(id, label, value, sub, color, action, note) {
       if (typeof action === "function") action(cx);
       else if (action) openUrl(action);
     })
-    .child(div().text_size(11).text_color(t.dim).child(note ? `${label} · ${note}` : label))
+    .child(div().text_size(11.5).text_color(t.dim).child(note ? `${label} · ${note}` : label))
     .child(div().text_size(22).font_semibold().text_color(color).child(value))
     .children(
       (Array.isArray(sub) ? sub : [sub]).map((line) =>
-        typeof line === "string" ? div().text_size(11).truncate().text_color(t.muted).child(line) : line,
+        typeof line === "string" ? div().text_size(11.5).truncate().text_color(t.muted).child(line) : line,
       ),
     );
 }
 
-/** The color for a bug priority: the most urgent in `blocked`, unset in `dim`. */
+/**
+ * The color for a bug priority: the most urgent in `blocked`, unset in `dim`.
+ * @param {object} t The theme.
+ * @param {object} config The workspace's config, with its bug priorities in order.
+ * @param {string} priority The priority.
+ * @returns {string} The color: red, then orange, then the accent.
+ */
 export function priorityColor(t, config, priority) {
-  const colors = [t.blocked, t.ansi9 ?? t.blocked, t.working, t.accent];
+  const colors = [t.blocked, t.ansi9 ?? t.blocked, warningColor(t), t.accent];
   const index = config.bugs.priorities.indexOf(priority);
   return index < 0 ? t.dim : (colors[index] ?? t.muted);
 }
@@ -191,7 +205,13 @@ function outcomeColor(t, outcome) {
   return t.dim;
 }
 
-/** The nightly tile's value, color and lines: the run's outcome, when it started, then one line per check. */
+/**
+ * The nightly tile's value, color and lines: the run's outcome, when it started, then one line per check.
+ * @param {object} t The theme.
+ * @param {object | null} run The latest nightly run.
+ * @param {string | null} error Why it could not be read.
+ * @returns {Array} The value, its color, and the lines under it.
+ */
 function nightlyParts(t, run, error) {
   if (error) return ["Error", t.blocked, error];
   if (!run) return ["–", t.dim, "No nightly configured"];
@@ -201,7 +221,7 @@ function nightlyParts(t, run, error) {
     h_flex()
       .items_center()
       .gap(6)
-      .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.muted).child(check.name))
+      .child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(t.muted).child(check.name))
       .child(Chip(check.outcome, { color: outcomeColor(t, check.outcome) })),
   );
   return [value, outcomeColor(t, run.overall), [`${formatDate(run.at)}, ${formatTime(run.at)}`, ...lines]];

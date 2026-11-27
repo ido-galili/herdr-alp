@@ -19,9 +19,10 @@ import {
   itemKey,
   openUrl,
   statusColor,
+  warningColor,
 } from "./ui.js";
 
-/** A PR untouched this long gets its age in the `working` color. */
+/** A PR untouched this long gets its age in the warning color. */
 const STALE_PR_AGE = 3 * 86400000;
 
 /**
@@ -77,7 +78,7 @@ export function Reviews(account, actions) {
       chips: [
         Chip(pr.author, { color: t.muted }),
         decisionChip(t, pr, "rv"),
-        Chip(`${ago(now - pr.updatedAt)} ago`, { color: now - pr.updatedAt > STALE_PR_AGE ? t.working : t.dim }),
+        Chip(`${ago(now - pr.updatedAt)} ago`, { color: now - pr.updatedAt > STALE_PR_AGE ? warningColor(t) : t.dim }),
         checksChip(t, pr, "rv"),
       ].filter(Boolean),
       buttons: [actions.pinButton(pr), ClaudeButton("rv", pr, actions)].filter(Boolean),
@@ -134,7 +135,7 @@ export function MyPrs(account, actions) {
       chips: [
         decisionChip(t, pr),
         checksChip(t, pr, "mp"),
-        Chip(`${ago(now - pr.updatedAt)} ago`, { color: now - pr.updatedAt > STALE_PR_AGE ? t.working : t.dim }),
+        Chip(`${ago(now - pr.updatedAt)} ago`, { color: now - pr.updatedAt > STALE_PR_AGE ? warningColor(t) : t.dim }),
       ].filter(Boolean),
       buttons: [actions.pinButton(pr), ClaudeButton("mp", pr, actions)].filter(Boolean),
     }),

@@ -70,6 +70,14 @@ const SHOW_LIMIT = 400000;
 const shown = text => text.length > SHOW_LIMIT ? text.slice(0, SHOW_LIMIT) + "\n… (file truncated)" : text;
 
 /**
+ * Alp: the theme's warning colour (orange), for unsaved edits and a file changed on disk.
+ * A theme may not carry `warning`, so fall back to Alp's.
+ * @param {any} t the theme
+ * @returns {string} the warning colour
+ */
+const warning = t => t.warning ?? "#ffb86c";
+
+/**
  * Alp: a small text button for the panel footer.
  * @param {string} id element id
  * @param {string} label button text
@@ -287,6 +295,15 @@ export default class Files extends View {
     doc.dirty = false;
   }
 
+  /**
+   * The tree's rows under a folder, open folders expanded. A file's mark: an orange ● for
+   * unsaved edits, else its git status letter.
+   * @param {string} prefix the folder, relative to the root ("" for the root)
+   * @param {number} depth how deep the folder is, for the indent
+   * @param {any[]} out rows so far; this appends to them
+   * @param {any} t the theme
+   * @returns {any[]} `out`
+   */
   rows(prefix, depth, out, t) {
     if (out.length >= TOTAL || depth > 40) return out;
     for (const entry of this.entries.get(prefix) ?? []) {
@@ -298,7 +315,7 @@ export default class Files extends View {
         .child(entry.dir ? svg(`mods/alp-files/chevron-${open ? "down" : "right"}.svg`).size(12).flex_none().text_color(t.dim) : div().w(12).flex_none())
         .child(svg(`mods/alp-files/${entry.dir ? "folder" : "file"}.svg`).size(14).flex_none().text_color(t.muted))
         .child(div().flex_1().min_w(0).truncate().child(entry.name))
-        .when(Boolean(mark), el => el.child(div().text_size(11).text_color(mark === "●" ? t.accent : mark === "A" ? t.ansi2 : mark === "D" || mark === "U" ? t.ansi1 : t.blocked).child(mark))));
+        .when(Boolean(mark), el => el.child(div().text_size(11.5).text_color(mark === "●" ? warning(t) : mark === "A" ? t.ansi2 : mark === "D" || mark === "U" ? t.ansi1 : t.blocked).child(mark))));
       if (entry.dir && open) this.rows(path, depth + 1, out, t);
     }
     return out;
@@ -317,16 +334,22 @@ export default class Files extends View {
       .child(div().flex_1().min_w(0).truncate().text_color(color).child(text)).children(buttons);
     if (!doc) return line("", t.dim);
     if (doc.saving) return line("Saving…", t.muted);
-    if (doc.disk !== undefined) return line(doc.disk === null ? "Deleted on disk" : "Changed on disk", t.blocked,
+    if (doc.disk !== undefined) return line(doc.disk === null ? "Deleted on disk" : "Changed on disk", warning(t),
       ...(doc.disk === null ? [] : [footerButton("files-reload", "Reload", t.accent, cx => { this.reload(); cx.notify(); })]),
       footerButton("files-overwrite", doc.disk === null ? "Save again" : "Overwrite", t.accent, cx => this.save(cx, true)));
     if (doc.error) return line(doc.error, t.ansi1, footerButton("files-retry", "Retry", t.accent, cx => this.save(cx)));
     if (doc.locked) return line(doc.locked, t.dim);
-    return line(doc.dirty ? "Unsaved" : "No changes", doc.dirty ? t.muted : t.dim,
-      div().flex_none().text_size(11).text_color(t.dim).child("ctrl-s"),
+    return line(doc.dirty ? "Unsaved" : "No changes", doc.dirty ? warning(t) : t.dim,
+      div().flex_none().text_size(11.5).text_color(t.dim).child("ctrl-s"),
       footerButton("files-save", "Save", doc.dirty ? t.accent : t.dim, cx => this.save(cx)));
   }
 
+  /**
+   * The Files panel: a header with the open file and an orange ● for unsaved edits, then the
+   * tree, or the open file's editor and footer.
+   * @param {any} cx the view's context
+   * @returns {any} the panel
+   */
   render(cx) {
     if (key() !== this.context?.key) this.refresh(cx);
     const t = theme(), doc = this.doc;
@@ -336,10 +359,10 @@ export default class Files extends View {
         .when(Boolean(this.file), el => el.child(div().id("files-back").w(20).cursor_pointer().text_color(t.muted).on_click((_e, cx) => { this.show(null); cx.notify(); }).child("←")))
         .child(div().font_semibold().child("Files"))
         .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(t.dim).child(this.file ?? this.root?.split(/[\\/]/).pop() ?? ""))
-        .when(Boolean(doc?.dirty), el => el.child(div().flex_none().text_size(11).text_color(t.accent).child("●"))))
+        .when(Boolean(doc?.dirty), el => el.child(div().flex_none().text_size(11.5).text_color(warning(t)).child("●"))))
       .when(!this.file, el => el.child(v_flex().id("files-tree").flex_1().min_h(0).overflow_y_scrollbar().p(6).children(this.rows("", 0, [], t))
         .when(Boolean(this.error) || !this.entries.get("")?.length, el => el.child(div().p(8).text_size(12).text_color(t.dim).child(this.error || (this.loading ? "Loading files…" : this.root ? "No files" : "No folder"))))
-        .when(this.limited, el => el.child(div().p(8).text_size(11).text_color(t.dim).child("File list limited to 500 entries per folder and 5,000 total")))))
+        .when(this.limited, el => el.child(div().p(8).text_size(11.5).text_color(t.dim).child("File list limited to 500 entries per folder and 5,000 total")))))
       .when(Boolean(this.file), el => el.child(doc
         // The editor holds the keyboard, so its key events pass through this wrapper. `cmd` is ctrl on Linux and Windows.
         ? v_flex().id("files-editor").flex_1().min_h(0)

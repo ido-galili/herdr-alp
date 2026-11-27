@@ -13,9 +13,10 @@
     "border": "#44475a",
     "hover": "#343746",
     "muted": "#bfbfd0",
-    "dim": "#6272a4",
+    "dim": "#8b95c9",
     "accent": "#bd93f9",
     "working": "#f1fa8c",
+    "warning": "#ffb86c",
     "blocked": "#ff5555",
     "done": "#50fa7b"
   }
