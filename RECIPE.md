@@ -123,21 +123,21 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
   - **All repos**, top to bottom:
     - While there is no workspace, a card: "This is every repo you can reach.", "Add a
       workspace" (opens Settings) and "Not now", which hides it for good on this computer.
-    - Your lists (below), across every repository in scope (with `"all"`, everything the
-      searches find), two equal columns a row when the tab is at least 1000px wide: Waiting for
-      your review | Your open PRs, then Your issues | the Red checks tile (default branches
-      failing, your PRs failing). Narrower, one column in that order.
+    - The Red checks tile (default branches failing, your PRs failing), then your lists (below),
+      across every repository in scope (with `"all"`, everything the searches find): Waiting for
+      your review, then Your open PRs | Your issues, two equal columns when the tab is at least
+      1000px wide. Narrower, one column in that order.
     - The Repos card: every repository in scope, most recently pushed first, 12 rows then
       "Show N more", with a "With open work" toggle (remembered). A row: `owner/name` (dim without open
       work), then chips for private, archived, "local" (a folder is set), open issues, open PRs,
       the default branch's checks ("main passing", or `Needs you` style "main failing"), and
       "pushed 3d ago". A click opens the repository.
   - **A workspace**; the repository's cards show only with a `repo` (a board-only workspace says
-    what adding one would show). Its first two rows are two equal columns when the tab is at
-    least 1000px wide (narrower, one column in the same order): with a repository, the Milestone
-    card | Waiting for your review, then Your open PRs | Your issues, and under them the tiles,
-    then Team in flight; with only a board, Waiting for your review | Your open PRs, then Your
-    issues | Team in flight. The parts:
+    what adding one would show). Top to bottom: the tiles, the Milestone card | Waiting for your
+    review, Team in flight (full width), then Your open PRs | Your issues; two equal columns when
+    the tab is at least 1000px wide, else one column in the same order. A card the workspace has
+    no part for is left out and its row's other card takes the width: without a board no Team in
+    flight; with only a board no tiles and no Milestone card. The parts:
     - Four tiles, in one row when the tab is at least 1000px wide, else two by two: open bugs by
       priority (total, a strip and a chip per priority, counted from the priority issue field),
       triage bugs, open customer issues (any label whose name contains `customer.labelMatch`,
@@ -170,8 +170,8 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
         sub-issues, its status, and an Unassigned flag. 8 rows, then "Show N more".
       - The issues in `spotlight.holdStatus`, under that status's name; left out when there
         are none or no board.
-  - With a board, Team in flight (full width under the tiles; beside Your issues without a
-    repository): the board's open issues in the configured statuses, grouped in
+  - With a board, Team in flight (full width, between the Milestone row and your PRs and
+    issues): the board's open issues in the configured statuses, grouped in
     board order, the longest in their status first, 5 rows per group with "Show N more". Its own
     milestone dropdown (All milestones, one milestone, or No milestone) is kept per workspace.
     Chips for assignee (or Unassigned), milestone, days in status and each linked PR's review

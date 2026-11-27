@@ -121,17 +121,19 @@ the Overview starts on all your repositories, with a card that offers to add a w
     Basecamp's Today tab). Both buttons open a Claude Code tab running the prompt set in
     Settings, in that repository's local clone; a dashed mark means the prompt isn't set yet and
     opens Settings. The icons say what they do in their tooltips.
-  - **All repos:** your lists from every repository in scope, two a row: Waiting for your review
-    beside Your open PRs, then Your issues beside the Red checks tile (default branches and your
-    PRs whose checks fail), then every repository in scope
+  - **All repos:** the Red checks tile (default branches and your PRs whose checks fail), then
+    your lists from every repository in scope: Waiting for your review, then Your open PRs beside
+    Your issues, then every repository in scope
     with its open issues and PRs, the default branch's checks, and when it was last pushed. With
     open work hides the rest, and stays as you left it.
-  - **A workspace** is a repository, a project board, or both. With a repository, two cards a
-    row: the Milestone card beside Waiting for your review, then Your open PRs beside Your issues
-    (your lists narrowed to the workspace: its repository; for a workspace with only a board, the
-    repositories its board's items are in, and your issues on its board), then four tiles (open
-    bugs by priority, triage bugs, open customer issues, the last nightly run). The Milestone
-    card shows one milestone, picked in its header ("v2.4 · next ▾": Next, which moves on
+  - **A workspace** is a repository, a project board, or both. Top to bottom: four tiles (open
+    bugs by priority, triage bugs, open customer issues, the last nightly run), the Milestone
+    card beside Waiting for your review, the issues in flight, then Your open PRs beside Your
+    issues (your lists narrowed to the workspace: its repository; for a workspace with only a
+    board, the repositories its board's items are in, and your issues on its board). A card the
+    workspace has no part for is left out: without a board no issues in flight; with only a
+    board no tiles and no Milestone card. On a narrow tab every card stacks, in the same order.
+    The Milestone card shows one milestone, picked in its header ("v2.4 · next ▾": Next, which moves on
     by itself, any open milestone by due date with overdue ones in red, or No milestone). It
     shows X of Y closed (orange when behind schedule), the due date, the time from the start to
     the due date with today's tick, the board statuses, and the flags "1 unassigned" and
@@ -142,9 +144,7 @@ the Overview starts on all your repositories, with a card that offers to add a w
     without one) on GitHub; with a board, "Open v2.4 on the Board →" shows the Board with only
     that milestone's items. With a board: the issues in flight, by status, the
     longest in their status first, with their own milestone dropdown (All milestones, one
-    milestone, or No milestone), which each workspace keeps too. With only a board (no
-    Milestone card): Waiting for your review beside Your open PRs, then Your issues beside the
-    issues in flight. On a narrow tab every card stacks, in the same order.
+    milestone, or No milestone), which each workspace keeps too.
 - **Board:** a workspace's board items, a column per status, with each card's assignee avatars.
   The filter in words on the header ("Filter: current iteration · 5 columns") opens the same
   filter dialog: chips for Type, Columns and People, and the board filter in the board's own

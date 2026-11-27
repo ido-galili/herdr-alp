@@ -1731,12 +1731,13 @@ export default class Alpmeister extends View {
   }
 
   /**
-   * The Dashboard tab. All repos: Waiting for your review | Your open PRs, then Your issues | Red
-   * checks, then every repository in scope. A workspace with a repository: the Milestone card |
-   * Waiting for your review, then Your open PRs | Your issues (narrowed to its repositories), then
-   * its tiles and the team in flight. A workspace with only a board: Waiting for your review |
-   * Your open PRs, then Your issues | the team in flight, and a line on what adding a repository
-   * would show.
+   * The Dashboard tab, top to bottom. A workspace: its tiles, the Milestone card | Waiting for
+   * your review, the team in flight, then Your open PRs | Your issues (narrowed to its
+   * repositories). A card the workspace has no part for is left out and the rest keep their
+   * places: without a board no team in flight; with only a board no tiles and no Milestone card
+   * (Waiting for your review takes the row), and a line on what adding a repository would show.
+   * All repos the same way: the Red checks tile, Waiting for your review, Your open PRs | Your
+   * issues, then every repository in scope.
    * @param {object} config The settings.
    * @param {object} model The fetched model.
    * @param {boolean} wide Whether the tab is wide enough for four tiles across and two cards a row.
@@ -1759,16 +1760,17 @@ export default class Alpmeister extends View {
       if (firstRun) content = content.child(firstRun);
       if (!account) return content.child(Note(this.loading ? "Loading from GitHub…" : "No data yet."));
       const { reviews, myPrs, mine } = this.myLists(config, account);
-      // A tile keeps its own height in a column (a row around it).
-      const redChecks = h_flex().child(RedChecks(account));
-      return content.child(this.cardRows([[reviews, myPrs], [mine, redChecks]], wide)).child(
-        Repos(config, account, {
-          expanded: this.expandedGroups,
-          onToggleGroup,
-          activeOnly: this.reposActiveOnly,
-          onToggleActive: (cx) => this.toggleReposActiveOnly(cx),
-        }),
-      );
+      return content
+        .child(h_flex().child(RedChecks(account)))
+        .child(this.cardRows([[reviews], [myPrs, mine]], wide))
+        .child(
+          Repos(config, account, {
+            expanded: this.expandedGroups,
+            onToggleGroup,
+            activeOnly: this.reposActiveOnly,
+            onToggleActive: (cx) => this.toggleReposActiveOnly(cx),
+          }),
+        );
     }
     const wsModel = model.workspaces?.[ws.name];
     if (!wsModel) return content.child(Note(this.loading ? "Loading from GitHub…" : "Refresh to load this workspace."));
@@ -1807,24 +1809,24 @@ export default class Alpmeister extends View {
         })
       : null;
     if (ws.repo) {
-      const rows = lists ? [[milestone, lists.reviews], [lists.myPrs, lists.mine]] : [[milestone]];
-      content = content.child(this.cardRows(rows, wide)).child(
+      content = content.child(
         Tiles(ws, wsModel, {
           wide,
           onSettings: (cx) => this.openSettings({ workspace: ws.name }, cx),
           filter: (key) => this.cardFilter(wsFilterId(ws.name, key)),
         }),
       );
-      if (inFlight) content = content.child(inFlight);
-      return content;
     }
-    // No Milestone card: the team in flight takes the place beside Your issues.
-    const rows = lists ? [[lists.reviews, lists.myPrs], [lists.mine, inFlight]] : [[inFlight]];
-    return content
-      .child(this.cardRows(rows, wide))
-      .child(
+    // A missing card leaves its row's other card the whole width.
+    content = content.child(
+      this.cardRows([[milestone, lists?.reviews], [inFlight], [lists?.myPrs, lists?.mine]], wide),
+    );
+    if (!ws.repo) {
+      content = content.child(
         this.settingsLine(t, "add-repo", "Add a repository to this workspace to see bugs, milestones and the nightly.", ws.name),
       );
+    }
+    return content;
   }
 
   /**
