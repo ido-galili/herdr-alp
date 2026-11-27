@@ -1,19 +1,19 @@
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { spaces, panes, focused, exec, keys, run, openOverlay, closeOverlay, props, theme, window, shared, layout, settings, home, readTextFile, terminals } from "herdr";
+import { spaces, panes, focused, exec, keys, run, openOverlay, closeOverlay, props, theme, window, shared, setShared, layout, settings, home, readTextFile, terminals } from "herdr";
 
 // Alp's tab bar: Herdr's `tabs` (0.1.16) with Alpmeister and two button groups added.
 // Alpmeister comes first, pinned before the space's tabs: it belongs to no space. A click swaps
 // the `work-stack` to the `alpmeister-view` block, so only Alpmeister shows; a space tab, a new
-// tab, another space, or Alpmeister again swaps back to the terminals. After +, icon buttons in
-// groups split by a line: [Files Changes | Basecamp]. Basecamp shows or hides the `basecamp`
-// column (the Daypack and Run tabs), when the layout has one. A button that is on gets the
-// selected fill and a white icon. A layout without `work-stack` gets Alpmeister as an icon
-// button instead, going to the space's Alpmeister tab or opening one. An Alpmeister tab in a
-// space shows Alpmeister's icon before its name.
+// tab, another space, or Alpmeister again swaps back to the terminals. After + and a line, one
+// icon button, Basecamp, shows or hides the `basecamp` dock (its Files, Changes, Today and Run
+// tabs) when the layout has one; it is lit while the dock shows, and the dock is remembered per
+// space. A layout without `work-stack` gets Alpmeister as an icon button before it instead,
+// going to the space's Alpmeister tab or opening one. An Alpmeister tab in a space shows
+// Alpmeister's icon before its name.
 // The space's tabs shrink evenly to a minimum width, then a "+N" lists the ones that don't fit.
 // While Alpmeister shows they are greyed; a click goes back to the terminals on that tab. The
-// active tab has a ⋯ (the same menu as a right-click), a zoomed tab an expand icon, and Changes
+// active tab has a ⋯ (the same menu as a right-click), a zoomed tab an expand icon, and Basecamp
 // shows how many files changed. The menus are this mod again, opened as a popup with props.menu.
 
 const ALPMEISTER = "alpmeister";
@@ -22,9 +22,13 @@ const WORK_STACK = "work-stack";
 const WORK_BODY = "work-body";
 const ALPMEISTER_VIEW = "alpmeister-view";
 const BASECAMP_ID = "basecamp";
+const BASECAMP_STACK = "basecamp-body";
 const BASECAMP_ICON = "mods/alp-tabs/panel-right.svg";
-const FILES_ICON = "mods/alp-tabs/files.svg";
-const CHANGES_ICON = "mods/alp-tabs/changes.svg";
+// The dock's tabs, in its order, and the tab it opens on when none was picked.
+const DOCK_TABS = [["files", "Files"], ["changes", "Changes"], ["basecamp-daypack", "Today"], ["basecamp-run", "Run"]];
+const DOCK_FIRST = "basecamp-daypack";
+// The changed-file count, shared with the dock's Changes tab.
+const CHANGED_KEY = "alp.changedFiles";
 const FOCUS_STAMP = "alp.focusStamp";
 const ZOOMED_ICON = "mods/alp-tabs/zoomed.svg";
 const UNZOOM_ICON = "mods/alp-tabs/unzoom.svg";
@@ -37,7 +41,7 @@ const LABEL_MAX = 170;
 const LABEL_MIN = 48;
 // The most rows "+N"'s menu shows before it scrolls.
 const MENU_ROWS = 12;
-// The Changes count: the same read-only `git status` the Changes panel runs, at most every 10 s.
+// The Changes count: the same read-only `git status` the Changes tab runs, at most every 10 s.
 const STATUS_ARGS = ["--no-optional-locks", "-c", "core.fsmonitor=false", "status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all"];
 const CHANGES_POLL = 10000;
 
@@ -96,8 +100,8 @@ function label(tab, lead) {
 const zoom = () => settings().zoom || 1;
 
 /**
- * Where the Changes panel looks: the focused pane's folder, else the space's, and its machine.
- * The same rule as Herdr's `changes` mod, so the count matches the panel.
+ * Where the Changes tab looks: the focused pane's folder, else the space's, and its machine.
+ * The same rule as Herdr's `changes` mod, so the count matches the tab.
  * @returns {{ cwd: string | null, on: string | null }}
  */
 function changesPlace() {
@@ -105,6 +109,48 @@ function changesPlace() {
   const pane = f?.pane ? panes().find((p) => p.pane === f.pane) : null;
   const on = f?.pane === null ? (f.terminal?.includes("/") ? f.terminal.split("/")[0] : null) : space?.machine ?? null;
   return { cwd: pane?.cwd || f?.cwd || space?.folder || null, on };
+}
+
+/**
+ * The dock's tabs this layout shows, as stack child ids: Files and Changes only when the welcome
+ * turned them on (shared "workspace.panels"), and only children the stack really holds.
+ * @param {object | null} body The layout's `basecamp-body` stack.
+ * @returns {string[]}
+ */
+function dockTabs(body) {
+  const enabled = shared("workspace.panels") ?? ["files", "changes"];
+  const held = new Set((body?.children ?? []).map((child) => child.id));
+  return DOCK_TABS.map(([id]) => id).filter((id) => held.has(id) && (id !== "files" && id !== "changes" || enabled.includes(id)));
+}
+
+/**
+ * The dock's state per space (null for closed, else the stack child it shows), kept on this
+ * computer. Null until migrateDocks has made it from the older panels' state.
+ * @returns {Record<string, string | null> | null}
+ */
+function loadDocks() {
+  try {
+    const stored = JSON.parse(localStorage.getItem("dock") ?? "null");
+    return stored && typeof stored === "object" && !Array.isArray(stored) ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Keeps the dock's state per space.
+ * @param {Record<string, string | null>} docks
+ */
+function saveDocks(docks) {
+  try { localStorage.setItem("dock", JSON.stringify(docks)); } catch { /* not kept this time */ }
+}
+
+/**
+ * Shares the changed-file count with the dock's Changes tab, when it moved.
+ * @param {number} count
+ */
+function publishChanged(count) {
+  if ((shared(CHANGED_KEY) ?? 0) !== count) setShared(CHANGED_KEY, count);
 }
 
 /**
@@ -216,8 +262,7 @@ export default class Tabs extends View {
     this.changesBusy = false; // a reload can strand a running git: init starts over
 
     cx.timer.every(1000, (cx) => this.syncChanges(cx));
-    try { this.panels = JSON.parse(localStorage.getItem("panels") ?? "{}"); } catch { this.panels = {}; }
-    if (!this.panels || typeof this.panels !== "object" || Array.isArray(this.panels)) this.panels = {};
+    this.docks = loadDocks();
     this.swipe = { acc: 0, steps: 0, at: 0, last: 0 };
   }
 
@@ -244,20 +289,27 @@ export default class Tabs extends View {
     run(e.delta.y > 0 ? "tab.prev" : "tab.next");
   }
 
-  // The side panel is remembered per space: switching shows that space's choice
-  // (closed if it never had one), and opening or closing it records it.
-  syncPanel(space, panel, body, enabled) {
-    if (!space || !panel) return;
-    const now = panel.hidden ? null : body?.active ?? null;
+  /**
+   * The dock is remembered per space: switching shows that space's choice (closed, or open on
+   * the tab it had), and opening, closing or picking a tab records it. A space with no choice
+   * yet leaves the dock as it is, as Today and Run belong to no space.
+   * @param {object | undefined} space The active space.
+   * @param {object | null} dock The layout's `basecamp` node.
+   * @param {object | null} body Its `basecamp-body` stack.
+   * @param {string[]} tabs The dock's tabs this layout shows (stack child ids).
+   */
+  syncDock(space, dock, body, tabs) {
+    if (!space || !dock) return;
+    this.migrateDocks(dock, body);
+    const now = dock.hidden ? null : body?.active ?? null;
     if (space.id !== this.space) {
-      const first = this.space === undefined;
       this.space = space.id; this.pending = null;
-      if (!(first && !(space.id in this.panels))) {
-        const stored = this.panels[space.id] ?? null, want = enabled.includes(stored) ? stored : null;
+      if (space.id in this.docks) {
+        const stored = this.docks[space.id] ?? null, want = stored && !tabs.includes(stored) ? tabs[0] ?? null : stored;
         if (want !== now) {
           this.pending = { want, until: Date.now() + 1000 };
-          if (want) { run("layout.select", { stack: "panel-body", child: want }); run("layout.show", { id: "panel" }); }
-          else run("layout.hide", { id: "panel" });
+          if (want) { run("layout.select", { stack: BASECAMP_STACK, child: want }); run("layout.show", { id: BASECAMP_ID }); }
+          else run("layout.hide", { id: BASECAMP_ID });
           return;
         }
       }
@@ -267,9 +319,29 @@ export default class Tabs extends View {
       if (this.pending.want !== now && Date.now() < this.pending.until) return;
       this.pending = null;
     }
-    if (this.panels[space.id] === now) return;
-    this.panels[space.id] = now;
-    localStorage.setItem("panels", JSON.stringify(this.panels));
+    if (this.docks[space.id] === now) return;
+    this.docks[space.id] = now;
+    saveDocks(this.docks);
+  }
+
+  /**
+   * Once, from the two right-hand panels before the dock: a space whose Files or Changes panel
+   * was open opens the dock on that tab; one where it was closed gets Basecamp's last state
+   * (open on Today or Run, or closed), as Basecamp was the same in every space.
+   * @param {object} dock The layout's `basecamp` node.
+   * @param {object | null} body Its `basecamp-body` stack.
+   */
+  migrateDocks(dock, body) {
+    if (this.docks) return;
+    let panels = {};
+    try { panels = JSON.parse(localStorage.getItem("panels") ?? "{}"); } catch { panels = {}; }
+    if (!panels || typeof panels !== "object" || Array.isArray(panels)) panels = {};
+    const basecamp = dock.hidden ? null : body?.active ?? DOCK_FIRST;
+    this.docks = {};
+    for (const [id, panel] of Object.entries(panels)) {
+      this.docks[id] = panel === "files" || panel === "changes" ? panel : basecamp;
+    }
+    saveDocks(this.docks);
   }
 
   /** Counts the open trail items again when Alpmeister or the Daypack says the list changed. */
@@ -299,7 +371,8 @@ export default class Tabs extends View {
   }
 
   /**
-   * Counts the changed files where the Changes panel looks, for the badge on its button: on a new
+   * Counts the changed files where the Changes tab looks, for the badge on Basecamp's button and
+   * the dock's Changes tab (shared as CHANGED_KEY): on a new
    * place at once, else at most every 10 s (longer after a slow git) while the window is in
    * front. Not at all when Changes isn't in the bar.
    * @param {object} cx
@@ -308,9 +381,10 @@ export default class Tabs extends View {
     if (this.changesBusy) return;
     if (!(shared("workspace.panels") ?? ["files", "changes"]).includes("changes")) return;
     const where = changesPlace(), key = JSON.stringify(where);
+    if (key !== this.changes?.key) publishChanged(0);
     // A new place is counted at once; the same one again only while the window is in front.
     if (key === this.changes?.key && (Date.now() < this.changesAt || window()?.active === false)) return;
-    if (!where.cwd) { this.changes = { key, count: 0 }; this.changesAt = Date.now() + CHANGES_POLL; return; }
+    if (!where.cwd) { this.changes = { key, count: 0 }; this.changesAt = Date.now() + CHANGES_POLL; publishChanged(0); return; }
     this.changesBusy = true;
     cx.spawn(async (cx) => {
       const started = Date.now();
@@ -325,6 +399,8 @@ export default class Tabs extends View {
       this.changesAt = Date.now() + Math.max(CHANGES_POLL, 5 * (Date.now() - started));
       const old = this.changes;
       this.changes = { key, count };
+      // The place may have moved on while git ran: only the current one's count is shown.
+      if (key === JSON.stringify(changesPlace())) publishChanged(count);
       if (old?.key !== key || old.count !== count) cx.notify();
     });
   }
@@ -455,8 +531,8 @@ export default class Tabs extends View {
   }
 
   /**
-   * The bar: Alp's pinned tab, the space's tabs fitted to the row (the rest behind "+N"), +, the
-   * panel buttons and Basecamp's. The popup copy draws its menu instead.
+   * The bar: Alp's pinned tab, the space's tabs fitted to the row (the rest behind "+N"), +, and
+   * Basecamp's button. The popup copy draws its menu instead.
    * @param {object} cx
    * @returns {object}
    */
@@ -469,7 +545,7 @@ export default class Tabs extends View {
     const active = shown.findIndex(tab => tab.active);
     const selected = shown[active]?.id;
     const stop = (_e, cx) => cx.stop_propagation();
-    // A thin line after the pinned Alpmeister tab, and between the panel buttons and Alp's own.
+    // A thin line after the pinned Alpmeister tab, and between + and the buttons after it.
     const separator = () => div().w(1).h(16).mx(5).flex_none().bg(t.border);
     const button = (id, label, action) => div().id(id).size(26).flex_none().flex().items_center().justify_center().rounded(6).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
       .on_mouse_down("left", stop).on_click(action).child(label);
@@ -490,27 +566,9 @@ export default class Tabs extends View {
     const lightsPadding = w?.platform === "macos" && w.titlebar === "none" && !w.fullscreen && root?.traffic_lights
       ? Math.max(10, (root.traffic_lights[0] + 64) / settings().zoom - (sidebar?.hidden ? 0 : sidebar?.size?.px ?? 0))
       : 10;
-    const panel = find(root, "panel"), body = find(root, "panel-body");
-    const enabled = shared("workspace.panels") ?? ["files", "changes"];
-    this.syncPanel(space, panel, body, enabled);
-    const changed = this.changes?.key === JSON.stringify(changesPlace()) ? this.changes.count : 0;
-    const panelButton = (id, label, icon, count = 0) => {
-      const on = !alpOn && panel && !panel.hidden && body?.active === id;
-      const files = count === 1 ? "1 changed file" : `${count} changed files`;
-      return h_flex().id(`panel-${id}`).size(26).flex_none().items_center().justify_center().rounded(6).relative()
-        .bg(on ? t.selected : t.chrome).text_color(on ? t.foreground : t.muted)
-        .hover(s => s.bg(t.hover).text_color(t.foreground)).on_mouse_down("left", stop)
-        .tooltip(`${on ? "Hide" : "Show"} ${label}${count ? `: ${files}` : ""}`)
-        .on_click(() => {
-          if (on) run("layout.hide", { id: "panel" });
-          else { showTerminals(); run("layout.select", { stack: "panel-body", child: id }); run("layout.show", { id: "panel" }); }
-        }).child(svg(icon).size(15))
-        // The count, as editors show it: a small badge on the icon's corner.
-        .when(count > 0, el => el.child(div().absolute().top(0).right(-2).min_w(14).h(14).px(3).rounded(7).flex().items_center().justify_center()
-          .bg(t.accent).text_color(t.chrome).text_size(10).font_bold().child(count > 99 ? "99+" : String(count))));
-    };
-    const basecamp = find(root, BASECAMP_ID);
-    const hasPanels = enabled.includes("files") || enabled.includes("changes");
+    const dock = find(root, BASECAMP_ID), body = find(root, BASECAMP_STACK);
+    const tabs = dockTabs(body);
+    this.syncDock(space, dock, body, tabs);
     return h_flex().size_full().min_w(0).px(10).pl(lightsPadding).gap(3).items_center().bg(t.chrome).border_b(1).border_color(t.border)
       .on_mouse_up("left", () => { this.pressed = null; })
       .on_scroll_wheel(e => this.wheel(e))
@@ -524,11 +582,9 @@ export default class Tabs extends View {
           .children(shown.map((c, i) => this.tab(t, c, i, { measure: true, alpOn })))
           .child(this.moreButton(t, []))))
       .child(button("tab-new", "+", () => openOverlay({ mod: "new-menu", kind: "popup", width: 250, height: 512 })))
-      .when(enabled.includes("files"), el => el.child(panelButton("files", "Files", FILES_ICON)))
-      .when(enabled.includes("changes"), el => el.child(panelButton("changes", "Changes", CHANGES_ICON, changed)))
-      .when(hasPanels && (!pinned || Boolean(basecamp)), el => el.child(separator()))
+      .when(!pinned || Boolean(dock), el => el.child(separator()))
       .when(!pinned, el => el.child(this.alpmeisterButton(t, space, stop)))
-      .when(Boolean(basecamp), el => el.child(this.basecampButton(t, basecamp, stop)))
+      .when(Boolean(dock), el => el.child(this.basecampButton(t, dock, body, tabs, stop)))
       .when(w?.buttons, el => el.child(button("minimize", w.platform === "windows" ? svg("mods/alp-tabs/win-min.svg").size(16) : "−", () => run("window.minimize")))
         .child(button("maximize", w.platform === "windows" ? svg(`mods/alp-tabs/${w.maximized ? "win-restore" : "win-max"}.svg`).size(16) : "□", () => run("window.maximize")))
         .child(button("close-window", w.platform === "windows" ? svg("mods/alp-tabs/win-close.svg").size(16) : svg("mods/pane/close.svg").size(13), () => run("window.close"))));
@@ -604,22 +660,34 @@ export default class Tabs extends View {
   }
 
   /**
-   * Basecamp's button, last: shows or hides the `basecamp` column. The tooltip names Basecamp's
-   * two lists, Today with its open items and Run with its runs still running, each count left
-   * out when it is zero.
+   * Basecamp's button, last: shows or hides the dock, on the tab it last showed. The tooltip
+   * names the dock's tabs, with how many files changed, trail items are open and runs are
+   * still running, each count left out when it is zero; the changed files also show as a badge
+   * on the icon.
    * @param {object} t The theme.
-   * @param {object} column The layout's `basecamp` node.
+   * @param {object} dock The layout's `basecamp` node.
+   * @param {object | null} body Its `basecamp-body` stack.
+   * @param {string[]} tabs The dock's tabs this layout shows (stack child ids).
    * @param {Function} stop Keeps the press from dragging the window.
    * @returns {object}
    */
-  basecampButton(t, column, stop) {
-    const open = !column.hidden;
+  basecampButton(t, dock, body, tabs, stop) {
+    const open = !dock.hidden;
+    const changed = tabs.includes("changes") && this.changes?.key === JSON.stringify(changesPlace()) ? this.changes.count : 0;
     const running = terminals().filter((terminal) => terminal.state === "live" && terminal.labels?.["alp.run"] && !terminal.labels["alp.run.exit"]).length;
-    const today = this.trailOpen ? `Today (${this.trailOpen} open)` : "Today";
-    const runs = running ? `Run (${running} running)` : "Run";
-    const lists = this.trailOpen || running ? `${today}, ${runs}` : "Today and Run";
-    return this.iconButton(t, "basecamp-button", BASECAMP_ICON, open, stop)
-      .on_click(() => run("layout.toggle", { id: BASECAMP_ID }))
-      .tooltip(open ? "Hide Basecamp" : `Show Basecamp: ${lists}`);
+    const counts = { changes: changed && `${changed} changed`, "basecamp-daypack": this.trailOpen && `${this.trailOpen} open`, "basecamp-run": running && `${running} running` };
+    const names = DOCK_TABS.filter(([id]) => tabs.includes(id)).map(([id, name]) => (counts[id] ? `${name} (${counts[id]})` : name));
+    const list = names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : names.join("");
+    return this.iconButton(t, "basecamp-button", BASECAMP_ICON, open, stop).relative()
+      .on_click(() => {
+        if (open) { run("layout.hide", { id: BASECAMP_ID }); return; }
+        // A tab the welcome turned off since: open on the first one there is.
+        if (!tabs.includes(body?.active)) run("layout.select", { stack: BASECAMP_STACK, child: tabs.includes(DOCK_FIRST) ? DOCK_FIRST : tabs[0] });
+        run("layout.show", { id: BASECAMP_ID });
+      })
+      .tooltip(open ? "Hide Basecamp" : `Show Basecamp: ${list}`)
+      // The count, as editors show it: a small badge on the icon's corner.
+      .when(changed > 0, el => el.child(div().absolute().top(0).right(-2).min_w(14).h(14).px(3).rounded(7).flex().items_center().justify_center()
+        .bg(t.accent).text_color(t.chrome).text_size(10).font_bold().child(changed > 99 ? "99+" : String(changed))));
   }
 }

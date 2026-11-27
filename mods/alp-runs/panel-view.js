@@ -159,7 +159,7 @@ export class BarPart {
             ),
           ),
       )
-      .child(iconButton(t, "runs-hide", CLOSE_ICON, "Hide the runs panel", () => run("layout.hide", { id: PANEL_ID })));
+      .child(iconButton(t, "runs-hide", CLOSE_ICON, "Hide the runs' output", () => run("layout.hide", { id: PANEL_ID })));
   }
 }
 

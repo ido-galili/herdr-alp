@@ -37,8 +37,8 @@ export default class AlpStatus extends View {
   }
 
   /**
-   * The Runs button: shows or hides the bottom panel. Lit while it shows; the count of runs still
-   * running follows the icon.
+   * The Runs button: shows or hides the bottom panel with the runs' output, as the Output button
+   * in Basecamp's Run tab does. Lit while it shows; the count of runs still running follows the icon.
    * @param {object} t The theme.
    * @param {object} panel The layout's `bottom-panel` node.
    * @returns {object}
@@ -49,7 +49,7 @@ export default class AlpStatus extends View {
     return h_flex().id("runs-toggle").h(20).px(6).gap(5).items_center().rounded(5).cursor_pointer()
       .bg(open ? t.selected : t.chrome).text_color(open ? t.foreground : t.dim)
       .hover((s) => s.bg(t.hover).text_color(t.foreground))
-      .tooltip(`${open ? "Hide" : "Show"} runs${running ? ` · ${running} running` : ""}`)
+      .tooltip(`${open ? "Hide" : "Show"} the runs' output${running ? ` (${running} running)` : ""}`)
       .on_click(() => run("layout.toggle", { id: PANEL_ID }))
       .child(svg(RUNS_ICON).size(13).flex_none())
       .when(running > 0, (el) => el.child(div().text_color(t.working).child(String(running))));

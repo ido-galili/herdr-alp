@@ -133,39 +133,6 @@
                       "lone": true
                     }
                   }
-                },
-                {
-                  "id": "panel",
-                  "type": "column",
-                  "children": [
-                    {
-                      "id": "panel-body",
-                      "type": "stack",
-                      "children": [
-                        {
-                          "id": "files",
-                          "type": "block",
-                          "content": {
-                            "mod": "alp-files"
-                          }
-                        },
-                        {
-                          "id": "changes",
-                          "type": "block",
-                          "content": {
-                            "mod": "changes"
-                          }
-                        }
-                      ],
-                      "active": "files"
-                    }
-                  ],
-                  "size": {
-                    "px": 368
-                  },
-                  "min": 280,
-                  "max": 900,
-                  "hidden": true
                 }
               ],
               "padding": 8,
@@ -275,6 +242,22 @@
           "type": "stack",
           "children": [
             {
+              "id": "files",
+              "type": "block",
+              "content": {
+                "mod": "alp-files"
+              },
+              "padding": 8
+            },
+            {
+              "id": "changes",
+              "type": "block",
+              "content": {
+                "mod": "changes"
+              },
+              "padding": 8
+            },
+            {
               "id": "basecamp-daypack",
               "type": "block",
               "content": {
@@ -296,10 +279,10 @@
         }
       ],
       "size": {
-        "px": 300
+        "px": 360
       },
-      "min": 220,
-      "max": 520,
+      "min": 300,
+      "max": 900,
       "background": "chrome",
       "hidden": true
     }

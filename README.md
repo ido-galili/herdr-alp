@@ -19,16 +19,16 @@ What's inside:
 | `themes/alp.json` | its built-in theme: Dracula |
 | `mods/usage-limits/` | sidebar block: session (5h) and weekly (7d) usage, with time to reset |
 | `mods/pane-agent/` | pane header: icon, name, folder, model/effort/context chips, worktree, branch, status, split/zoom/close |
-| `mods/alp-files/` | the Files panel with a minimal editor: click a file to edit it, `ctrl-s` saves, edits survive switching files, and a file another program changed asks before it's overwritten (Herdr's `files`, cloned) |
+| `mods/alp-files/` | Files: Basecamp's file tree, and the editor a file opens in, as a pane beside the terminals: `ctrl-s` saves, edits survive switching files, and a file another program changed asks before it's overwritten (Herdr's `files`, cloned) |
 | `mods/alp-chrome/` | sidebar brand row and footer: Herdr's `workspace-chrome`, with a 60px rail whose unfold button sits at the top |
 | `mods/alp-spaces/` | sidebar spaces list: Herdr's `spaces`, with each space's avatar on the folded rail |
 | `mods/alp-agents/` | sidebar agents list: grouped or priority views, sub-agents under their parent, each Space shown by its avatar |
 | `mods/alpmeister/` | Alp, a team lead's start-of-day tab: an Overview of all your repos or one workspace (bugs by priority, triage, customer issues, nightly, priorities, milestone, team in flight), a Board, Herds (sessions and their agents), Daypack (Today, Waiting for your review, Your open PRs, Your issues) and Settings |
-| `mods/basecamp/` | Basecamp (Today and Run): the right column beside the terminals, shown or hidden from its button at the end of the tab bar |
+| `mods/basecamp/` | Basecamp (Files, Changes, Today and Run): the one dock on the right, beside the terminals; its tab strip. Shown or hidden from its button at the end of the tab bar, and remembered per space |
 | `mods/daypack/` | Today: Basecamp's tab with the Today list, the same one as on Alp's Daypack |
 | `mods/alp-runs/` | Runs: Basecamp's Run tab (the runs in Alp's config, `.herdr/alp.json` and your own, each with a play button, and an import from VS Code) and the bottom panel with each run's output and the Runs list |
 | `mods/alp-status/` | the status bar: Herdr's, with a Runs button that shows or hides the bottom panel |
-| `mods/alp-tabs/` | the tab bar: an Alp tab pinned before the space's tabs, then the tabs, then icon buttons in two groups, Files and Changes, then Basecamp |
+| `mods/alp-tabs/` | the tab bar: an Alp tab pinned before the space's tabs, then the tabs, +, and the Basecamp button |
 | `plugins/alp/` | Claude Code plugin that writes the status files the mods read |
 | `schema/alp.schema.json` | the JSON schema for Alp's config files |
 | `RECIPE.md` | the brief to rebuild it from scratch (herdr.dev format) |
@@ -205,7 +205,8 @@ workspace is the focused terminal's git checkout, or the repo the space's termin
 - **Watch:** the bottom panel opens with the run's live output. Its bar shows the run's state,
   stop (Ctrl-C, then terminate on a second press) and restart. The Runs list beside it holds
   every run: running, exited 0 or failed. The output stays after the command ends.
-- **Show or hide:** the terminal button at the right end of the status bar, after the commands hint.
+- **Show or hide:** Output in the Run tab, beside the workspace's name, or the terminal button at
+  the right end of the status bar, after the commands hint.
 - **Add, edit, delete:** **+** adds a run; right-click a run to edit it, delete it from the file
   it's in, or hide it for yourself.
 - **Not runnable here:** runs that use `${file}` and other editor-only variables fold away under
