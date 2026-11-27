@@ -454,6 +454,12 @@ export default class Tabs extends View {
       })));
   }
 
+  /**
+   * The bar: Alp's pinned tab, the space's tabs fitted to the row (the rest behind "+N"), +, the
+   * panel buttons and Basecamp's. The popup copy draws its menu instead.
+   * @param {object} cx
+   * @returns {object}
+   */
   render(cx) {
     const t = theme();
     if (props()?.menu) return this.menu(t);
