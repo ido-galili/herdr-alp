@@ -197,37 +197,7 @@ export class BoardState {
           onClose: (cx, keyboard) => this.closeMenu(cx, keyboard),
           onOutside: (cx) => this.pressOutsideMenu(cx),
           onInside: () => this.pressInsideMenu(),
-          claude: this.claudeAction(item),
         }),
-    };
-  }
-
-  /**
-   * The card menu's Claude row, the Board card's only way to Claude: "Start with Claude" for an
-   * issue, "Review with Claude" for a PR, running the prompt set in Settings; with no prompt set,
-   * "Set the Claude prompt" opens Settings. None for a draft.
-   * @param {object} item The board item.
-   * @returns {{ label: string, note?: string, onPress(cx: object): void } | null}
-   */
-  claudeAction(item) {
-    if (item.kind === "draft" || item.number == null) return null;
-    const actions = this.view.launchActions();
-    if (!actions.prompt(item.kind)) {
-      return {
-        label: "Set the Claude prompt",
-        note: "Settings",
-        onPress: (cx) => {
-          this.closeMenu(cx);
-          actions.openSettings(cx);
-        },
-      };
-    }
-    return {
-      label: item.kind === "pr" ? "Review with Claude" : "Start with Claude",
-      onPress: (cx) => {
-        this.closeMenu(cx);
-        actions.launch(item);
-      },
     };
   }
 

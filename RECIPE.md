@@ -219,9 +219,8 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
       nothing.
     - The ⋯ on each card, or a right click, opens the card's menu with its top-left where it was
       pressed (kept inside the window; from the keyboard, at the card's top-left): Move to (the
-      columns), Iteration and Milestone, each with the card's current value and a chevron, then
-      "Start with Claude" (an issue) or "Review with Claude" (a PR), the card's only Claude
-      action ("Set the Claude prompt" opens Settings while the prompt is unset). Pointing at one or clicking it opens its menu beside it, level with its row.
+      columns), Iteration and Milestone, each with the card's current value and a chevron.
+      Board cards have no Claude action; the Overview's rows keep their Claude buttons. Pointing at one or clicking it opens its menu beside it, level with its row.
       Iteration lists No iteration, the last three completed iterations and every open one (the
       current one noted). Milestone lists No milestone and the repository's open milestones,
       soonest due first (read on the first open). The card's own are ticked. The menu works from

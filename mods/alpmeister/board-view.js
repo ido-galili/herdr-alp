@@ -243,7 +243,7 @@ function ItemCard(t, item, options) {
             .flex_none()
             .items_center()
             .when(Boolean(session), (el) => el.child(SessionButton(`${id}-session`, session)))
-            // No Claude button here: the ⋯ menu has "Start with Claude" / "Review with Claude".
+            // No Claude button on Board cards; the Overview's rows have theirs.
             .when(linked, (el) => el.children([options.pinFor("bv")(item)].filter(Boolean)))
             .when(Boolean(item.itemId) && !options.ghost, (el) => el.child(MoreButton(t, item, id, options))),
         ),

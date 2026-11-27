@@ -1,6 +1,5 @@
 // The Board card's menu, opened by its ⋯ button or a right click: Move to, Iteration and
-// Milestone, each opening its own menu beside it, as a nested dropdown does, then "Start with
-// Claude" (an issue) or "Review with Claude" (a PR), the card's only Claude button. It works from the
+// Milestone, each opening its own menu beside it, as a nested dropdown does. It works from the
 // keyboard too: Tab or Shift+Tab between rows, Enter, Space or → opens a row's menu or picks, ←
 // goes back, Esc closes it and puts the keyboard back on the ⋯. The submenu floats level with its row, to the right,
 // or to the left for a card in the right half of the board, and never resizes the main menu. The
@@ -294,16 +293,6 @@ export function CardMenu(item, options) {
           open: options.submenu === row.name,
           onOpen: (cx, keyboard) => options.onSubmenu(row.name, cx, keyboard),
           focus: index === 0 ? options.focus?.main : null,
-        }),
-      ),
-    )
-    .when(Boolean(options.claude), (el) =>
-      el.child(
-        Row(t, `${id}-claude`, {
-          label: options.claude.label,
-          note: options.claude.note,
-          ticked: false,
-          onPick: (cx) => options.claude.onPress(cx),
         }),
       ),
     );
