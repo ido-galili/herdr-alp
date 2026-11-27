@@ -86,7 +86,7 @@ export function Reviews(account, actions) {
   );
   return Card(
     "reviews",
-    "PRs need your attention",
+    "Waiting for your review",
     [
       Chip(String(account.counts?.reviews ?? reviews.length), { color: reviews.length ? t.blocked : t.dim }),
       IconButton("rv-all", ICONS.github, () => openUrl(searchUrl(null, account.queries.review)), {
@@ -142,7 +142,7 @@ export function MyPrs(account, actions) {
   );
   return Card(
     "my-prs",
-    "My PRs",
+    "Your open PRs",
     [
       Chip(String(account.counts?.myPrs ?? prs.length), { color: t.muted }),
       IconButton("mp-all", ICONS.github, () => openUrl(searchUrl(null, account.queries.myPrs)), {

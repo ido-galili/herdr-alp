@@ -276,9 +276,9 @@ export default class Tabs extends View {
       .border(1).border_color(on ? t.border : t.chrome).bg(on ? t.raised : t.chrome).text_color(on ? t.foreground : t.muted)
       .hover(s => s.bg(t.hover)).on_mouse_down("left", stop)
       .on_click(() => run("layout.select", { stack: WORK_STACK, child: on ? WORK_BODY : ALPMEISTER_VIEW }))
-      .tooltip(on ? "Back to the terminals" : "Show Alpmeister")
+      .tooltip(on ? "Back to the terminals" : "Show Alp")
       .child(svg(ALPMEISTER_ICON).size(14).flex_none().text_color(on ? t.foreground : t.muted))
-      .child("Alpmeister");
+      .child("Alp");
   }
 
   /**
@@ -294,14 +294,15 @@ export default class Tabs extends View {
     return this.iconButton(t, "alpmeister", ALPMEISTER_ICON, shown, stop)
       .on_click(() => {
         if (pane) run("tab.select", { id: pane.tab });
-        else run("tab.new", { mod: ALPMEISTER, name: "Alpmeister" });
+        else run("tab.new", { mod: ALPMEISTER, name: "Alp" });
       })
-      .tooltip(pane ? "Go to Alpmeister" : "Open Alpmeister");
+      .tooltip(pane ? "Go to Alp" : "Open Alp");
   }
 
   /**
-   * Basecamp's button, last: shows or hides the `basecamp` column. The tooltip counts open trail
-   * items and runs still running.
+   * Basecamp's button, last: shows or hides the `basecamp` column. The tooltip names Basecamp's
+   * two lists, Today with its open items and Run with its runs still running, each count left
+   * out when it is zero.
    * @param {object} t The theme.
    * @param {object} column The layout's `basecamp` node.
    * @param {Function} stop Keeps the press from dragging the window.
@@ -310,9 +311,11 @@ export default class Tabs extends View {
   basecampButton(t, column, stop) {
     const open = !column.hidden;
     const running = terminals().filter((terminal) => terminal.state === "live" && terminal.labels?.["alp.run"] && !terminal.labels["alp.run.exit"]).length;
-    const counts = [this.trailOpen ? `${this.trailOpen} open` : "", running ? `${running} running` : ""].filter(Boolean).join(" · ");
+    const today = this.trailOpen ? `Today (${this.trailOpen} open)` : "Today";
+    const runs = running ? `Run (${running} running)` : "Run";
+    const lists = this.trailOpen || running ? `${today}, ${runs}` : "Today and Run";
     return this.iconButton(t, "basecamp-button", BASECAMP_ICON, open, stop)
       .on_click(() => run("layout.toggle", { id: BASECAMP_ID }))
-      .tooltip(`${open ? "Hide" : "Show"} Basecamp${counts ? ` · ${counts}` : ""}`);
+      .tooltip(open ? "Hide Basecamp" : `Show Basecamp: ${lists}`);
   }
 }

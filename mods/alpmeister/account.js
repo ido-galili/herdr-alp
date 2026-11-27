@@ -33,15 +33,15 @@ export function AccountTiles(account, { wide }) {
   const tiles = [
     Tile(
       "tile-reviews",
-      "Review requests",
+      "Waiting for your review",
       String(counts.reviews),
-      "waiting on you",
+      "review requests",
       counts.reviews ? t.blocked : t.foreground,
       searchUrl(null, account.queries.review),
     ),
     Tile(
       "tile-my-prs",
-      "My open PRs",
+      "Your open PRs",
       String(counts.myPrs),
       prLines.length ? prLines : "no review decisions yet",
       t.foreground,
@@ -49,7 +49,7 @@ export function AccountTiles(account, { wide }) {
     ),
     Tile(
       "tile-mine",
-      "Assigned issues",
+      "Your issues",
       String(counts.mine),
       "open, assigned to you",
       t.foreground,

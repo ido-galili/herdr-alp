@@ -62,7 +62,7 @@ const FIELDS = {
   },
   name: {
     scope: "workspace",
-    placeholder: "Shown on the Dashboard switch",
+    placeholder: "Shown on the Overview switch",
     get: (ws) => ws.name,
     set: (ws, value) => (ws.name = value),
   },
@@ -980,7 +980,7 @@ export class SettingsForm {
                   .child(Chip(`${scopedCount} in scope`, { color: t.muted })),
               )
               .child(this.scopeChips(t)),
-            "The Dashboard's All repos view and the Daypack lists cover these.",
+            "The Overview's All repos view and the Daypack lists cover these.",
           ),
         )
         .child(this.foldersSection(t))
@@ -1016,10 +1016,10 @@ export class SettingsForm {
         .when(this.advancedAccount, (el) =>
           el
             .child(
-              this.field(t, "Review requests", this.text(t, "reviewQuery"), "GitHub issue searches, across everything you can see"),
+              this.field(t, "Waiting for your review", this.text(t, "reviewQuery"), "GitHub issue searches, across everything you can see"),
             )
-            .child(this.field(t, "My PRs", this.text(t, "myPrsQuery")))
-            .child(this.field(t, "My issues", this.text(t, "mineQuery"))),
+            .child(this.field(t, "Your open PRs", this.text(t, "myPrsQuery")))
+            .child(this.field(t, "Your issues", this.text(t, "mineQuery"))),
         ),
     );
   }
@@ -1055,7 +1055,7 @@ export class SettingsForm {
         ? this.workspaceForm(t, ws)
         : Note(
             "No workspaces yet. A workspace is a repository, a project board, or both, with the team cards for it: " +
-              "bugs, triage, nightly, milestone, spotlight and in flight. With workspaces, the Dashboard switches " +
+              "bugs, triage, nightly, milestone, spotlight and in flight. With workspaces, the Overview switches " +
               "between them and All repos.",
           ),
     );
@@ -1128,7 +1128,7 @@ export class SettingsForm {
           "Project board",
           this.picker(t, "ws-board", ws.board ? boardKey(ws.board) : null, this.boardOptions(ws), (key) => this.pickBoard(ws, key)),
           ws.repo
-            ? "Statuses, iterations and the team in flight come from it. Without one, the Dashboard lists the open PRs instead."
+            ? "Statuses, iterations and the team in flight come from it. Without one, the Overview lists the open PRs instead."
             : "Statuses, iterations and the team in flight come from it.",
         ),
       )
@@ -1298,7 +1298,7 @@ export class SettingsForm {
                   ws.spotlight.holdStatus = ws.spotlight.holdStatus === status ? "" : status;
                   cx.notify();
                 },
-                { tooltip: "Spotlight lists these issues under To discuss" },
+                { tooltip: "Spotlight lists these issues apart, under this status" },
               ),
             ),
         ),

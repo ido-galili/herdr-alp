@@ -1,5 +1,5 @@
 // Basecamp: the column on the window's right edge, beside the terminals. Its header switches
-// between two tabs: the Daypack (today's trail, the `daypack` mod) and Run (the workspace's
+// between two tabs: Today (the trail, the `daypack` mod) and Run (the workspace's
 // launch configs, tasks and saved commands, the `alp-runs` mod). The tab bar's Basecamp button
 // shows or hides the column.
 
@@ -10,7 +10,7 @@ import { home, layout, readTextFile, run, shared, terminals, theme } from "herdr
 const COLUMN_ID = "basecamp";
 const STACK_ID = "basecamp-body";
 const TABS = [
-  { child: "basecamp-daypack", label: "Daypack", icon: "mods/daypack/backpack.svg" },
+  { child: "basecamp-daypack", label: "Today", icon: "mods/daypack/backpack.svg" },
   { child: "basecamp-run", label: "Run", icon: "mods/alp-runs/play.svg" },
 ];
 const STAMP_KEY = "alp.focusStamp";

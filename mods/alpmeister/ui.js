@@ -161,8 +161,16 @@ export function Bar(fraction, color, tick = null, height = 8) {
     );
 }
 
-/** A card holding one widget: a title row with optional extras, then the body. */
-export function Card(id, title, extras, body) {
+/**
+ * A card holding one widget: a title row with optional extras, then the body.
+ * @param {string} id The card's element id.
+ * @param {string} title The card's title.
+ * @param {object[] | null} extras Chips and buttons on the right of the title row.
+ * @param {object} body The card's content.
+ * @param {string} [note] A short dim clause after the title that says what the card lists.
+ * @returns {object} The card.
+ */
+export function Card(id, title, extras, body, note) {
   const t = theme();
   return v_flex()
     .id(id)
@@ -177,7 +185,8 @@ export function Card(id, title, extras, body) {
       h_flex()
         .items_center()
         .gap(8)
-        .child(div().text_size(12.5).font_semibold().text_color(t.foreground).child(title))
+        .child(div().flex_none().text_size(12.5).font_semibold().text_color(t.foreground).child(title))
+        .when(Boolean(note), (el) => el.child(div().min_w(0).truncate().text_size(11.5).text_color(t.dim).child(note)))
         .child(div().flex_1())
         .children(extras ?? []),
     )

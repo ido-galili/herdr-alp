@@ -68,7 +68,12 @@ function Lane(t, config, lane, options) {
 
 /**
  * The spotlight card. `options`: `{ wide, expanded, onToggleGroup, pinButton }`. `expanded`
- * is the set of lists that show every row; the rest show the first eight.
+ * is the set of lists that show every row; the rest show the first eight. The title's note says
+ * which issues it lists: those with a priority, a prioritizing label or a feature type.
+ * @param {object} config The workspace's settings.
+ * @param {object} model The workspace's model, with `spotlight` from data.js.
+ * @param {{ wide: boolean, expanded: Set<string>, onToggleGroup: Function, pinButton: Function }} options
+ * @returns {object} The card.
  */
 export function Spotlight(config, model, options) {
   const t = theme();
@@ -80,6 +85,8 @@ export function Spotlight(config, model, options) {
   const discuss = (data.onHold ?? []).map((issue) =>
     issueRow(t, config, "sp-hold", issue, options, [Chip(issue.milestone, { color: t.dim })]),
   );
+  const count = data.milestones.length;
+  const note = `priorities and features in the next ${count === 1 ? "milestone" : `${count} milestones`}`;
   return Card(
     "spotlight",
     "Spotlight",
@@ -91,9 +98,10 @@ export function Spotlight(config, model, options) {
         el.child(
           v_flex()
             .gap(2)
-            .child(GroupHeading(`To discuss · ${config.spotlight.holdStatus}`, discuss.length, t.blocked))
+            .child(GroupHeading(config.spotlight.holdStatus || "On hold", discuss.length, t.blocked))
             .children(discuss.length ? limited("sp-hold", discuss, options) : [Note("Nothing on hold.")]),
         ),
       ),
+    note,
   );
 }

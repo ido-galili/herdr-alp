@@ -106,8 +106,16 @@ export function Milestone(config, model) {
  * One number tile: a label, a big value, then lines or any element under it. `sub` is a string,
  * an element, or a list of them. `action` is a
  * URL to open or a function to run on click.
+ * @param {string} id The tile's element id.
+ * @param {string} label The tile's label.
+ * @param {string} value The big value.
+ * @param {string | object | Array<string | object>} sub The lines under the value.
+ * @param {string} color The value's color.
+ * @param {string | Function | null} action A URL to open, or a function to run, on click.
+ * @param {string} [note] A short clause after the label that says what the tile counts.
+ * @returns {object} The tile.
  */
-export function Tile(id, label, value, sub, color, action) {
+export function Tile(id, label, value, sub, color, action, note) {
   const t = theme();
   return v_flex()
     .id(id)
@@ -125,7 +133,7 @@ export function Tile(id, label, value, sub, color, action) {
       if (typeof action === "function") action(cx);
       else if (action) openUrl(action);
     })
-    .child(div().text_size(11).text_color(t.dim).child(label))
+    .child(div().text_size(11).text_color(t.dim).child(note ? `${label} · ${note}` : label))
     .child(div().text_size(22).font_semibold().text_color(color).child(value))
     .children(
       (Array.isArray(sub) ? sub : [sub]).map((line) =>
@@ -234,7 +242,7 @@ export function Tiles(config, model, { wide }) {
       t.foreground,
       customer?.query ? searchUrl(config.repo, customer.query) : null,
     ),
-    Tile("tile-nightly", "Nightly", nightlyValue, nightlySub, nightlyColor, model.nightly?.url),
+    Tile("tile-nightly", "Nightly", nightlyValue, nightlySub, nightlyColor, model.nightly?.url, "latest run"),
   ];
   if (wide) return h_flex().gap(10).items_stretch().children(tiles);
   return v_flex()

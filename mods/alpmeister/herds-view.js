@@ -280,6 +280,9 @@ function GrazingCard(t, session, live, actions) {
  * expandedAgents: Set<sessionId>, toggleAgents(sessionId, cx), canvas: HerdsCanvas, canvasHeight }`.
  * The herds are drawn by `canvas`, `canvasHeight` tall, or `fullHeight` tall alone in the tab while
  * `canvas.full`.
+ * @param {object | null} model loadHerds()'s result.
+ * @param {object} actions The actions above.
+ * @returns {object} The tab's content.
  */
 export function Herds(model, actions) {
   const t = theme();
@@ -313,6 +316,7 @@ export function Herds(model, actions) {
           .items_center()
           .gap(8)
           .child(div().text_size(12.5).font_semibold().text_color(t.foreground).child("Herds"))
+          .child(div().text_size(11.5).text_color(t.dim).child("sessions and their agents"))
           .child(summary)
           .child(div().flex_1())
           .children(canvas.controls(t)),
@@ -352,6 +356,7 @@ export function Herds(model, actions) {
                 ),
               )
           : Note("No herds: no session has messaged another, made a worktree for one, or started agents lately."),
+        "sessions and their agents",
       ),
     )
     .child(

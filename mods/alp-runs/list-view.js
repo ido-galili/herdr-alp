@@ -36,7 +36,7 @@ const PLAY_ICON = "mods/alp-runs/play.svg";
 const PLUS_ICON = "mods/workspace-chrome/plus.svg";
 const RELOAD_ICON = "mods/alp-runs/reload.svg";
 /** How a run's origin is marked after its name; the repo's runs carry no mark. */
-const ORIGIN_MARK = { you: "yours", local: "local" };
+const ORIGIN_MARK = { you: "me everywhere", local: "just me" };
 
 /**
  * Opens the form that adds a run, or edits one.

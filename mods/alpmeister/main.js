@@ -62,8 +62,12 @@ const STALE_AFTER = 2 * 3600000;
 const AGENT_WATCH_PAUSE = 3000;
 const WIDE = 1000;
 const TABS = { dashboard: "dashboard", board: "board", today: "today", herds: "herds", settings: "settings" };
+/** Other names `props.tab` takes for a tab: the Dashboard is shown as Overview. */
+const TAB_ALIASES = new Map([["overview", TABS.dashboard]]);
 const TAB_KEY = "alpmeister.tab";
-const SETTINGS_TAB_NAME = "Alpmeister settings";
+const SETTINGS_TAB_NAME = "Alp settings";
+/** The settings tab's name before Alpmeister was shown as Alp, so a tab opened then is reused. */
+const OLD_SETTINGS_TAB_NAME = "Alpmeister settings";
 /** Set after the settings file is saved, so every other copy fetches with the new settings. */
 const SETTINGS_STAMP_KEY = "alp.settingsStamp";
 const WORKSPACE_KEY = "alpmeister.workspace";
@@ -73,11 +77,24 @@ const FOCUS_STAMP_KEY = "alp.focusStamp";
 
 const cachePath = () => `${stateDir()}/alpmeister-cache.json`;
 
-/** The tab this copy showed last, or the dashboard. Settings opens in its own copy only. */
+/**
+ * The tab a name stands for: one of TABS' values, or an alias such as "overview".
+ * @param {unknown} name The name, from `props.tab` or the remembered tab.
+ * @returns {string | null} The TABS value, or null when the name is no tab.
+ */
+function tabNamed(name) {
+  if (Object.values(TABS).includes(name)) return name;
+  return TAB_ALIASES.get(name) ?? null;
+}
+
+/**
+ * The tab this copy showed last, or the dashboard. Settings opens in its own copy only.
+ * @returns {string} A TABS value.
+ */
 function rememberedTab() {
   try {
-    const tab = localStorage.getItem(TAB_KEY);
-    return Object.values(TABS).includes(tab) && tab !== TABS.settings ? tab : TABS.dashboard;
+    const tab = tabNamed(localStorage.getItem(TAB_KEY));
+    return tab && tab !== TABS.settings ? tab : TABS.dashboard;
   } catch (error) {
     console.log(`alpmeister: no remembered tab: ${error}`);
     return TABS.dashboard;
@@ -116,7 +133,8 @@ export default class Alpmeister extends View {
     this.height = 800;
     this.cacheSnapshot = null;
     // `props.tab` opens a copy on that tab: tab.new {mod: "alpmeister", props: {tab: "herds"}}.
-    this.tab = Object.values(TABS).includes(props()?.tab) ? props().tab : rememberedTab();
+    // "overview" is another name for "dashboard".
+    this.tab = tabNamed(props()?.tab) ?? rememberedTab();
     // `props.demo` shows made-up data on every tab, for demos and screenshots: a herd on Herds
     // (`demo-herds.js`), and settings, GitHub data and a focus list everywhere else (`demo-data.js`).
     // It calls no GitHub and writes nothing: not the settings, the cache or the focus list.
@@ -291,11 +309,15 @@ export default class Alpmeister extends View {
 
   /**
    * Goes to the space's settings tab, or opens one: a copy of Alpmeister showing only Settings.
+   * A settings tab opened under the old name, before Alpmeister was shown as Alp, counts too.
+   * @returns {void}
    */
   openSettings() {
     const space = spaces().find((candidate) => candidate.active);
-    const name = this.demo ? `${SETTINGS_TAB_NAME} (demo)` : SETTINGS_TAB_NAME;
-    const open = space?.tabs?.find((tab) => tab.name === name);
+    const named = (base) => (this.demo ? `${base} (demo)` : base);
+    const name = named(SETTINGS_TAB_NAME);
+    const names = [name, named(OLD_SETTINGS_TAB_NAME)];
+    const open = space?.tabs?.find((tab) => names.includes(tab.name));
     if (open) run("tab.select", { id: open.id });
     else run("tab.new", { mod: "alpmeister", name, props: { tab: TABS.settings, ...(this.demo ? { demo: true } : {}) } });
   }
@@ -483,7 +505,7 @@ export default class Alpmeister extends View {
           this.persist(cx);
         },
         {
-          tooltip: pinned ? "Take off today's trail" : "Add to today's trail",
+          tooltip: pinned ? "Unpin" : "Pin to Today",
           color: pinned ? theme().accent : undefined,
         },
       );
@@ -590,7 +612,7 @@ export default class Alpmeister extends View {
       .bg(t.background)
       .border_1()
       .border_color(t.border)
-      .child(pill(TABS.dashboard, "Dashboard"))
+      .child(pill(TABS.dashboard, "Overview"))
       .child(pill(TABS.board, "Board"))
       .child(pill(TABS.herds, "Herds"))
       .child(pill(TABS.today, open ? `Daypack · ${open}` : "Daypack"));
@@ -607,7 +629,7 @@ export default class Alpmeister extends View {
         .items_center()
         .gap(10)
         .child(svg(ICONS.settings).size(16).text_color(t.muted))
-        .child(div().text_size(18).font_semibold().text_color(t.foreground).child("Alpmeister settings"));
+        .child(div().text_size(18).font_semibold().text_color(t.foreground).child("Alp settings"));
     }
     const herds = this.tab === TABS.herds;
     const fetchedAt = herds ? this.herds?.loadedAt : this.model?.fetchedAt;
@@ -618,7 +640,7 @@ export default class Alpmeister extends View {
       .gap(10)
       .child(this.tabs(t))
       .child(div().w(8))
-      .child(div().text_size(18).font_semibold().text_color(t.foreground).child("Alpmeister"))
+      .child(div().text_size(18).font_semibold().text_color(t.foreground).child("Alp"))
       .child(div().flex_1())
       .when(Boolean(fetchedAt), (el) =>
         el.child(

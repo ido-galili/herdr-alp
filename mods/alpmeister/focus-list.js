@@ -202,7 +202,7 @@ export function FocusList(items, input, actions) {
   const open = items.filter((item) => !item.done).length;
   return Card(
     "focus",
-    "Today's focus",
+    "Today",
     [Chip(`${open} open · ${items.length - open} done`, { color: t.dim })],
     v_flex()
       .gap(6)
@@ -217,7 +217,7 @@ export function FocusList(items, input, actions) {
           .text_size(12)
           .text_color(t.foreground),
       )
-      .when(!items.length, (el) => el.child(Note("Pin rows above, or type a todo and press Enter.")))
+      .when(!items.length, (el) => el.child(Note("Pin an issue or PR from the lists below, or type a todo.")))
       .children(
         SECTIONS.flatMap((section) => {
           const rows = items.filter((item) => item.kind === section.kind);

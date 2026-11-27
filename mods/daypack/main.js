@@ -312,6 +312,11 @@ export default class Daypack extends View {
       .children([this.prStanding(t, item), this.sessionButton(t, item), this.claudeButton(t, item)].filter(Boolean));
   }
 
+  /**
+   * The Today list: its heading, then each section's items, or what to do when it is empty.
+   * @param {object} cx The view's context.
+   * @returns {object}
+   */
   render(cx) {
     const t = theme();
     if ((shared(STAMP_KEY) ?? null) !== this.stamp) this.reload(cx);
@@ -324,9 +329,17 @@ export default class Daypack extends View {
       .child(
         v_flex()
           .py(6)
-          .child(div().px(12).pt(6).text_size(10.5).font_semibold().text_color(t.dim).child("TODAY'S TRAIL"))
+          .child(div().px(12).pt(6).text_size(10.5).font_semibold().text_color(t.dim).child("Today"))
           .when(!items.length, (el) =>
-            el.child(div().px(12).py(6).text_size(11.5).text_color(t.dim).child("The trail is clear.")),
+            el.child(
+              v_flex()
+                .px(12)
+                .py(6)
+                .gap(2)
+                .text_size(11.5)
+                .child(div().text_color(t.muted).child("Nothing pinned for today."))
+                .child(div().text_color(t.dim).child("Pin an issue or PR from Alp's Daypack.")),
+            ),
           )
           .children(
             SECTIONS.flatMap((section) => {
