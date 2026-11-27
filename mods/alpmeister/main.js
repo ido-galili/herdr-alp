@@ -180,8 +180,8 @@ function findNode(node, id) {
 }
 
 /**
- * The line beside the workspace picker that says what a workspace covers: "repo owner/name ·
- * board Title #3".
+ * What a workspace covers, under its name in the workspace dropdown: "repo owner/name · board
+ * Title #3".
  * @param {object | null} ws The workspace, or null for All repos.
  * @returns {string} The line.
  */
@@ -1500,8 +1500,8 @@ export default class Alpmeister extends View {
   }
 
   /**
-   * The workspace picker: "Workspace: Herdr core ▾", a dropdown, and a dim line beside it that
-   * says what the workspace covers. The Overview's lists All repos first, then every workspace,
+   * The workspace picker: "Workspace: Herdr core ▾", a dropdown whose rows say what each
+   * workspace covers. The Overview's lists All repos first, then every workspace,
    * and hides with no workspaces. The Board's lists the workspaces with a board and hides with one.
    * @param {object} t The theme.
    * @param {{ boards?: object[], shown?: string }} [board] The Board tab's workspaces and the shown one.
@@ -1582,8 +1582,7 @@ export default class Alpmeister extends View {
       .gap(10)
       .items_center()
       .child(div().text_size(12).text_color(t.dim).child("Workspace"))
-      .child(open ? Popup.new(`ws-popup-${key}`, trigger).anchor("top_left").content(list) : trigger)
-      .child(div().min_w(0).truncate().text_size(12).text_color(t.dim).child(scopeLine(shown)));
+      .child(open ? Popup.new(`ws-popup-${key}`, trigger).anchor("top_left").content(list) : trigger);
   }
 
   /**

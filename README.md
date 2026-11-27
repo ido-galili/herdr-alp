@@ -106,7 +106,7 @@ the Overview starts on all your repositories, with a card that offers to add a w
 ("Not now" hides it for good).
 
 - **Overview:** your GitHub as a whole, or one workspace, picked from the Workspace dropdown on
-  top, with what the workspace covers beside it. A tile or card that opens GitHub has the GitHub
+  top (each row in its list says what that workspace covers). A tile or card that opens GitHub has the GitHub
   mark at the right end of its top-right icons (its tooltip says where: "See all 7 on GitHub",
   "Open the run on GitHub"); the tile itself takes no click. The Customer issues and Nightly
   tiles also have a gear that opens Settings on that section (also the way in when no

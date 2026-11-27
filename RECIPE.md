@@ -113,7 +113,7 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
     (`props.firstRun` too: a first run; `props.herdsView` and `props.herdsFull` open Herds on a
     view), for demos and screenshots.
   - **Overview**: on top, "Workspace: <name> ▾", a dropdown of All repos (first) and every
-    workspace, with a dim line beside it saying what the workspace covers ("repo … · board …").
+    workspace, each row with a dim line saying what it covers ("repo … · board …"); nothing beside the dropdown.
     A tile or card that opens GitHub has the GitHub mark (an icon button, no words) at the right
     end of its top-right icons, after its filter icon, with a tooltip saying where ("See all 7
     on GitHub", "See both on GitHub", "Open the run on GitHub"); a tile itself takes no click
