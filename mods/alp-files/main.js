@@ -2,7 +2,7 @@
 // local files are editable (ctrl-s saves), remote and oversized ones stay read-only.
 // Cloned from Herdr's `files` mod; the editing parts are marked "Alp:".
 import { View, div, svg } from "gpui-kit";
-import { v_flex, h_flex, Editor, EditorState } from "gpui-base";
+import { v_flex, h_flex, Editor, EditorState, Scrollbar, v_virtual_list } from "gpui-base";
 import { spaces, panes, focused, exec, readTextFile, writeTextFile, watchFolder, theme, settings, window } from "herdr";
 
 function location() {
@@ -88,6 +88,98 @@ const warning = t => t.warning ?? "#ffb86c";
 const footerButton = (id, label, color, onClick) =>
   div().id(id).px(7).py(2).flex_none().rounded(6).cursor_pointer().text_size(12).text_color(color)
     .hover(s => s.bg(theme().hover)).on_click((_e, cx) => onClick(cx)).child(label);
+
+/**
+ * Alp: a box button. `filled` is the main choice; the others are outlined, or accent text
+ * (`pressed`: the same, on while its view shows, and a click turns it off).
+ * @param {string} id element id
+ * @param {string} label button text
+ * @param {"filled" | "outlined" | "text" | "pressed"} kind how it looks
+ * @param {any} t the theme
+ * @param {(cx: any) => void} onClick runs on click
+ * @returns {any} the button element
+ */
+const boxButton = (id, label, kind, t, onClick) =>
+  div().id(id).h(26).px(10).flex().flex_none().items_center().rounded(6).cursor_pointer().text_size(12)
+    .when(kind === "filled", el => el.bg(t.border).text_color(t.foreground).hover(s => s.bg(t.hover)))
+    .when(kind === "outlined", el => el.border_1().border_color(t.border).text_color(t.foreground).hover(s => s.bg(t.hover)))
+    .when(kind === "text", el => el.text_color(t.accent).hover(s => s.bg(t.hover)))
+    .when(kind === "pressed", el => el.bg(t.accent + "30").text_color(t.accent).hover(s => s.bg(t.accent + "40")))
+    .on_click((_e, cx) => onClick(cx)).child(label);
+
+// Alp: Compare gives up past this many changed lines (Myers' cost grows with their square).
+const DIFF_LIMIT = 3000;
+// Alp: the diff's rows, laid out like the Changes panel's: 1.8 × the text size high.
+const rowHeight = size => Math.ceil(size * 1.8), charWidth = size => size * 0.64;
+
+/**
+ * Alp: text draws a tab as nothing, so pad each to the next 4-column stop (as Changes does).
+ * @param {string} text one line
+ * @returns {string} the line with tabs turned into spaces
+ */
+const untab = text => text.replace(/[^\t]*\t/g, s => s.slice(0, -1).padEnd((s.length - 1) - (s.length - 1) % 4 + 4));
+
+/**
+ * Alp: a line diff of two texts (Myers), as unified-diff rows with 3 lines of context.
+ * The common start and end are trimmed first, so a small edit in a long file stays cheap.
+ * @param {string} before the old text (the file on disk)
+ * @param {string} after the new text (the edits)
+ * @returns {{ kind: string, number?: number, text: string }[] | null} the rows ("@" hunk heads,
+ *   " " context, "-" only in `before`, "+" only in `after`), or null past DIFF_LIMIT changes
+ */
+function lineDiff(before, after) {
+  // A last newline would show as an empty last line.
+  const a = before.replace(/\n$/, "").split("\n"), b = after.replace(/\n$/, "").split("\n");
+  let start = 0, endA = a.length, endB = b.length;
+  while (start < endA && start < endB && a[start] === b[start]) start++;
+  while (endA > start && endB > start && a[endA - 1] === b[endB - 1]) { endA--; endB--; }
+  const n = endA - start, m = endB - start, max = Math.min(n + m, DIFF_LIMIT);
+  // trace[d] holds V for k = -d..d after step d; V[k] is the furthest x on diagonal k.
+  const v = new Int32Array(2 * max + 3), off = max + 1, trace = [];
+  let found = -1;
+  for (let d = 0; d <= max && found < 0; d++) {
+    for (let k = -d; k <= d; k += 2) {
+      let x = k === -d || (k !== d && v[off + k - 1] < v[off + k + 1]) ? v[off + k + 1] : v[off + k - 1] + 1, y = x - k;
+      while (x < n && y < m && a[start + x] === b[start + y]) { x++; y++; }
+      v[off + k] = x;
+      if (x >= n && y >= m) { found = d; break; }
+    }
+    trace.push(v.slice(off - d, off + d + 1));
+  }
+  if (found < 0) return null;
+  // Walk back from the end, one edit per step, collecting [kind, line] in reverse.
+  const ops = [];
+  let x = n, y = m;
+  for (let d = found; d > 0; d--) {
+    const prev = trace[d - 1], at = k => prev[k + d - 1], k = x - y;
+    const prevK = k === -d || (k !== d && at(k - 1) < at(k + 1)) ? k + 1 : k - 1;
+    const px = at(prevK), py = px - prevK;
+    while (x > px && y > py) { ops.push([" ", a[start + x - 1]]); x--; y--; }
+    if (x === px) { ops.push(["+", b[start + y - 1]]); y--; }
+    else { ops.push(["-", a[start + x - 1]]); x--; }
+  }
+  while (x > 0 && y > 0) { ops.push([" ", a[start + x - 1]]); x--; y--; }
+  ops.reverse();
+  const all = [...a.slice(0, start).map(l => [" ", l]), ...ops, ...a.slice(endA).map(l => [" ", l])];
+  // Number every line on both sides, then keep only the changes and 3 lines around them.
+  let oldNo = 1, newNo = 1;
+  const lines = all.map(([kind, text]) => ({ kind, text, old: kind === "+" ? null : oldNo++, next: kind === "-" ? null : newNo++ }));
+  const near = new Uint8Array(lines.length);
+  lines.forEach((l, i) => { if (l.kind !== " ") for (let j = Math.max(0, i - 3); j <= Math.min(lines.length - 1, i + 3); j++) near[j] = 1; });
+  const rows = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (!near[i]) continue;
+    let end = i;
+    while (end < lines.length && near[end]) end++;
+    const hunk = lines.slice(i, end), first = hunk[0];
+    const olds = hunk.filter(l => l.kind !== "+").length, news = hunk.filter(l => l.kind !== "-").length;
+    const oldAt = first.old ?? (hunk.find(l => l.old !== null)?.old ?? oldNo), newAt = first.next ?? (hunk.find(l => l.next !== null)?.next ?? newNo);
+    rows.push({ kind: "@", text: `@@ -${oldAt},${olds} +${newAt},${news} @@` });
+    for (const l of hunk) rows.push({ kind: l.kind, number: l.kind === "-" ? l.old : l.next, text: untab(l.text) || " " });
+    i = end - 1;
+  }
+  return rows;
+}
 
 async function directory(path, on) {
   const windowsDirectory = async () => {
@@ -230,7 +322,7 @@ export default class Files extends View {
         // writeTextFile only reaches this machine, and a cut-off file would lose its end on save.
         const locked = on ? "Read-only · on another machine" : text.length > SHOW_LIMIT ? "Read-only · too long to edit" : null;
         const code = EditorState.new({ language: language(path), readonly: Boolean(locked), value: shown(text), syntax: syntaxColors(theme()) });
-        const next = { abs, code, base: text, locked, dirty: false, saving: false, disk: undefined, error: null };
+        const next = { abs, code, base: text, locked, dirty: false, saving: false, disk: undefined, error: null, compare: null };
         code.on("change", (_e, cx) => {
           const dirty = !next.locked && code.value() !== next.base;
           if (dirty !== next.dirty) { next.dirty = dirty; cx.notify(); }
@@ -243,7 +335,8 @@ export default class Files extends View {
 
   /**
    * Alp: compares the open document with the file on disk. A clean document follows
-   * the disk (an agent's edit shows up); an edited one is flagged as changed on disk.
+   * the disk (an agent's edit shows up); an edited one is flagged as changed on disk,
+   * and an open Compare is redone against the new disk text.
    * @returns {Promise<void>}
    */
   async checkDisk() {
@@ -251,29 +344,31 @@ export default class Files extends View {
     if (!doc || doc.saving) return;
     const disk = await readTextFile(doc.abs, { on: this.on }).catch(() => undefined);
     if (this.doc !== doc || doc.saving || disk === undefined || (disk !== null && disk.includes("\0"))) return;
-    if (disk === doc.base) { doc.disk = undefined; return; }
-    if (doc.dirty || disk === null) { doc.disk = disk; return; }
+    if (disk === doc.base) { doc.disk = undefined; doc.compare = null; return; }
+    if (doc.dirty || disk === null) {
+      if (doc.compare && disk !== doc.disk) doc.compare = typeof disk === "string" ? this.diff(doc, disk) : null;
+      doc.disk = disk; return;
+    }
     doc.base = disk; doc.disk = undefined; doc.error = null;
     doc.code.set_value(shown(disk));
   }
 
   /**
-   * Alp: writes the open document. Without `force` the write is refused when the file
-   * changed on disk since it was read, so another program's edit is never overwritten silently.
+   * Alp: writes the open document. The write is refused when the file changed on disk
+   * since it was read (or since "Keep my edits"), so another program's edit is never
+   * overwritten silently: the changed-on-disk box comes back instead.
    * @param {any} cx the context to re-render in
-   * @param {boolean} [force] overwrite whatever is on disk now
    * @returns {void}
    */
-  save(cx, force = false) {
+  save(cx) {
     const doc = this.doc;
-    if (!doc || doc.locked || doc.saving || (!doc.dirty && !force)) return;
+    if (!doc || doc.locked || doc.saving || !doc.dirty) return;
     const text = doc.code.value();
     doc.saving = true; doc.error = null; cx.notify();
     cx.spawn(async cx => {
       try {
-        const expected = force ? await readTextFile(doc.abs) : doc.base;
-        await writeTextFile(doc.abs, text, expected);
-        doc.base = text; doc.disk = undefined;
+        await writeTextFile(doc.abs, text, doc.base);
+        doc.base = text; doc.disk = undefined; doc.compare = null;
         doc.dirty = doc.code.value() !== text;
       } catch (e) {
         const disk = await readTextFile(doc.abs).catch(() => undefined);
@@ -284,15 +379,121 @@ export default class Files extends View {
   }
 
   /**
-   * Alp: drops the open document's edits and shows the file as it is on disk.
+   * Alp: "Use the file on disk": drops the open document's edits and shows the file as it is on disk.
    * @returns {void}
    */
   reload() {
     const doc = this.doc;
     if (!doc || typeof doc.disk !== "string") return;
-    doc.base = doc.disk; doc.disk = undefined; doc.error = null;
+    doc.base = doc.disk; doc.disk = undefined; doc.error = null; doc.compare = null;
     doc.code.set_value(shown(doc.base));
     doc.dirty = false;
+  }
+
+  /**
+   * Alp: "Keep my edits": takes the disk's version as the one the edits replace, so the
+   * next Save overwrites it knowingly (or, for a deleted file, writes it anew).
+   * @returns {void}
+   */
+  keep() {
+    const doc = this.doc;
+    if (!doc || doc.disk === undefined) return;
+    doc.base = doc.disk; doc.disk = undefined; doc.error = null; doc.compare = null;
+    doc.dirty = doc.code.value() !== doc.base;
+  }
+
+  /**
+   * Alp: "Close it", for a file deleted on disk: drops the document and goes back to the tree.
+   * @returns {void}
+   */
+  discard() {
+    const doc = this.doc;
+    if (!doc) return;
+    doc.dirty = false; this.buffers.delete(doc.abs);
+    this.show(null);
+  }
+
+  /**
+   * Alp: the open document against a disk text, as diff rows ("-" on disk, "+" my edits).
+   * @param {any} doc the document
+   * @param {string} disk the file's text on disk
+   * @returns {{ rows: any[] | null, longest: number }} the rows (null: too many changes) and the longest line's length
+   */
+  diff(doc, disk) {
+    const rows = lineDiff(disk, doc.code.value());
+    return { rows, longest: rows ? rows.reduce((n, r) => Math.max(n, r.text.length), 0) : 0 };
+  }
+
+  /**
+   * Alp: Compare turns on the diff in place of the editor, or off again.
+   * @returns {void}
+   */
+  toggleCompare() {
+    const doc = this.doc;
+    if (!doc) return;
+    doc.compare = doc.compare || typeof doc.disk !== "string" ? null : this.diff(doc, doc.disk);
+  }
+
+  /**
+   * Alp: the box over the editor when the file changed or went away on disk while it had
+   * edits: it says whose version is whose and lets the person pick one, or compare them.
+   * A clean document whose file was deleted only offers to close it.
+   * @param {any} t the theme
+   * @returns {any} the box
+   */
+  diskBox(t) {
+    const doc = this.doc, name = this.file.split("/").pop(), gone = doc.disk === null;
+    const text = gone ? (doc.dirty ? `${name} was deleted on disk while you were editing it.` : `${name} was deleted on disk.`)
+      : `${name} changed on disk while you were editing it.`;
+    /**
+     * A click handler that runs `fn` and re-renders.
+     * @param {() => void} fn what the button does
+     * @returns {(cx: any) => void} the handler
+     */
+    const notify = fn => cx => { fn(); cx.notify(); };
+    const buttons = gone
+      ? [...(doc.dirty ? [boxButton("files-keep", "Keep my edits", "filled", t, notify(() => this.keep()))] : []),
+        boxButton("files-close", "Close it", doc.dirty ? "outlined" : "filled", t, notify(() => this.discard()))]
+      : [boxButton("files-keep", "Keep my edits", "filled", t, notify(() => this.keep())),
+        boxButton("files-use-disk", "Use the file on disk", "outlined", t, notify(() => this.reload())),
+        boxButton("files-compare", "Compare", doc.compare ? "pressed" : "text", t, notify(() => this.toggleCompare()))];
+    return v_flex().id("files-disk-box").flex_none().m(8).mb(0).p(12).gap(10).rounded(8).border_1().border_color(warning(t) + "80").bg(t.background)
+      .child(div().text_size(13).text_color(t.foreground).child(text))
+      .child(h_flex().gap(8).flex_wrap().children(buttons));
+  }
+
+  /**
+   * Alp: Compare's read-only diff, in place of the editor: the file on disk (−) against
+   * the edits (+), numbered and coloured as the Changes panel does it.
+   * @param {any} t the theme
+   * @param {any} font the editor's font settings
+   * @returns {any} the diff view
+   */
+  compareView(t, font) {
+    const { rows, longest } = this.doc.compare, size = font.font_size, height = rowHeight(size);
+    const gutter = Math.ceil(5 * charWidth(size)) + 2;
+    /**
+     * One diff row.
+     * @param {{ kind: string, number?: number, text: string }} row the row
+     * @returns {any} its element
+     */
+    const line = ({ kind, number, text }) => kind === "@"
+      ? div().w_full().px(12).h(height).flex_none().truncate().bg(t.raised ?? t.hover).text_color(t.dim).child(text)
+      : h_flex().w_full().h(height).flex_none().gap(10).when(kind === "+", e => e.bg(t.ansi2 + "18")).when(kind === "-", e => e.bg(t.ansi1 + "18"))
+        .child(div().w(gutter).flex_none().text_right().text_color(t.dim).child(number == null ? "" : String(number)))
+        .child(div().w(10).flex_none().text_color(kind === "+" ? t.ansi2 : kind === "-" ? t.ansi1 : t.dim).child(kind === " " ? "" : kind === "-" ? "−" : "+"))
+        .child(div().flex_1().min_w(0).truncate().child(text));
+    return v_flex().id("files-compare-view").flex_1().min_h(0)
+      .child(h_flex().h(30).flex_none().px(14).gap(14).items_center().border_b(1).border_color(t.border).text_size(12)
+        .child(div().text_color(t.ansi1).child("− on disk")).child(div().text_color(t.ansi2).child("+ my edits"))
+        .child(div().flex_1()).child(div().text_color(t.dim).child("read-only")))
+      .child(!rows?.length ? div().p(12).text_size(12).text_color(t.dim).child(!rows ? "Too many differences to compare"
+        : this.doc.code.value() === this.doc.disk ? "No differences" : "Only the newline at the end differs")
+        : div().flex_1().min_h(0).relative().font_family(font.font_family ?? "JetBrains Mono").text_size(size)
+          .child(div().id("files-compare-x").size_full().overflow_x_scrollbar()
+            .child(div().w_full().min_w(Math.max(300, (longest + 2) * charWidth(size) + gutter + 40)).h_full()
+              .child(v_virtual_list("files-compare", rows.length, height, i => String(i), range => rows.slice(range.start, range.end).map(line)).size_full())))
+          .child(Scrollbar.vertical("files-compare").viewport_from_layout().absolute().inset_0()));
   }
 
   /**
@@ -323,8 +524,8 @@ export default class Files extends View {
 
   /**
    * Alp: the footer under an open file, always the same height so the editor never moves.
-   * It says what the document needs: saving, a choice after the file changed on disk,
-   * an error, or why it's read-only; otherwise a dimmed Save.
+   * It says what the document needs: saving, an error, or why it's read-only; otherwise a
+   * dimmed Save. While the file changed on disk it only says "Unsaved": the box asks.
    * @param {any} t the theme
    * @returns {any} the footer
    */
@@ -334,9 +535,8 @@ export default class Files extends View {
       .child(div().flex_1().min_w(0).truncate().text_color(color).child(text)).children(buttons);
     if (!doc) return line("", t.dim);
     if (doc.saving) return line("Saving…", t.muted);
-    if (doc.disk !== undefined) return line(doc.disk === null ? "Deleted on disk" : "Changed on disk", warning(t),
-      ...(doc.disk === null ? [] : [footerButton("files-reload", "Reload", t.accent, cx => { this.reload(); cx.notify(); })]),
-      footerButton("files-overwrite", doc.disk === null ? "Save again" : "Overwrite", t.accent, cx => this.save(cx, true)));
+    // The box over the editor asks what to do; Save waits for the answer.
+    if (doc.disk !== undefined) return line(doc.dirty ? "Unsaved" : "No changes", doc.dirty ? warning(t) : t.dim);
     if (doc.error) return line(doc.error, t.ansi1, footerButton("files-retry", "Retry", t.accent, cx => this.save(cx)));
     if (doc.locked) return line(doc.locked, t.dim);
     return line(doc.dirty ? "Unsaved" : "No changes", doc.dirty ? warning(t) : t.dim,
@@ -346,7 +546,8 @@ export default class Files extends View {
 
   /**
    * The Files panel: a header with the open file and an orange ● for unsaved edits, then the
-   * tree, or the open file's editor and footer.
+   * tree, or the open file's editor and footer (with the changed-on-disk box over the editor,
+   * and Compare's diff in its place).
    * @param {any} cx the view's context
    * @returns {any} the panel
    */
@@ -367,7 +568,8 @@ export default class Files extends View {
         // The editor holds the keyboard, so its key events pass through this wrapper. `cmd` is ctrl on Linux and Windows.
         ? v_flex().id("files-editor").flex_1().min_h(0)
           .on_key_down((event, cx) => { if (event.keystroke === "cmd-s") { cx.stop_propagation(); this.save(cx); } })
-          .child(Editor.new(doc.code).font_family(font.font_family).text_size(font.font_size).flex_1().min_h(0))
+          .when(doc.disk !== undefined, el => el.child(this.diskBox(t)))
+          .child(doc.compare ? this.compareView(t, font) : Editor.new(doc.code).font_family(font.font_family).text_size(font.font_size).flex_1().min_h(0))
         : div().p(12).flex_1().min_h(0).text_color(t.dim).child(this.fileError || "Loading file…"))
         .child(this.footer(t)));
   }
