@@ -529,6 +529,34 @@ export async function loadWorkspace(ws) {
   return model;
 }
 
+/**
+ * Fetches one of a workspace's Overview cards again, for a filter edited on the card, and puts
+ * its result into a copy of the workspace's model: Open bugs, Triage bugs, Customer issues or
+ * Open PRs. The other cards stay as they were.
+ * @param {object} ws The workspace, with the card's edited search in place.
+ * @param {object} model The workspace's model, from `loadWorkspace`.
+ * @param {"bugs" | "triage" | "customer" | "prs"} key The card.
+ * @returns {Promise<object>} The workspace's model with that card's result and searches.
+ * @throws {Error} With GitHub's message when it refuses the search.
+ */
+export async function loadWorkspaceCard(ws, model, key) {
+  const queries = workspaceQueries(ws);
+  const next = { ...model, queries: { ...model.queries, ...queries }, errors: { ...model.errors } };
+  delete next.errors[key];
+  if (key === "bugs") next.bugs = await bugsByPriority(ws, queries.bugsQuery);
+  if (key === "triage") {
+    const count = (await graphql(ISSUE_COUNT, { searchQuery: queries.triageQuery })).search.issueCount;
+    next.counts = { ...model.counts, triage: count };
+  }
+  if (key === "customer") next.customer = await customerIssues(ws);
+  if (key === "prs") {
+    const prs = await graphql(OPEN_PRS, { prsQuery: queries.prsQuery });
+    next.openPrsTotal = prs.search.issueCount;
+    next.openPrs = prs.search.nodes.filter((pr) => pr.number).map(prRow);
+  }
+  return next;
+}
+
 /** Whether a check state is a failure. */
 const failing = (state) => state === "FAILURE" || state === "ERROR";
 

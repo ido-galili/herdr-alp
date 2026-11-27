@@ -15,6 +15,7 @@ import {
   Chip,
   ICONS,
   IconButton,
+  LinkLabel,
   Note,
   SessionButton,
   TextButton,
@@ -451,7 +452,7 @@ export function NoBoard(onAdd) {
         .text_color(t.accent_foreground ?? t.background)
         .cursor_pointer()
         .on_click((_event, cx) => onAdd(cx))
-        .child("Add a board"),
+        .child(LinkLabel(ICONS.settings, "Add a board")),
     );
 }
 

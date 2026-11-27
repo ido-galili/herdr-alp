@@ -5,7 +5,21 @@ import { div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { theme } from "herdr";
 import { searchUrl } from "./data.js";
-import { Bar, Card, Chip, NeedsYou, Note, daysUntil, formatDate, formatTime, openUrl, statusColor, warningColor } from "./ui.js";
+import {
+  Bar,
+  Card,
+  Chip,
+  ICONS,
+  LinkLabel,
+  NeedsYou,
+  Note,
+  daysUntil,
+  formatDate,
+  formatTime,
+  openUrl,
+  statusColor,
+  warningColor,
+} from "./ui.js";
 
 const WEEK_DAYS = 7;
 
@@ -127,8 +141,9 @@ export const SET_UP = "Set up in Settings →";
 
 /**
  * One number tile: a label, a big value, then lines or any element under it, and at the
- * bottom the words that say what a click opens. `sub` is a string, an element, or a list of
- * them. `action` is a URL to open or a function to run on click.
+ * bottom the words that say what a click opens, with their icon, then the tile's filter summary
+ * when it has one. `sub` is a string, an element, or a list of them. `action` is a URL to open
+ * or a function to run on click.
  * @param {string} id The tile's element id.
  * @param {string} label The tile's label.
  * @param {string} value The big value.
@@ -136,11 +151,13 @@ export const SET_UP = "Set up in Settings →";
  * @param {string} color The value's color.
  * @param {string | Function | null} action A URL to open, or a function to run, on click.
  * @param {string} [note] A short clause after the label that says what the tile counts.
- * @param {{ link?: string | null, outline?: string | null }} [options] `link`: the words at the
- *   bottom, such as "See all 7 →"; `outline`: a border color, such as red for a failed run.
+ * @param {{ link?: string | null, linkIcon?: string | null, outline?: string | null, filter?: object | null }} [options]
+ *   `link`: the words at the bottom, such as "See all 7 →", and `linkIcon` the icon on their
+ *   left (the GitHub mark, or the gear for Settings); `outline`: a border color, such as red for
+ *   a failed run; `filter`: the summary of the tile's filter, from `FilterControl`, as its last line.
  * @returns {object} The tile.
  */
-export function Tile(id, label, value, sub, color, action, note, { link, outline } = {}) {
+export function Tile(id, label, value, sub, color, action, note, { link, linkIcon, outline, filter } = {}) {
   const t = theme();
   return v_flex()
     .id(id)
@@ -164,8 +181,31 @@ export function Tile(id, label, value, sub, color, action, note, { link, outline
         typeof line === "string" ? div().text_size(11.5).truncate().text_color(t.muted).child(line) : line,
       ),
     )
+    .when(Boolean((link && action) || filter), (el) => el.child(div().flex_1()))
     .when(Boolean(link && action), (el) =>
-      el.child(div().flex_1()).child(div().pt(2).text_size(11.5).text_color(t.accent).child(link)),
+      el.child(h_flex().pt(2).text_size(11.5).text_color(t.accent).child(LinkLabel(linkIcon ?? null, link))),
+    )
+    .when(Boolean(filter), (el) => el.child(h_flex().pt(4).min_w(0).child(filter)));
+}
+
+/**
+ * A row of tiles, four across when `wide`, else two by two, with a tile's open filter editor
+ * under the row that tile is in.
+ * @param {object[]} tiles The four tiles.
+ * @param {(object | null)[]} panels Each tile's open filter editor, or null; at most one is open.
+ * @param {boolean} wide Whether the tiles go four across.
+ * @returns {object} The tiles.
+ */
+export function TileRows(tiles, panels, wide) {
+  const rows = wide ? [[0, tiles.length]] : [[0, 2], [2, tiles.length]];
+  return v_flex()
+    .gap(10)
+    .children(
+      rows.flatMap(([from, to]) => {
+        const row = h_flex().gap(10).items_stretch().children(tiles.slice(from, to));
+        const panel = panels.slice(from, to).find(Boolean);
+        return panel ? [row, panel] : [row];
+      }),
     );
 }
 
@@ -250,13 +290,16 @@ function nightlyParts(t, run, error) {
  * The top row: open bugs by priority, triage bugs, open customer issues and the nightly run.
  * Four across when `wide`, else two by two. Each ends in what a click opens; a failed nightly is
  * outlined in red. A missing nightly or customer label opens Settings on this workspace instead.
+ * Open bugs, Triage bugs and Customer issues each end in their filter's summary when `filter`
+ * gives one, its editor under their row while open.
  * @param {object} config The workspace's config.
  * @param {object} model The workspace's model.
- * @param {{ wide: boolean, onSettings(cx: object): void }} options `onSettings` opens Settings on
- *   this workspace.
+ * @param {{ wide: boolean, onSettings(cx: object): void,
+ *   filter?(key: "bugs" | "triage" | "customer"): { summary: object, panel: object | null } | null }} options
+ *   `onSettings` opens Settings on this workspace; `filter` gives a tile's filter.
  * @returns {object} The row of tiles.
  */
-export function Tiles(config, model, { wide, onSettings }) {
+export function Tiles(config, model, { wide, onSettings, filter }) {
   const t = theme();
   const counts = model.counts;
   const [nightlyValue, nightlyColor, nightlySub] = nightlyParts(t, model.nightly, model.errors.nightly);
@@ -265,6 +308,7 @@ export function Tiles(config, model, { wide, onSettings }) {
   const noNightly = !model.nightly && !model.errors.nightly;
   const noLabel = Boolean(customer) && !customer.labels.length;
   const failed = model.nightly?.overall === "failure";
+  const filters = Object.fromEntries(["bugs", "triage", "customer"].map((key) => [key, filter?.(key) ?? null]));
   const tiles = [
     Tile(
       "tile-bugs",
@@ -274,7 +318,7 @@ export function Tiles(config, model, { wide, onSettings }) {
       t.foreground,
       searchUrl(config.repo, model.queries.bugsQuery),
       undefined,
-      { link: seeAll(bugs?.total) },
+      { link: seeAll(bugs?.total), linkIcon: ICONS.github, filter: filters.bugs?.summary },
     ),
     Tile(
       "tile-triage",
@@ -284,7 +328,7 @@ export function Tiles(config, model, { wide, onSettings }) {
       t.foreground,
       searchUrl(config.repo, model.queries.triageQuery),
       undefined,
-      { link: seeAll(counts?.triage) },
+      { link: seeAll(counts?.triage), linkIcon: ICONS.github, filter: filters.triage?.summary },
     ),
     Tile(
       "tile-customer",
@@ -294,7 +338,11 @@ export function Tiles(config, model, { wide, onSettings }) {
       t.foreground,
       noLabel ? onSettings : customer?.query ? searchUrl(config.repo, customer.query) : null,
       undefined,
-      { link: noLabel ? SET_UP : seeAll(customer?.count) },
+      {
+        link: noLabel ? SET_UP : seeAll(customer?.count),
+        linkIcon: noLabel ? ICONS.settings : ICONS.github,
+        filter: filters.customer?.summary,
+      },
     ),
     Tile(
       "tile-nightly",
@@ -304,12 +352,13 @@ export function Tiles(config, model, { wide, onSettings }) {
       nightlyColor,
       noNightly ? onSettings : model.nightly?.url,
       "latest run",
-      { link: noNightly ? SET_UP : "Open the run →", outline: failed ? `${t.blocked}80` : null },
+      {
+        link: noNightly ? SET_UP : "Open the run →",
+        linkIcon: noNightly ? ICONS.settings : ICONS.github,
+        outline: failed ? `${t.blocked}80` : null,
+      },
     ),
   ];
-  if (wide) return h_flex().gap(10).items_stretch().children(tiles);
-  return v_flex()
-    .gap(10)
-    .child(h_flex().gap(10).items_stretch().children(tiles.slice(0, 2)))
-    .child(h_flex().gap(10).items_stretch().children(tiles.slice(2)));
+  const panels = [filters.bugs, filters.triage, filters.customer, null].map((entry) => entry?.panel ?? null);
+  return TileRows(tiles, panels, wide);
 }

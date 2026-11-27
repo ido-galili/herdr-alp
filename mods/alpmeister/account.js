@@ -8,19 +8,21 @@ import { h_flex, v_flex } from "gpui-base";
 import { theme } from "herdr";
 import { searchUrl } from "./data.js";
 import { ClaudeButton, checksChip, decisionChip } from "./my-day.js";
-import { Tile, seeAll } from "./project.js";
-import { Card, Chip, NeedsYou, Note, Row, TextButton, Toggle, ago, itemKey } from "./ui.js";
+import { Tile, TileRows, seeAll } from "./project.js";
+import { Card, Chip, ICONS, NeedsYou, Note, Row, TextButton, Toggle, ago, itemKey } from "./ui.js";
 
 const REPO_LIMIT = 12;
 const PR_LIMIT = 10;
 
 /**
- * The account's four tiles, four across when `wide`, else two by two. Each list ends in "See all N →".
+ * The account's four tiles, four across when `wide`, else two by two. Each list ends in "See all
+ * N →" with the GitHub mark, then its filter's summary when `filter` gives one (the Daypack
+ * card's filter: the same search), its editor under the row while open.
  * @param {object} account The account model.
- * @param {{ wide: boolean }} options
+ * @param {{ wide: boolean, filter?(key: "review" | "myPrs" | "mine"): { summary: object, panel: object | null } | null }} options
  * @returns {object} The row of tiles.
  */
-export function AccountTiles(account, { wide }) {
+export function AccountTiles(account, { wide, filter }) {
   const t = theme();
   const counts = account.counts;
   const approved = account.myPrs.filter((pr) => pr.reviewDecision === "APPROVED").length;
@@ -30,6 +32,7 @@ export function AccountTiles(account, { wide }) {
     approved ? `${approved} approved` : null,
     changes ? `${changes} with changes requested` : null,
   ].filter(Boolean);
+  const filters = Object.fromEntries(["review", "myPrs", "mine"].map((key) => [key, filter?.(key) ?? null]));
   const tiles = [
     Tile(
       "tile-reviews",
@@ -39,7 +42,7 @@ export function AccountTiles(account, { wide }) {
       counts.reviews ? t.blocked : t.foreground,
       searchUrl(null, account.queries.review),
       undefined,
-      { link: seeAll(counts.reviews) },
+      { link: seeAll(counts.reviews), linkIcon: ICONS.github, filter: filters.review?.summary },
     ),
     Tile(
       "tile-my-prs",
@@ -49,7 +52,7 @@ export function AccountTiles(account, { wide }) {
       t.foreground,
       searchUrl(null, account.queries.myPrs),
       undefined,
-      { link: seeAll(counts.myPrs) },
+      { link: seeAll(counts.myPrs), linkIcon: ICONS.github, filter: filters.myPrs?.summary },
     ),
     Tile(
       "tile-mine",
@@ -59,7 +62,7 @@ export function AccountTiles(account, { wide }) {
       t.foreground,
       searchUrl(null, account.queries.mine),
       undefined,
-      { link: seeAll(counts.mine) },
+      { link: seeAll(counts.mine), linkIcon: ICONS.github, filter: filters.mine?.summary },
     ),
     Tile(
       "tile-red",
@@ -70,11 +73,8 @@ export function AccountTiles(account, { wide }) {
       null,
     ),
   ];
-  if (wide) return h_flex().gap(10).items_stretch().children(tiles);
-  return v_flex()
-    .gap(10)
-    .child(h_flex().gap(10).items_stretch().children(tiles.slice(0, 2)))
-    .child(h_flex().gap(10).items_stretch().children(tiles.slice(2)));
+  const panels = [filters.review, filters.myPrs, filters.mine, null].map((entry) => entry?.panel ?? null);
+  return TileRows(tiles, panels, wide);
 }
 
 /**
@@ -160,7 +160,8 @@ export function Repos(config, account, options) {
  * A workspace's open PRs, for a repository with no board: author, review decision, checks, age.
  * @param {object} ws The workspace.
  * @param {object} model The workspace's model.
- * @param {object} actions `{ pinButton, launch, prompt, expanded, onToggleGroup }`.
+ * @param {object} actions `{ pinButton, launch, prompt, expanded, onToggleGroup, filter? }`; `filter`
+ *   is the card's filter, from `FilterControl`: its summary on the header, its editor over the list.
  * @returns {object} The card.
  */
 export function OpenPrs(ws, model, actions) {
@@ -185,22 +186,24 @@ export function OpenPrs(ws, model, actions) {
     }),
   );
   const more = prs.length - PR_LIMIT;
+  const filter = actions.filter ?? null;
+  const list = v_flex()
+    .gap(2)
+    .when(!rows.length, (el) =>
+      el.child(Note(model.errors?.prs ? `GitHub: ${model.errors.prs}` : `No open PRs in ${ws.repo}.`)),
+    )
+    .children(rows)
+    .when(more > 0, (el) =>
+      el.child(
+        TextButton("open-prs-more", open ? "Show less" : `Show ${more} more`, (cx) =>
+          actions.onToggleGroup("open-prs", cx),
+        ),
+      ),
+    );
   return Card(
     "open-prs",
     "Open PRs",
-    [Chip(String(model.openPrsTotal ?? prs.length), { color: t.muted })],
-    v_flex()
-      .gap(2)
-      .when(!rows.length, (el) =>
-        el.child(Note(model.errors?.prs ? `GitHub: ${model.errors.prs}` : `No open PRs in ${ws.repo}.`)),
-      )
-      .children(rows)
-      .when(more > 0, (el) =>
-        el.child(
-          TextButton("open-prs-more", open ? "Show less" : `Show ${more} more`, (cx) =>
-            actions.onToggleGroup("open-prs", cx),
-          ),
-        ),
-      ),
+    [...(filter ? [filter.summary] : []), Chip(String(model.openPrsTotal ?? prs.length), { color: t.muted })],
+    filter?.panel ? v_flex().gap(10).child(filter.panel).child(list) : list,
   );
 }

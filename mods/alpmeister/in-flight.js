@@ -12,6 +12,7 @@ import {
   NeedsYou,
   Note,
   Row,
+  Segmented,
   TextButton,
   ago,
   statusColor,
@@ -39,7 +40,8 @@ export function prChip(t, item, pr, prefix = "if") {
 
 /**
  * The in-flight card. `expanded` is the set of status groups that show every row; the rest show
- * the first five. `pinButton(item)` draws the row's pin control.
+ * the first five. `pinButton(item)` draws the row's pin control. While the workspace has a next
+ * milestone, the header has a switch "All milestones | v2.4", the shown one filled.
  * @param {object} config The workspace's settings.
  * @param {object} model The workspace's model.
  * @param {object} options `{ milestoneOnly, onToggleMilestone(cx), expanded, onToggleGroup(key, cx), pinButton }`.
@@ -54,11 +56,14 @@ export function InFlight(config, model, options) {
   const warning = warningColor(t);
   const extras = nextMilestone
     ? [
-        TextButton(
-          "if-milestone-only",
-          milestoneOnly ? `Only ${nextMilestone}` : "All milestones",
-          (cx) => options.onToggleMilestone(cx),
-          { tooltip: "Switch between every in-flight issue and the next milestone's" },
+        Segmented(
+          "if-milestone",
+          [
+            { value: "all", label: "All milestones", tooltip: "Every issue in flight" },
+            { value: "next", label: nextMilestone, tooltip: `Only the issues in ${nextMilestone}, the next milestone` },
+          ],
+          milestoneOnly ? "next" : "all",
+          (_value, cx) => options.onToggleMilestone(cx),
         ),
       ]
     : [];
