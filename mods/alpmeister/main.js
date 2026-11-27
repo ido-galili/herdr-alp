@@ -34,7 +34,7 @@ import {
 import { OpenPrs, RedChecks, Repos } from "./account.js";
 import { Avatars } from "./avatars.js";
 import { BoardState } from "./board-state.js";
-import { Board, NoBoard } from "./board-view.js";
+import { Board, COLUMN_PADDING, MoveToast, NoBoard } from "./board-view.js";
 import {
   DEFAULT_QUERIES,
   WORKSPACE_FILTER_DEFAULTS,
@@ -1927,8 +1927,34 @@ export default class Alpmeister extends View {
   }
 
   /**
+   * The Board's toast after a move, floating at the bottom left of what Alp's view shows (over
+   * the scroll area, not in it), so it stays in view on a board taller than the window. Its left
+   * edge lines up with the board's columns.
+   * @param {object} t The theme.
+   * @returns {object | null} The overlay, or null when the Board shows no toast.
+   */
+  toastOverlay(t) {
+    const state = this.boardState;
+    if (this.tab !== TABS.board || !state.toast) return null;
+    const toast = MoveToast(t, state.toast, (cx) => state.toast?.undo?.(cx));
+    // The page's padding, the card's border and padding, and a column's padding. The toast's own
+    // fill is see-through, so an opaque one under it keeps the cards behind from showing; a
+    // press on it stays off the cards under it.
+    return div()
+      .id("toast-overlay")
+      .absolute()
+      .left(18 + 1 + 14 + COLUMN_PADDING)
+      .bottom(18)
+      .rounded(8)
+      .bg(t.canvas)
+      .on_mouse_down("left", (_event, cx) => cx.stop_propagation())
+      .child(toast);
+  }
+
+  /**
    * Draws the header and the shown view, or Settings in place of it. Settings scrolls only its
-   * page: the header, its side list and its save bar stay put.
+   * page: the header, its side list and its save bar stay put. The Board's toast after a move
+   * floats over the scroll area (`toastOverlay`).
    * @param {object} cx The render's context.
    * @returns {object} The tab.
    */
@@ -1945,6 +1971,7 @@ export default class Alpmeister extends View {
     const model = this.model;
     const root = v_flex()
       .id("alpmeister")
+      .relative()
       .size_full()
       .bg(t.canvas)
       .on_size_change((size, cx) => {
@@ -1961,7 +1988,7 @@ export default class Alpmeister extends View {
     if (this.tab === TABS.settings || this.inSettings) {
       return root.child(div().flex_none().px(18).pt(18).pb(this.inSettings ? 0 : 10).child(this.header(t))).child(this.settingsView(cx));
     }
-    const page = root.overflow_y_scrollbar().track_scroll(this.scroll);
+    const page = v_flex().id("alpmeister-page").size_full().overflow_y_scrollbar().track_scroll(this.scroll);
     // The Herds canvas in full tab hides the header too: the canvas takes the whole tab.
     const fullCanvas = this.tab === TABS.herds && this.herdsCanvas.full;
     let content = v_flex().w_full().p(18).gap(14).when(!fullCanvas, (el) => el.child(this.header(t)));
@@ -2008,6 +2035,7 @@ export default class Alpmeister extends View {
         );
       }
     }
-    return page.child(content);
+    const toast = this.toastOverlay(t);
+    return root.child(page.child(content)).when(Boolean(toast), (el) => el.child(toast));
   }
 }

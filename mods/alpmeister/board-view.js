@@ -1,7 +1,7 @@
 // Board: a workspace's board items that match the Board tab filter, one column per status, as
 // GitHub's board shows them. Each card carries its assignees' avatars. The filter's summary sits
 // on the header and opens the filter dialog. Dragging a card to another column moves it to that status,
-// and a toast floating at the board's bottom left offers Undo; the avatar row above the board picks
+// and a toast floating at the bottom left of Alp's view (drawn by main.js) offers Undo; the avatar row above the board picks
 // people, as the dialog's People chips do; the ⋯ on a card (shown on hover or focus), or a right click, opens its
 // menu to move it or set its iteration and milestone.
 
@@ -409,14 +409,14 @@ function PeoplePicker(t, people, options) {
 }
 
 /**
- * The toast after a move: what moved where, with Undo while it can be undone. Over the board it
- * floats at the bottom left, like a small toast; over a note it sits in line.
+ * The toast after a move: what moved where, with Undo while it can be undone. Alp's view floats it
+ * at the bottom left of what shows, so it stays in view on a board taller than the window.
  * @param {object} t The theme.
  * @param {{ text: string, status: string, tail: string, undo?: Function } | null} toast The toast.
  * @param {(cx: object) => void} onUndo Undoes the move.
  * @returns {object | null} The toast, or null without one.
  */
-function MoveToast(t, toast, onUndo) {
+export function MoveToast(t, toast, onUndo) {
   if (!toast) return null;
   return h_flex()
     .id("bv-toast")
@@ -512,13 +512,13 @@ export function NoBoard(onAdd) {
 /**
  * The Board tab's card for one workspace: the filter in words on the header (a button that opens
  * the filter dialog), the avatar row to pick people, then a column per status, each with its
- * count, and the toast after a move floating over the board's bottom-left corner.
+ * count. The toast after a move floats over Alp's view (`MoveToast`), not in the card.
  * @param {object} ws The workspace, with a board.
  * @param {object | undefined} wsModel The workspace's last load.
  * @param {{ loading: boolean, avatarPath(login: string): string | null,
  *   filter: object, onChooseColumns(cx: object): void,
  *   onClearFilters(cx: object): void, picked: Set<string>, onTogglePerson(login: string, cx: object): void,
- *   onClearPeople(cx: object): void, toast: object | null, onUndo(cx: object): void,
+ *   onClearPeople(cx: object): void,
  *   pinFor(prefix: string): Function, launch: Function, prompt: Function }} options The rest
  *   come from `BoardState.options()`.
  * @returns {object} The card.
@@ -538,7 +538,6 @@ export function Board(ws, wsModel, options) {
       : null,
   ].filter(Boolean);
   let body = v_flex().gap(10);
-  const toast = MoveToast(t, options.toast, options.onUndo);
   const notice = wsModel?.errors?.boardView
     ? Note(`GitHub: ${wsModel.errors.boardView}`, t.blocked)
     : !view
@@ -552,7 +551,7 @@ export function Board(ws, wsModel, options) {
       : !view.items.length
         ? NothingMatches(t, options.onClearFilters)
         : null;
-  if (notice) return Card("board-view", ws.board.title || ws.name, extras, body.when(Boolean(toast), (el) => el.child(toast.self_start())).child(notice));
+  if (notice) return Card("board-view", ws.board.title || ws.name, extras, body.child(notice));
   const cardOptions = {
     ...options,
     repo: ws.repo,
@@ -638,7 +637,6 @@ export function Board(ws, wsModel, options) {
             .h(0)
             .on_size_change((size) => options.onUnitProbe(size.width, PROBE_WIDTH)),
         )
-        .when(Boolean(toast), (el) => el.child(div().absolute().left(COLUMN_PADDING).bottom(COLUMN_PADDING).child(toast)))
         .when(ghost !== null, (el) =>
           el.child(
             div()

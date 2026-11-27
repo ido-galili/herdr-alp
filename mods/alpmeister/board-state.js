@@ -146,7 +146,7 @@ export class BoardState {
 
   /**
    * The Board options this state answers: the filter, the picked people, the drag, the card
-   * menu, the toast and the writes under way.
+   * menu and the writes under way. Alp's view draws the toast (`toastOverlay` in main.js).
    * @param {object} ws The workspace the Board shows.
    * @returns {object} Options for `Board`.
    */
@@ -167,8 +167,6 @@ export class BoardState {
       focus: this.focus,
       dotsFor: this.menuFor ?? this.lastMenuFor,
       onCardHover: (itemId, hovered, cx) => this.hover(itemId, hovered, cx),
-      toast: this.toast,
-      onUndo: (cx) => this.toast?.undo?.(cx),
       isClick: () => this.isClick(),
       onCardDown: (item, event) => this.dragStart(item, event),
       onDragMove: (event, column, cardWidth, columnItems, cx) => this.dragMove(event, column, cardWidth, columnItems, cx),
