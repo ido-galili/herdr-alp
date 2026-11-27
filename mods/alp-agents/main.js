@@ -1,6 +1,6 @@
 // Agents in grouped or priority views; parents take their most urgent sub-agent's place.
 // Grouped by space opens with the priority view's Needs you section; under each space the
-// idle agents fold into one row ("7 idle, last 9h – 2d"), and which folds are open is kept.
+// idle agents fold into one row ("▸ 7 idle"), even a single one, and which folds are open is kept.
 
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
@@ -248,8 +248,8 @@ export default class Agents extends View {
   }
 
   /**
-   * The words before an agent's mark: "working", "done 4m", "idle 2d"; for any other state just
-   * how long it has been in it.
+   * The words before an agent's mark: "working", "done 4m"; for idle (its row is faded) or any
+   * other state just how long it has been in it ("2d").
    * @param {Record<string, string>} t The theme.
    * @param {{ status: string }} a The agent.
    * @param {string | null} ago How long since its state changed ("4m"), or null when not known.
@@ -259,7 +259,6 @@ export default class Agents extends View {
     const text = (s, color) => div().flex_none().text_size(11.5).text_color(color).child(s);
     if (a.status === "working") return text("working", t.working);
     if (a.status === "done") return text(ago ? `done ${ago}` : "done", t.done);
-    if (a.status === "idle") return text(ago ? `idle ${ago}` : "idle", t.dim);
     return ago ? text(ago, t.dim) : null;
   }
 
@@ -354,7 +353,7 @@ export default class Agents extends View {
 
     /**
      * An agent's row: on the rail a tile with its initial; unfolded its name, then the status in
-     * words ("working", "done 4m", "idle 2d") and its mark. Outside a space (pinned, a section)
+     * words ("working", "done 4m", "2d") and its mark. Outside a space (pinned, a section)
      * the space's avatar goes before the name, and under a section's header "Needs you" is a "!".
      * @param {object} a The agent.
      * @param {object[]} [subs] Its sub-agents, from tree().
@@ -469,39 +468,34 @@ export default class Agents extends View {
         groups.at(-1).members.push(a);
       }
     } else {
-      // Who needs you comes first, as in priority; their spaces say so instead of listing them again.
+      // Who needs you comes first, as in priority, and isn't listed again under its space.
       const needs = rest.filter((a) => sectionOf(a) === RANK.blocked);
       if (needs.length) groups.push({ ...section(RANK.blocked), members: needs });
       for (const a of rest) {
+        if (sectionOf(a) === RANK.blocked) continue;
         const id = `sp-${a.space}`;
-        if (groups.at(-1)?.id !== id) groups.push({ id, kind: "space", label: a.space_name || "", space: a.space, status: null, members: [], idle: [], above: 0 });
+        if (groups.at(-1)?.id !== id) groups.push({ id, kind: "space", label: a.space_name || "", space: a.space, status: null, members: [], idle: [] });
         const g = groups.at(-1);
-        if (sectionOf(a) === RANK.blocked) g.above += 1;
         // An idle agent folds away, unless it's the one in view.
-        else if (sectionOf(a) === RANK.idle && !a.focused) g.idle.push(a);
+        if (sectionOf(a) === RANK.idle && !a.focused) g.idle.push(a);
         else g.members.push(a);
       }
-      // One idle agent isn't worth a fold: it keeps its row.
-      for (const g of groups) if (g.kind === "space" && g.idle.length === 1) { g.members.push(...g.idle); g.idle = []; }
     }
     // Navigation (agent.next) goes in the order the list shows.
     setAgentOrder((collapsed ? list : groups.flatMap((g) => [...g.members, ...(g.idle ?? [])])).map((a) => a.address));
 
     /**
-     * A space header's summary: "1 needs you, above · 1 working · 1 done", and the idle count
-     * when nothing else is said or the space is folded.
+     * A space header's summary: "1 working · 1 done", and the idle count when the space is
+     * folded (open, its idle fold says it).
      * @param {object} g The space's group.
      * @param {boolean} open Whether the group is unfolded.
      * @returns {string} The summary, "" when there's nothing to say.
      */
     const summary = (g, open) => {
       const all = [...g.members, ...g.idle];
-      const parts = [
-        ...(g.above ? [`${g.above} needs you, above`] : []),
-        ...SUMMARY.map(([r, word]) => [all.filter((a) => sectionOf(a) === r).length, word]).filter(([n]) => n).map(([n, word]) => `${n} ${word}`),
-      ];
+      const parts = SUMMARY.map(([r, word]) => [all.filter((a) => sectionOf(a) === r).length, word]).filter(([n]) => n).map(([n, word]) => `${n} ${word}`);
       const idle = all.filter((a) => sectionOf(a) === RANK.idle).length;
-      if (idle && (!parts.length || !open)) parts.push(`${idle} idle`);
+      if (idle && !open) parts.push(`${idle} idle`);
       return parts.join(" · ");
     };
 
@@ -540,17 +534,13 @@ export default class Agents extends View {
     };
 
     /**
-     * Under a space, its idle agents folded into one row: "▸ 7 idle, last 9h – 2d". Click unfolds
+     * Under a space, its idle agents (even one) folded into one row: "▸ 7 idle". Click unfolds
      * them; which spaces are unfolded is kept.
      * @param {object} g The space's group.
      * @returns {object}
      */
     const idleFold = (g) => {
       const open = this.idleOpen.has(g.space);
-      const ages = g.idle.map((a) => this.since(a)).filter(Boolean).map((at) => now - at);
-      const newest = ages.length ? duration(Math.min(...ages)) : null;
-      const oldest = ages.length ? duration(Math.max(...ages)) : null;
-      const last = !newest ? "" : newest === oldest ? `, last ${newest}` : `, last ${newest} – ${oldest}`;
       return h_flex()
         .id(`idle-${g.id}`)
         .px(8)
@@ -569,7 +559,7 @@ export default class Agents extends View {
           cx.notify();
         })
         .child(h_flex().w(16).flex_none().justify_center().child(svg(`mods/workspace-chrome/chevron-${open ? "down" : "right"}.svg`).size(11)))
-        .child(div().truncate().child(`${g.idle.length} idle${last}`));
+        .child(div().truncate().child(`${g.idle.length} idle`));
     };
 
     /**
