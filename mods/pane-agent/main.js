@@ -1,7 +1,8 @@
 // A pane's header, for layouts that frame their panes:
 //   { "tab": "active", "pane": { "header": { "content": { "mod": "pane-agent" } } } }
 // Shows the program's icon (the app's program table), the agent's name or
-// the terminal's title, its status, then one muted line: folder, branch and worktree.
+// the terminal's title, its status, then one muted line: "folder · branch", or in a linked
+// worktree "⎇ <worktree> (worktree) · branch" (the worktree first, never cut off).
 // Split, zoom and close show while the header is hovered or the pane is focused.
 // Props from the app: { pane, terminal }. Click: focus the pane.
 // For agents that report to ~/.local/state/herdr-agents/<terminal>.json (see the
@@ -61,6 +62,7 @@ export default class Pane extends View {
     this.hovered = false;
     this.info = null;
     this.wt = null;          // worktree name, or null in a main checkout / outside git
+    this.wtRepo = null;      // the main checkout a linked worktree belongs to
     this.wtCwd = undefined;  // the folder this.wt was worked out for
     // A linked worktree's git dir is <repo>/.git/worktrees/<name>, while its
     // common dir is the main <repo>/.git; in the main checkout the two are equal.
@@ -68,12 +70,14 @@ export default class Pane extends View {
       const cwd = this.me()?.cwd ?? null;
       if (cwd === this.wtCwd) return;
       this.wtCwd = cwd;
-      if (!cwd) { if (this.wt) { this.wt = null; cx.notify(); } return; }
+      if (!cwd) { if (this.wt) { this.wt = this.wtRepo = null; cx.notify(); } return; }
       exec("git", ["rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir"], { cwd, timeout: 3000 }).then((r) => {
         if (this.wtCwd !== cwd) return; // the folder changed again meanwhile
         const [gitDir, commonDir] = r.code === 0 ? r.stdout.trim().split("\n") : [];
         const next = gitDir && commonDir && gitDir !== commonDir ? gitDir.split("/").pop() : null;
-        if (next !== this.wt) { this.wt = next; cx.notify(); }
+        // <repo>/.git -> <repo>; a bare repo's common dir is the repo itself
+        const repo = next ? commonDir.replace(/\/\.git\/?$/, "") : null;
+        if (next !== this.wt || repo !== this.wtRepo) { this.wt = next; this.wtRepo = repo; cx.notify(); }
       }).catch(() => {});
     };
     const load = () => {
@@ -175,7 +179,31 @@ export default class Pane extends View {
   }
 
   /**
-   * The header: icon, name, status, the muted folder · branch · worktree line, the model chip,
+   * The muted line: "folder · branch", or in a linked worktree the worktree first, with its
+   * icon: "⎇ herdr-alp-p6 (worktree) · feat/pane-header". The folder shows after it only when
+   * it isn't the worktree's own (the shell is in a subfolder). The folder · branch rest has no
+   * width of its own (flex basis 0), so a narrow pane cuts all of it before the worktree's name
+   * starts to truncate. Hover: the full path, and the worktree's repo.
+   * @param {Record<string, string>} t The theme.
+   * @param {object} p The pane.
+   * @returns {object} The line.
+   */
+  where(t, p) {
+    const dir = folderName(p.cwd);
+    const parts = [this.wt && dir === this.wt ? null : dir, p.branch].filter(Boolean).join(" \u00b7 ");
+    // the dot after the worktree goes with the rest, so it never dangles
+    const rest = this.wt && parts ? `\u00b7 ${parts}` : parts;
+    const tip = [folder(p.cwd), this.wt && this.wtRepo && `Linked worktree of ${folder(this.wtRepo)}`].filter(Boolean).join("\n");
+    return h_flex().id(`ph-where-${p.pane}`).flex_1().min_w(0).overflow_hidden().items_center().gap(4).text_color(t.dim)
+      .when(Boolean(tip), (el) => el.tooltip(tip))
+      .when(Boolean(this.wt), (el) => el
+        .child(svg("mods/pane-agent/worktree.svg").size(13).flex_none().text_color(t.dim))
+        .child(div().min_w(0).truncate().child(`${this.wt} (worktree)`)))
+      .child(div().flex_1().min_w(0).truncate().child(rest));
+  }
+
+  /**
+   * The header: icon, name, status, the muted folder · branch line (worktree first), the model chip,
    * the context bar, and (hovered or focused) split, zoom and close.
    * @param {object} cx The view context.
    * @returns {object} The header row.
@@ -195,7 +223,6 @@ export default class Pane extends View {
     const reporting = REPORTING.has(key);
     // the status file belongs to whatever ran in this terminal last: only trust it for the same agent
     const info = reporting && this.info?.agent === key ? this.info : null;
-    const where = [folderName(p.cwd), p.branch, this.wt && `worktree ${this.wt}`].filter(Boolean).join(" \u00b7 ");
     const model = [info?.model && modelName(info.model), info?.effort && String(info.effort).toLowerCase()].filter(Boolean).join(" \u00b7 ");
     return h_flex()
       .id(`pane-head-${pane}`)
@@ -213,7 +240,7 @@ export default class Pane extends View {
       .when(Boolean(pic), (el) => el.child(pic))
       .child(div().flex_none().truncate().max_w(260).font_medium().text_color(t.foreground).child(name))
       .when(Boolean(state), el => el.child(state))
-      .child(div().id(`ph-where-${pane}`).flex_1().min_w(0).truncate().text_color(t.dim).when(Boolean(p.cwd), el => el.tooltip(folder(p.cwd))).child(where))
+      .child(this.where(t, p))
       .when(Boolean(model), el => el.child(this.chip(t, model, t.foreground)))
       .when(info?.context_pct != null, el => el.child(this.ctx(t, info.context_pct)))
       .when(this.hovered || p.focused, el => el
