@@ -2,7 +2,7 @@
 // the usage-limits bar with its time tick, and the agents list's status colors.
 
 import { div, image, svg } from "gpui-kit";
-import { h_flex, v_flex } from "gpui-base";
+import { h_flex, v_flex, Input } from "gpui-base";
 import { exec, notify, run, spaces, theme } from "herdr";
 
 const DAY = 86400000;
@@ -605,4 +605,195 @@ export function GroupHeading(name, count, color) {
     .child(div().size(7).rounded(4).bg(color))
     .child(div().font_medium().text_color(t.foreground).child(name))
     .child(div().text_color(t.dim).child(String(count)));
+}
+
+/**
+ * Presses a focusable element's action on Enter or Space.
+ * @param {(cx: object) => void} press The action.
+ * @returns {(event: object, cx: object) => void} A key-down handler.
+ */
+const pressOnKey = (press) => (event, cx) => {
+  if (event.key !== "enter" && event.key !== "space") return;
+  cx.stop_propagation();
+  press(cx);
+};
+
+/**
+ * The colour a filter's summary is drawn in: quiet at the default, the warning orange while an
+ * edit is not saved, the accent purple once saved.
+ * @param {object} t The theme.
+ * @param {"default" | "edited" | "saved"} look The filter's state.
+ * @returns {string}
+ */
+export function filterColor(t, look) {
+  if (look === "edited") return warningColor(t);
+  if (look === "saved") return t.accent;
+  return t.muted;
+}
+
+/**
+ * The filter on a card: a summary in words for the card's header ("▾ Filter: mine · not draft")
+ * and, while open, its editor for under the header: chips that turn terms on and off, the raw
+ * search (Enter or Apply applies it), and a status line with Reset and Save. The Daypack cards
+ * use it; any card with a search can.
+ *
+ * The summary is a Tab stop: Enter or Space opens and closes the editor, and Esc anywhere in it
+ * closes it. Chips and buttons are Tab stops too.
+ * @param {string} id A unique element id.
+ * @param {{
+ *   summary: string,
+ *   look: "default" | "edited" | "saved",
+ *   open: boolean,
+ *   onToggle(cx: object): void,
+ *   chips: { id: string, label: string, on: boolean, add?: boolean, tooltip?: string, onPress(cx: object): void }[],
+ *   input: object,
+ *   inputLabel?: string,
+ *   onApply(cx: object): void,
+ *   onSave(cx: object): void,
+ *   onReset(cx: object): void,
+ *   saveLabel?: string,
+ *   busy?: boolean,
+ *   message?: { text: string, error?: boolean } | null,
+ *   lookWords?: { default?: string, edited?: string, saved?: string },
+ * }} options `input` is the raw search's InputState; `lookWords` names the three states in the
+ *   status line.
+ * @returns {{ summary: object, panel: object | null }} The header's summary, and the editor (null when shut).
+ */
+export function FilterControl(id, options) {
+  const t = theme();
+  const color = filterColor(t, options.look);
+  const toggle = (cx) => options.onToggle(cx);
+  const close = (event, cx) => {
+    if (event.key !== "escape") return;
+    cx.stop_propagation();
+    if (options.open) options.onToggle(cx);
+  };
+  const summary = h_flex()
+    .id(`${id}-summary`)
+    .min_w(0)
+    .max_w(360)
+    .h(22)
+    .px(8)
+    .gap(6)
+    .items_center()
+    .rounded(6)
+    .border_1()
+    .border_color(options.look === "default" ? (options.open ? t.input : t.border) : color)
+    .text_size(11.5)
+    .text_color(color)
+    .cursor_pointer()
+    .tab_index(0)
+    .hover((style) => style.bg(t.hover))
+    .focus((style) => style.bg(t.hover).border_color(t.accent))
+    .tooltip(options.open ? "Close the filter (Esc)" : "Change what this card shows")
+    .on_click((_event, cx) => {
+      cx.stop_propagation();
+      toggle(cx);
+    })
+    .on_key_down((event, cx) => {
+      pressOnKey(toggle)(event, cx);
+      close(event, cx);
+    })
+    .child(div().flex_none().child(options.open ? "▴" : "▾"))
+    .child(div().min_w(0).truncate().child(`Filter: ${options.summary}`))
+    .when(options.look === "edited", (el) => el.child(div().flex_none().child("●")));
+  if (!options.open) return { summary, panel: null };
+  const words = { default: "The default", edited: "Edited, not saved", saved: "Saved for this card", ...options.lookWords };
+  const chip = (entry) => {
+    const press = (cx) => entry.onPress(cx);
+    return h_flex()
+      .id(entry.id)
+      .flex_none()
+      .h(24)
+      .px(10)
+      .gap(5)
+      .items_center()
+      .rounded(12)
+      .border_1()
+      .when(Boolean(entry.add), (el) => el.border_dashed())
+      .border_color(entry.on ? t.accent : t.border)
+      .bg(entry.on ? t.selected : t.background)
+      .text_size(11.5)
+      .text_color(entry.on ? t.foreground : entry.add ? t.dim : t.muted)
+      .cursor_pointer()
+      .tab_index(0)
+      .hover((style) => style.border_color(entry.on ? t.accent : t.input).text_color(t.foreground))
+      .focus((style) => style.border_color(t.accent).text_color(t.foreground))
+      .when(Boolean(entry.tooltip), (el) => el.tooltip(entry.tooltip))
+      .on_click((_event, cx) => {
+        cx.stop_propagation();
+        press(cx);
+      })
+      .on_key_down(pressOnKey(press))
+      .child(entry.on ? `✓ ${entry.label}` : entry.label);
+  };
+  const button = (name, label, press, primary) =>
+    h_flex()
+      .id(`${id}-${name}`)
+      .flex_none()
+      .h(26)
+      .px(primary ? 12 : 8)
+      .items_center()
+      .rounded(6)
+      .text_size(11.5)
+      .when(primary, (el) => el.font_semibold().bg(t.accent).text_color(t.accent_foreground ?? t.background))
+      .when(!primary, (el) => el.text_color(t.muted).hover((style) => style.bg(t.hover).text_color(t.foreground)))
+      .cursor_pointer()
+      .tab_index(0)
+      .focus((style) => (primary ? style.opacity(0.85) : style.bg(t.hover).text_color(t.foreground)))
+      .when(Boolean(options.busy), (el) => el.opacity(0.6))
+      .on_click((_event, cx) => {
+        cx.stop_propagation();
+        if (!options.busy) press(cx);
+      })
+      .on_key_down(pressOnKey((cx) => !options.busy && press(cx)))
+      .child(label);
+  const panel = v_flex()
+    .id(`${id}-panel`)
+    .p(10)
+    .gap(9)
+    .rounded(8)
+    .border_1()
+    .border_color(t.input)
+    .bg(t.canvas)
+    .on_key_down(close)
+    .child(h_flex().flex_wrap().gap(6).children(options.chips.map(chip)))
+    .child(
+      h_flex()
+        .gap(8)
+        .items_center()
+        .child(div().flex_none().text_size(11.5).text_color(t.dim).child(options.inputLabel ?? "GitHub search"))
+        .child(
+          div()
+            .flex_1()
+            .min_w(0)
+            .child(
+              Input.new(options.input)
+                .h(28)
+                .px(9)
+                .rounded(6)
+                .border_1()
+                .border_color(options.message?.error ? t.blocked : t.border)
+                .bg(t.background)
+                .text_size(12)
+                .text_color(t.foreground),
+            ),
+        )
+        .child(button("apply", "Apply", options.onApply, false)),
+    )
+    .when(Boolean(options.message), (el) =>
+      el.child(Note(options.message.text, options.message.error ? t.blocked : t.dim)),
+    )
+    .child(
+      h_flex()
+        .gap(10)
+        .items_center()
+        .text_size(11.5)
+        .child(div().flex_none().size(7).rounded(4).bg(options.look === "default" ? t.dim : color))
+        .child(div().text_color(options.look === "default" ? t.dim : color).child(options.busy ? "Fetching…" : words[options.look]))
+        .child(div().flex_1())
+        .child(button("reset", "Reset to default", options.onReset, false))
+        .child(button("save", options.saveLabel ?? "Save for this card", options.onSave, true)),
+    );
+  return { summary, panel };
 }

@@ -10,6 +10,7 @@
 import { normalizeConfig } from "./config.js";
 import { MODEL_VERSION, boardFilter, workspaceQueries } from "./data.js";
 import { today } from "./focus.js";
+import { matchesSearch } from "./search-terms.js";
 
 const MIN = 60000;
 const HOUR = 60 * MIN;
@@ -103,11 +104,30 @@ function iterations(now) {
  * @param {string} repo `owner/name`.
  * @param {number} number The PR number.
  * @param {string} title The PR title.
- * @param {object} more `author`, `reviewDecision`, `checks`, `isDraft` and `ago` (ms since its update).
+ * @param {object} more `author`, `reviewDecision`, `checks`, `isDraft`, `ago` (ms since its update),
+ *   and for the Daypack's filters `labels` and `reviewRequested` (logins).
  * @returns {object} The row.
  */
-function pr(repo, number, title, { author = VIEWER, reviewDecision = null, checks = "SUCCESS", isDraft = false, ago = HOUR } = {}) {
-  return { kind: "pr", repo, number, title, url: `https://github.com/${repo}/pull/${number}`, updatedAt: Date.now() - ago, author, isDraft, reviewDecision, checks };
+function pr(
+  repo,
+  number,
+  title,
+  { author = VIEWER, reviewDecision = null, checks = "SUCCESS", isDraft = false, ago = HOUR, labels = [], reviewRequested = [] } = {},
+) {
+  return {
+    kind: "pr",
+    repo,
+    number,
+    title,
+    url: `https://github.com/${repo}/pull/${number}`,
+    updatedAt: Date.now() - ago,
+    author,
+    isDraft,
+    reviewDecision,
+    checks,
+    labels,
+    reviewRequested,
+  };
 }
 
 /**
@@ -362,23 +382,38 @@ function alphorn(ws, now) {
  */
 function account(config, now) {
   const sprint = iterations(now)[2].title;
-  const reviews = [
-    pr(WEB, 433, "Pricing page v2", { author: "mara-v", reviewDecision: "CHANGES_REQUESTED", checks: "SUCCESS", ago: 35 * MIN }),
-    pr(CORE, 212, "Terminal: keep scrollback across reloads", { author: "lena-k", reviewDecision: "REVIEW_REQUIRED", checks: "SUCCESS", ago: 2 * HOUR }),
-    pr(HORN, 64, "Reconnect after the phone sleeps", { author: "tobi-s", checks: "PENDING", ago: 5 * HOUR }),
+  const me = [VIEWER];
+  // Every made-up PR and issue the Daypack's searches pick from: each card shows those its
+  // search matches, so an edited filter filters them too.
+  const prs = [
+    pr(WEB, 433, "Pricing page v2", { author: "mara-v", reviewDecision: "CHANGES_REQUESTED", checks: "SUCCESS", ago: 35 * MIN, labels: ["frontend"], reviewRequested: me }),
+    pr(CORE, 212, "Terminal: keep scrollback across reloads", { author: "lena-k", reviewDecision: "REVIEW_REQUIRED", checks: "SUCCESS", ago: 2 * HOUR, labels: ["backend"], reviewRequested: me }),
+    pr(HORN, 64, "Reconnect after the phone sleeps", { author: "tobi-s", checks: "PENDING", ago: 5 * HOUR, labels: ["backend"], reviewRequested: me }),
+    pr(WEB, 436, "WIP: one-page checkout", { author: "tobi-s", isDraft: true, checks: null, ago: 7 * HOUR, labels: ["frontend"], reviewRequested: me }),
+    pr(WEB, 431, "Retry failed payment webhooks", { reviewDecision: "APPROVED", checks: "SUCCESS", ago: 20 * MIN, labels: ["backend"] }),
+    pr(CORE, 215, "hc: --json for every command", { checks: "PENDING", ago: 40 * MIN, labels: ["backend"] }),
+    pr(WEB, 425, "Bump the image CDN client", { reviewDecision: "CHANGES_REQUESTED", checks: "FAILURE", ago: DAY, labels: ["frontend"] }),
+    pr(HORN, 66, "WIP: dark mode", { isDraft: true, checks: null, ago: 2 * DAY, labels: ["frontend"] }),
   ];
-  const myPrs = [
-    pr(WEB, 431, "Retry failed payment webhooks", { reviewDecision: "APPROVED", checks: "SUCCESS", ago: 20 * MIN }),
-    pr(CORE, 215, "hc: --json for every command", { checks: "PENDING", ago: 40 * MIN }),
-    pr(WEB, 425, "Bump the image CDN client", { reviewDecision: "CHANGES_REQUESTED", checks: "FAILURE", ago: DAY }),
-  ];
-  const mine = [
-    { repo: WEB, number: 397, title: "Retry failed payment webhooks", workspace: "Website", status: "In Progress", iteration: sprint, milestone: "v2.4" },
-    { repo: HORN, number: 58, title: "Pair a phone with a QR code", workspace: "Alphorn", status: "In Progress", iteration: sprint, milestone: null },
-    { repo: WEB, number: 377, title: "Move images to the CDN", workspace: "Website", status: "Done", iteration: sprint, milestone: "v2.4" },
-    { repo: WEB, number: 452, title: "Spike: server-side cart", workspace: "Website", status: "Todo", iteration: sprint, milestone: "v2.5" },
-    { repo: CORE, number: 220, title: "Document the mod API", workspace: null, status: null, iteration: null, milestone: "0.2" },
-  ].map((row, index) => ({ kind: "issue", url: `https://github.com/${row.repo}/issues/${row.number}`, updatedAt: now - (index + 1) * 3 * HOUR, ...row }));
+  const issues = [
+    { repo: WEB, number: 397, title: "Retry failed payment webhooks", workspace: "Website", status: "In Progress", iteration: sprint, milestone: "v2.4", type: "Task", labels: ["backend"] },
+    { repo: HORN, number: 58, title: "Pair a phone with a QR code", workspace: "Alphorn", status: "In Progress", iteration: sprint, milestone: null, type: "Story", labels: ["frontend"] },
+    { repo: WEB, number: 377, title: "Move images to the CDN", workspace: "Website", status: "Done", iteration: sprint, milestone: "v2.4", type: "Task", labels: ["frontend"] },
+    { repo: WEB, number: 452, title: "Spike: server-side cart", workspace: "Website", status: "Todo", iteration: sprint, milestone: "v2.5", type: "Task", labels: ["backend"] },
+    { repo: CORE, number: 220, title: "Document the mod API", workspace: null, status: null, iteration: null, milestone: "0.2", type: "Task", labels: ["docs"] },
+    { repo: WEB, number: 412, title: "Cart rounds CHF wrong", workspace: "Website", status: "Todo", iteration: sprint, milestone: "v2.4", type: "Bug", labels: ["backend"], assignees: ["tobi-s"] },
+  ].map((row, index) => ({
+    kind: "issue",
+    url: `https://github.com/${row.repo}/issues/${row.number}`,
+    updatedAt: now - (index + 1) * 3 * HOUR,
+    assignees: me,
+    ...row,
+  }));
+  const { queries } = config.account;
+  const pool = [...prs, ...issues];
+  const reviews = demoSearch(pool, queries.review);
+  const myPrs = demoSearch(pool, queries.myPrs);
+  const mine = demoSearch(pool, queries.mine);
   const repos = [
     { repo: WEB, isPrivate: false, issues: 38, prs: 6, checks: "SUCCESS", pushedAt: now - 20 * MIN },
     { repo: CORE, isPrivate: false, issues: 21, prs: 4, checks: "FAILURE", pushedAt: now - 2 * HOUR },
@@ -397,7 +432,32 @@ function account(config, now) {
     redRepos: repos.filter((repo) => repo.checks === "FAILURE").length,
     redPrs: myPrs.filter((row) => row.checks === "FAILURE").length,
     queries: { ...config.account.queries },
+    pool,
   };
+}
+
+/**
+ * The made-up PRs and issues a search matches, for one Daypack card.
+ * @param {object[]} pool Every made-up PR and issue.
+ * @param {string} query The card's search.
+ * @returns {object[]} The matching ones.
+ */
+const demoSearch = (pool, query) => pool.filter((item) => matchesSearch(item, query, VIEWER));
+
+/**
+ * One Daypack card filtered again with another search, in the demo: `loadCardSearch()` on the
+ * made-up data. Nothing is fetched.
+ * @param {object} account The demo account's model.
+ * @param {"review" | "myPrs" | "mine"} key The card's search.
+ * @param {string} query The search.
+ * @returns {object} The account's model with that card's rows, count and search.
+ */
+export function demoCardSearch(account, key, query) {
+  const list = { review: "reviews", myPrs: "myPrs", mine: "mine" }[key];
+  const rows = demoSearch(account.pool ?? [], query);
+  const next = { ...account, [list]: rows, counts: { ...account.counts, [list]: rows.length }, queries: { ...account.queries, [key]: query } };
+  if (key === "myPrs") next.redPrs = rows.filter((row) => row.checks === "FAILURE").length;
+  return next;
 }
 
 /**

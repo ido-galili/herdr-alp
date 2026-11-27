@@ -14,17 +14,20 @@ import { home, readTextFile } from "herdr";
 export const DEFAULT_ISSUE_PROMPT = "Work on GitHub issue {repo}#{number}: read it, plan, then implement.";
 export const DEFAULT_PR_PROMPT = "Review GitHub PR {repo}#{number} and summarize what needs attention.";
 
+/** The Daypack cards' default searches, by the key `account.queries` keeps each under. */
+export const DEFAULT_QUERIES = {
+  review: "is:pr draft:false is:open review-requested:@me sort:updated-desc",
+  mine: "is:issue is:open assignee:@me sort:updated-desc",
+  myPrs: "is:pr is:open author:@me draft:false sort:updated-desc",
+};
+
 const ACCOUNT_DEFAULTS = {
   repos: "all",
   exclude: [],
   archived: false,
   launch: { issue: DEFAULT_ISSUE_PROMPT, pr: DEFAULT_PR_PROMPT },
   folders: {},
-  queries: {
-    review: "is:pr draft:false is:open review-requested:@me sort:updated-desc",
-    mine: "is:issue is:open assignee:@me sort:updated-desc",
-    myPrs: "is:pr is:open author:@me draft:false sort:updated-desc",
-  },
+  queries: DEFAULT_QUERIES,
 };
 
 const WORKSPACE_DEFAULTS = {
@@ -179,6 +182,27 @@ export function normalizeConfig(raw) {
     seen.add(name);
   }
   return { account: normalizeAccount(shaped.account ?? {}), workspaces };
+}
+
+/**
+ * The settings file's contents with one Daypack card's search saved, or removed so the card
+ * goes back to its default. Everything else stays as the file had it. A file in the one-repo
+ * shape keeps the searches at its top level, so the search goes there.
+ * @param {object} raw The parsed file.
+ * @param {"review" | "myPrs" | "mine"} key The card's key in `account.queries`.
+ * @param {string | null} query The search to save, or null to remove it.
+ * @returns {object} A new object to write; `raw` is not changed.
+ */
+export function withCardFilter(raw, key, query) {
+  const next = copy(raw ?? {});
+  const oneRepo = Boolean(next.repo || next.project);
+  const holder = oneRepo ? next : (next.account ??= {});
+  const queries = { ...holder.queries };
+  if (query === null) delete queries[key];
+  else queries[key] = query;
+  if (Object.keys(queries).length) holder.queries = queries;
+  else delete holder.queries;
+  return next;
 }
 
 /**
