@@ -75,14 +75,6 @@ export function filterChips(key, query) {
   return [...CARD_CHIPS[key], ...labels].map((chip) => ({ ...chip, on: hasTerm(query, chip.term) }));
 }
 
-/**
- * A card's body with its filter's editor on top while it is open.
- * @param {{ panel: object | null } | null | undefined} filter From `actions.filter(key)`.
- * @param {object} body The card's list.
- * @returns {object}
- */
-const withFilter = (filter, body) => (filter?.panel ? v_flex().gap(10).child(filter.panel).child(body) : body);
-
 /** A PR untouched this long gets its age in the warning color. */
 const STALE_PR_AGE = 3 * 86400000;
 
@@ -183,8 +175,8 @@ export function DaypackKey({ missingPrompt, openSettings, hide }) {
  * Review requests.
  * @param {object} account The account model.
  * @param {{ pinButton(item: object): object, launch(item: object): void, prompt(kind: string): string,
- *   filter?(key: string): { summary: object, panel: object | null } }} actions `filter` gives the
- *   card's filter, from `FilterControl`.
+ *   filter?(key: string): object }} actions `filter` gives the card's filter icon (`FilterIcon`),
+ *   last on the header.
  * @returns {object} The card.
  */
 export function Reviews(account, actions) {
@@ -211,19 +203,16 @@ export function Reviews(account, actions) {
     "reviews",
     "Waiting for your review",
     [
-      ...(filter ? [filter.summary] : []),
       Chip(String(account.counts?.reviews ?? reviews.length), { color: reviews.length ? t.blocked : t.dim }),
       IconButton("rv-all", ICONS.github, () => openUrl(searchUrl(null, account.queries.review)), {
         tooltip: "Open the list on GitHub",
       }),
+      ...(filter ? [filter] : []),
     ],
-    withFilter(
-      filter,
-      v_flex()
-        .gap(2)
-        .when(!rows.length, (el) => el.child(Note("No reviews waiting on you.")))
-        .children(rows),
-    ),
+    v_flex()
+      .gap(2)
+      .when(!rows.length, (el) => el.child(Note("No reviews waiting on you.")))
+      .children(rows),
   );
 }
 
@@ -247,7 +236,7 @@ export function decisionChip(t, pr, prefix = "mp") {
  * Your open, non-draft PRs: review decision, checks and age.
  * @param {object} account The account model.
  * @param {{ pinButton(item: object): object, launch(item: object): void, prompt(kind: string): string,
- *   filter?(key: string): { summary: object, panel: object | null } }} actions
+ *   filter?(key: string): object }} actions
  * @returns {object} The card.
  */
 export function MyPrs(account, actions) {
@@ -273,19 +262,16 @@ export function MyPrs(account, actions) {
     "my-prs",
     "Your open PRs",
     [
-      ...(filter ? [filter.summary] : []),
       Chip(String(account.counts?.myPrs ?? prs.length), { color: t.muted }),
       IconButton("mp-all", ICONS.github, () => openUrl(searchUrl(null, account.queries.myPrs)), {
         tooltip: "Open the list on GitHub",
       }),
+      ...(filter ? [filter] : []),
     ],
-    withFilter(
-      filter,
-      v_flex()
-        .gap(2)
-        .when(!rows.length, (el) => el.child(Note(account.myPrs ? "No open PRs of yours." : "Refresh to load your PRs.")))
-        .children(rows),
-    ),
+    v_flex()
+      .gap(2)
+      .when(!rows.length, (el) => el.child(Note(account.myPrs ? "No open PRs of yours." : "Refresh to load your PRs.")))
+      .children(rows),
   );
 }
 
@@ -316,32 +302,29 @@ export function MyIssues(config, account, actions) {
     "mine",
     "Your issues",
     [
-      ...(filter ? [filter.summary] : []),
       Chip(hidden ? `${visible.length} shown · ${hidden} hidden by status` : `${visible.length}`, { color: t.dim }),
       IconButton("mi-all", ICONS.github, () => openUrl(searchUrl(null, account.queries.mine)), {
         tooltip: "Open the list on GitHub",
       }),
+      ...(filter ? [filter] : []),
     ],
-    withFilter(
-      filter,
-      v_flex()
-        .gap(2)
-        .when(!groups.length, (el) => el.child(Note("No open issues assigned to you.")))
-        .children(
-          groups.flatMap((group) => [
-            GroupHeading(group.status ?? "No status", group.items.length, statusColor(t, group.status)),
-            ...group.items.map((issue) =>
-              Row(`mi-${itemKey(issue)}`, {
-                number: issue.number,
-                repo: issue.repo,
-                title: issue.title,
-                url: issue.url,
-                chips: issue.milestone ? [Chip(issue.milestone, { color: t.dim })] : [],
-                buttons: [actions.pinButton(issue), ClaudeButton("mi", issue, actions)],
-              }),
-            ),
-          ]),
-        ),
-    ),
+    v_flex()
+      .gap(2)
+      .when(!groups.length, (el) => el.child(Note("No open issues assigned to you.")))
+      .children(
+        groups.flatMap((group) => [
+          GroupHeading(group.status ?? "No status", group.items.length, statusColor(t, group.status)),
+          ...group.items.map((issue) =>
+            Row(`mi-${itemKey(issue)}`, {
+              number: issue.number,
+              repo: issue.repo,
+              title: issue.title,
+              url: issue.url,
+              chips: issue.milestone ? [Chip(issue.milestone, { color: t.dim })] : [],
+              buttons: [actions.pinButton(issue), ClaudeButton("mi", issue, actions)],
+            }),
+          ),
+        ]),
+      ),
   );
 }
