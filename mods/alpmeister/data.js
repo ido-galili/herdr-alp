@@ -82,7 +82,8 @@ export const searchUrl = (repo, query) =>
     : `https://github.com/search?type=issues&q=${encodeURIComponent(query)}`;
 
 /**
- * Every search a workspace runs, scoped to its repository.
+ * Every search a workspace runs, scoped to its repository. Open PRs (`queries.prs`) is sorted by
+ * the last update unless it names a sort of its own.
  * @param {object} ws The workspace.
  * @returns {Record<string, string>} The searches by name; repository searches are absent without a repository.
  */
@@ -95,7 +96,7 @@ export function workspaceQueries(ws) {
     inFlightFilter: inFlightParts.join(" "),
     triageQuery: `${repo} ${ws.queries.triage}`,
     bugsQuery: `${repo} ${ws.bugs.query}`,
-    prsQuery: `${repo} is:pr is:open sort:updated-desc`,
+    prsQuery: `${repo} ${ws.queries.prs}${/(^|\s)sort:/.test(ws.queries.prs) ? "" : " sort:updated-desc"}`,
   };
 }
 
