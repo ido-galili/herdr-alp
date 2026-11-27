@@ -4,8 +4,9 @@
 //
 //   account     your GitHub as a whole: the repos in scope, the Claude prompts, your local
 //               clones, and the @me searches the Daypack lists
-//   workspaces  a repository, a project board, or both, each with its own settings. The
-//               Dashboard shows one at a time, or all your repos.
+//   workspaces  a repository, a project board, or both, each with its own settings, such as
+//               the searches behind its Open bugs, Triage bugs and Open PRs (`queries.prs`).
+//               The Overview shows one at a time, or all your repos.
 //
 // A file in the earlier one-repo shape (top-level `repo` and `project`) reads as one workspace.
 
@@ -14,17 +15,30 @@ import { home, readTextFile } from "herdr";
 export const DEFAULT_ISSUE_PROMPT = "Work on GitHub issue {repo}#{number}: read it, plan, then implement.";
 export const DEFAULT_PR_PROMPT = "Review GitHub PR {repo}#{number} and summarize what needs attention.";
 
+/** The Daypack cards' default searches, by the key `account.queries` keeps each under. */
+export const DEFAULT_QUERIES = {
+  review: "is:pr draft:false is:open review-requested:@me sort:updated-desc",
+  mine: "is:issue is:open assignee:@me sort:updated-desc",
+  myPrs: "is:pr is:open author:@me draft:false sort:updated-desc",
+};
+
+/**
+ * A workspace's default searches: its open bugs, its triage bugs and its open PRs. The
+ * repository is added to each when it runs, and a sort to Open PRs when it has none.
+ */
+export const WORKSPACE_QUERY_DEFAULTS = {
+  bugs: "is:issue is:open type:Bug",
+  triage: "is:issue is:open label:triage",
+  prs: "is:pr is:open",
+};
+
 const ACCOUNT_DEFAULTS = {
   repos: "all",
   exclude: [],
   archived: false,
   launch: { issue: DEFAULT_ISSUE_PROMPT, pr: DEFAULT_PR_PROMPT },
   folders: {},
-  queries: {
-    review: "is:pr draft:false is:open review-requested:@me sort:updated-desc",
-    mine: "is:issue is:open assignee:@me sort:updated-desc",
-    myPrs: "is:pr is:open author:@me draft:false sort:updated-desc",
-  },
+  queries: DEFAULT_QUERIES,
 };
 
 const WORKSPACE_DEFAULTS = {
@@ -35,9 +49,9 @@ const WORKSPACE_DEFAULTS = {
   notStarted: ["New", "Todo"],
   inFlight: { statuses: ["In Progress", "In Review"], excludeTypes: [] },
   mineHidden: ["New", "Done"],
-  queries: { triage: "is:issue is:open label:triage" },
+  queries: { triage: WORKSPACE_QUERY_DEFAULTS.triage, prs: WORKSPACE_QUERY_DEFAULTS.prs },
   bugs: {
-    query: "is:issue is:open type:Bug",
+    query: WORKSPACE_QUERY_DEFAULTS.bugs,
     priorityField: "Priority",
     priorities: ["Blocker", "Critical", "Major", "Minor"],
   },
@@ -140,16 +154,16 @@ export function normalizeAccount(raw) {
 
 /**
  * Reads a file in the one-repo shape as the new one: its repository and board become one
- * workspace, `launch.folder` becomes that repository's folder, and the @me searches move to
- * the account.
+ * workspace, `launch.folder` becomes that repository's folder, the @me searches move to the
+ * account, and the triage and Open PRs searches stay with the workspace.
  * @param {object} raw The parsed file.
  * @returns {object} `{ account, workspaces }` as the file would hold them.
  */
 function upgradeOneRepo(raw) {
   const { repo, project, launch = {}, queries = {}, ...rest } = raw;
   const { folder, ...prompts } = launch;
-  const { triage, review, mine, myPrs } = queries;
-  const workspace = { ...rest, repo, queries: triage ? { triage } : {} };
+  const { triage, prs, review, mine, myPrs } = queries;
+  const workspace = { ...rest, repo, queries: Object.fromEntries(Object.entries({ triage, prs }).filter(([, value]) => value)) };
   if (project?.owner && Number.isInteger(project?.number)) workspace.board = project;
   return {
     account: {
@@ -179,6 +193,27 @@ export function normalizeConfig(raw) {
     seen.add(name);
   }
   return { account: normalizeAccount(shaped.account ?? {}), workspaces };
+}
+
+/**
+ * The settings file's contents with one Daypack card's search saved, or removed so the card
+ * goes back to its default. Everything else stays as the file had it. A file in the one-repo
+ * shape keeps the searches at its top level, so the search goes there.
+ * @param {object} raw The parsed file.
+ * @param {"review" | "myPrs" | "mine"} key The card's key in `account.queries`.
+ * @param {string | null} query The search to save, or null to remove it.
+ * @returns {object} A new object to write; `raw` is not changed.
+ */
+export function withCardFilter(raw, key, query) {
+  const next = copy(raw ?? {});
+  const oneRepo = Boolean(next.repo || next.project);
+  const holder = oneRepo ? next : (next.account ??= {});
+  const queries = { ...holder.queries };
+  if (query === null) delete queries[key];
+  else queries[key] = query;
+  if (Object.keys(queries).length) holder.queries = queries;
+  else delete holder.queries;
+  return next;
 }
 
 /**

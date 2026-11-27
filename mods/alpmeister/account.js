@@ -8,14 +8,14 @@ import { h_flex, v_flex } from "gpui-base";
 import { theme } from "herdr";
 import { searchUrl } from "./data.js";
 import { ClaudeButton, checksChip, decisionChip } from "./my-day.js";
-import { Tile } from "./project.js";
+import { Tile, seeAll } from "./project.js";
 import { Card, Chip, NeedsYou, Note, Row, TextButton, Toggle, ago, itemKey } from "./ui.js";
 
 const REPO_LIMIT = 12;
 const PR_LIMIT = 10;
 
 /**
- * The account's four tiles, four across when `wide`, else two by two.
+ * The account's four tiles, four across when `wide`, else two by two. Each list ends in "See all N →".
  * @param {object} account The account model.
  * @param {{ wide: boolean }} options
  * @returns {object} The row of tiles.
@@ -38,6 +38,8 @@ export function AccountTiles(account, { wide }) {
       "review requests",
       counts.reviews ? t.blocked : t.foreground,
       searchUrl(null, account.queries.review),
+      undefined,
+      { link: seeAll(counts.reviews) },
     ),
     Tile(
       "tile-my-prs",
@@ -46,6 +48,8 @@ export function AccountTiles(account, { wide }) {
       prLines.length ? prLines : "no review decisions yet",
       t.foreground,
       searchUrl(null, account.queries.myPrs),
+      undefined,
+      { link: seeAll(counts.myPrs) },
     ),
     Tile(
       "tile-mine",
@@ -54,6 +58,8 @@ export function AccountTiles(account, { wide }) {
       "open, assigned to you",
       t.foreground,
       searchUrl(null, account.queries.mine),
+      undefined,
+      { link: seeAll(counts.mine) },
     ),
     Tile(
       "tile-red",

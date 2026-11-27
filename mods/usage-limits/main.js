@@ -1,5 +1,5 @@
-// An agent's usage limits: Session (5h) and Weekly (7d), each with a usage bar and a
-// tick showing how far through the window we are (how close the reset is).
+// An agent's usage limits: Session (5h) and Weekly (7d), each with a usage bar, its
+// percentage and the time left; the tooltip has the full text, with how much time is gone.
 // Data: the agent's entry in ~/.local/state/herdr-agents/limits.json
 // ({ "<agent>": { five_hour, seven_day, ts } }), written for Claude Code by the
 // alp plugin. Props: { agent } (default "claude").
@@ -67,13 +67,29 @@ export default class UsageLimits extends View {
     });
   }
 
-  // Usage fill, with a tick at how far through the window time is (the right end is the reset).
-  bar(t, frac, color, mark) {
-    const c = (v) => Math.max(0, Math.min(1, v)) * 100;
-    return div().relative().w_full().h(8)
-      .child(div().w_full().h(8).rounded(4).bg(t.border).overflow_hidden()
-        .child(div().h(8).w(`${c(frac)}%`).rounded(4).bg(color)))
-      .child(div().absolute().top(-2).left(`${c(mark)}%`).w(2).h(12).rounded(1).bg(t.foreground));
+  /**
+   * The usage fill on its track.
+   * @param {Record<string, string>} t The theme.
+   * @param {number} frac How much is used, 0 to 1.
+   * @param {string} color The fill's colour.
+   * @returns {object}
+   */
+  bar(t, frac, color) {
+    const c = Math.max(0, Math.min(1, frac)) * 100;
+    return div().w_full().h(8).rounded(4).bg(t.border).overflow_hidden()
+      .child(div().h(8).w(`${c}%`).rounded(4).bg(color));
+  }
+
+  /**
+   * A window's full text, for its tooltip: "Weekly: 74% used, 55% of the time gone · resets in 3d 4h".
+   * @param {{ label: string }} win The limit window.
+   * @param {{ used: number | null, remain: number | null, elapsed: number }} st Its numbers, from stats().
+   * @returns {string} The text.
+   */
+  tip(win, { used, remain, elapsed }) {
+    if (used == null) return `${win.label}: no data yet`;
+    if (remain == null) return `${win.label}: ${Math.round(used)}% used`;
+    return `${win.label}: ${Math.round(used)}% used, ${Math.round(elapsed * 100)}% of the time gone · ${remain <= 0 ? "resets now" : `resets in ${left(remain)}`}`;
   }
 
   /**
@@ -100,9 +116,10 @@ export default class UsageLimits extends View {
    * @returns {object}
    */
   cell(t, win) {
-    const { used, remain, color } = this.stats(t, win);
+    const st = this.stats(t, win);
+    const { used, remain, color } = st;
     const usedText = used == null ? "–" : `${Math.round(used)}%`;
-    const tip = `${win.label} ${usedText}${remain == null ? "" : ` · resets ${left(remain)}`}`;
+    const tip = this.tip(win, st);
     const short = remain == null ? null : remain <= 0 ? "now" : remain >= 3600 ? `${Math.floor(remain / 3600)}h` : `${Math.floor(remain / 60)}m`;
     return h_flex().flex_none().justify_center().child(
       v_flex().id(`limit-${win.key}`).w(32).py(4).gap(3).items_center().rounded(6)
@@ -116,15 +133,22 @@ export default class UsageLimits extends View {
           .child(short))));
   }
 
+  /**
+   * Unfolded: the label, one percentage and the time left over the usage bar; the full text is in the tooltip.
+   * @param {Record<string, string>} t The theme.
+   * @param {{ key: string, label: string, span: number }} win The limit window.
+   * @returns {object}
+   */
   row(t, win) {
-    const { used, remain, elapsed, color } = this.stats(t, win);
-    return v_flex().gap(4)
+    const st = this.stats(t, win);
+    const { used, remain, color } = st;
+    return v_flex().id(`limit-row-${win.key}`).gap(4).tooltip(this.tip(win, st))
       .child(h_flex().items_center().gap(6).text_size(11.5)
         .child(div().text_color(t.foreground).font_medium().child(win.label))
         .child(div().text_color(color).font_semibold().child(used == null ? "–" : `${Math.round(used)}%`))
         .child(div().flex_1())
-        .child(div().text_color(t.dim).child(remain == null ? "" : `resets ${left(remain)}`)))
-      .child(this.bar(t, (used ?? 0) / 100, color, elapsed));
+        .child(div().text_color(t.dim).child(remain == null ? "" : remain <= 0 ? "resets now" : `${left(remain)} left`)))
+      .child(this.bar(t, (used ?? 0) / 100, color));
   }
 
   render() {

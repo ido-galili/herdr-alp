@@ -1,13 +1,16 @@
-// The Herds tab: the herds on one canvas (`herds-canvas.js`), each herdsman on top with lines
-// down to the sessions it is linked to, each line labelled with how (a message and its time, or a
-// worktree), and to the agents it started, each line labelled with the agent's type. Below, the
-// sessions grazing alone, a card each, striped in their space's color. A click opens a tab.
+// The Herds tab, one view at a time behind a Map | Cards switch. The Map (`herds-canvas.js`)
+// draws each herd as a tree, its herdsman on top with lines down to the sessions it is linked to,
+// each line labelled with how (a message and its time, or a worktree), and to the agents it
+// started; the sessions grazing alone sit in a labelled lane under the herds. Cards lists the same
+// sessions by what needs you: Needs you, then the herds, then grazing, with the sessions that have
+// no tab folded into one line. Both views draw one card (`SessionCard`), and hovering a session
+// lights it wherever it shows. A click opens its tab.
 
 import { div, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { agents, panes, run, shared, spaces, theme } from "herdr";
-import { herdsOf } from "./herds-data.js";
-import { Card, Chip, Note, TextButton, formatTime } from "./ui.js";
+import { agentsByAge, herdsOf } from "./herds-data.js";
+import { Chip, Note, TextButton, formatTime } from "./ui.js";
 
 const SPINNER = "mods/workspace-chrome/spinner.svg";
 
@@ -23,14 +26,11 @@ const ROLE_ICONS = {
   agent: { icon: "mods/alpmeister/dog.svg", tooltip: "Agent: sent out by its session" },
 };
 
-/** One width for every grazing card, so the grid's rows line up. */
-const CARD_WIDTH = 272;
+/** The key's row and the gap under it, taken off the map's height while the key shows. */
+const KEY_ROOM = 40;
 
-/**
- * One height for every box and card: name, tab, branch. A card without a branch keeps the room,
- * and the Link a tab button sits in the tab's line, so no card grows taller than another.
- */
-const CARD_HEIGHT = 86;
+/** A session's card at 100%, the same in Cards and on the Map: two lines, a stripe down the left. */
+export const CARD = { w: 210, h: 54 };
 
 /** Link or unlink a background session's tab, as a small button; null for other sessions. */
 export function LinkButton(session, actions, prefix) {
@@ -79,28 +79,6 @@ export function branchOf(session) {
   return session.branch ?? null;
 }
 
-/**
- * The branch tag at the bottom of a card, drawn like the pane header's chips: icon and name.
- * @param {object} t The theme.
- * @param {string} branch The branch name.
- * @returns {object} The tag.
- */
-function BranchTag(t, branch) {
-  return h_flex()
-    .max_w_full()
-    .min_w(0)
-    .gap(4)
-    .px(6)
-    .h(20)
-    .items_center()
-    .rounded(5)
-    .bg(t.hover)
-    .text_size(11.5)
-    .text_color(t.muted)
-    .child(svg("mods/workspace-chrome/git-branch.svg").size(11).flex_none())
-    .child(div().min_w(0).truncate().child(branch));
-}
-
 /** The status mark, as the agents list draws it: spinner, Needs you, done dot, idle ring. */
 export function StatusMark(t, status) {
   if (status === "working") return svg(SPINNER).size(12).flex_none().text_color(t.working).spin(900);
@@ -115,11 +93,32 @@ export function StatusMark(t, status) {
  * @param {string} id A unique element id.
  * @param {"herdsman" | "member" | "grazing" | "fork" | "agent"} role
  * @param {string} [color] The tint; the herdsman's is the accent.
+ * @param {number} [size] The icon's size.
  * @returns {object}
  */
-export function RoleIcon(t, id, role, color) {
+export function RoleIcon(t, id, role, color, size = 14) {
   const { icon, tooltip } = ROLE_ICONS[role];
-  return div().id(id).flex_none().text_color(color ?? t.muted).tooltip(tooltip).child(svg(icon).size(14));
+  return div().id(id).flex_none().text_color(color ?? t.muted).tooltip(tooltip).child(svg(icon).size(size));
+}
+
+/**
+ * The "bg" tag: a session or an agent that runs in the background (the key says so).
+ * @param {object} t The theme.
+ * @param {string} id A unique element id.
+ * @param {number} [z] The zoom it is drawn at.
+ * @returns {object} The tag.
+ */
+export function BgTag(t, id, z = 1) {
+  return div()
+    .id(id)
+    .flex_none()
+    .px(Math.max(2, 4 * z))
+    .rounded(Math.max(2, 3 * z))
+    .bg(t.hover)
+    .text_size(Math.max(8, 11.5 * z))
+    .text_color(t.muted)
+    .tooltip("Runs in the background")
+    .child("bg");
 }
 
 /**
@@ -176,8 +175,11 @@ export function linkLine(link) {
     : { label: "worktree", dotted: true };
 }
 
-/** How a line to an agent reads: its type, dotted while it runs in the background. */
-export const agentLine = (agent) => ({ label: agent.type, dotted: agent.background });
+/**
+ * How a line to an agent reads: its type, always solid. Dotted means a worktree only; a
+ * background agent says so with a "bg" tag on its box instead.
+ */
+export const agentLine = (agent) => ({ label: agent.type, dotted: false });
 
 /** The latest link from the herdsman to a member: a message before a worktree. */
 export function linkTo(herd, member) {
@@ -201,103 +203,380 @@ function spaceColor(t, space, colors) {
   return color.startsWith("#") ? color : (MARK[color] ?? t[color]);
 }
 
-/** A space's avatar: its first letter on its color, as the agents list and spaces mod draw it. */
-function Avatar(t, key, space, name, colors, size = 16) {
-  return h_flex()
-    .id(key)
-    .size(size)
-    .flex_none()
-    .rounded(Math.round((size * 5) / 18))
-    .bg(spaceColor(t, space, colors))
-    .items_center()
-    .justify_center()
-    .text_size((size * 10.5) / 18)
-    .font_bold()
-    .text_color("#ffffff")
-    .child([...(name ?? "")][0]?.toUpperCase() ?? "?");
-}
+/**
+ * The live tabs to draw with: the demo's made-up tabs in demo mode, else Herdr's.
+ * @param {object} model loadHerds()'s result.
+ * @returns {Map<string, object>} The tabs by terminal address.
+ */
+export const liveTabs = (model) => new Map((model?.demo?.agents ?? agents()).map((agent) => [agent.address, agent]));
 
-/** The grazing sessions in the sidebar's space order, then by name; ones in no space last. */
-function sortedBySpace(grazing, live, model) {
+/**
+ * Sessions in the sidebar's space order, then by name; ones in no space last.
+ * @param {object[]} sessions The sessions.
+ * @param {Map} live The live tabs by terminal.
+ * @param {object} model loadHerds()'s result.
+ * @returns {object[]} A sorted copy.
+ */
+export function sortedBySpace(sessions, live, model) {
   const order = new Map((model?.demo?.spaces ?? spaces()).map((space, index) => [space.id, index]));
   const rank = (session) => order.get(live.get(session.terminal)?.space) ?? order.size;
-  return [...grazing].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+  return [...sessions].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
 }
 
 /**
- * A grazing session as a card: a stripe in its space's color down the left edge, its status and
- * name, the space's avatar in the corner (its name on hover), and below what its tab is called,
- * or the space's name when the tab is titled with the session's own. A click opens its tab.
+ * The card's second line by default: the space and the branch, else where it runs.
+ * @param {object} session The session.
+ * @param {Map} live The live tabs by terminal.
+ * @returns {string}
+ */
+function spaceAndBranch(session, live) {
+  const parts = [live.get(session.terminal)?.space_name, branchOf(session)].filter(Boolean);
+  return parts.length ? parts.join(" · ") : placeOf(session, live);
+}
+
+/**
+ * A session's card, the one design both views draw: a stripe in its space's color down the left
+ * edge; its status (a spinner while working, a dot when done), its name, then "Needs you" or
+ * "idle", "bg" for a background session and the crook for a herdsman; below, its space and
+ * branch. `z` scales it for the Map's zoom; under `compact` it shows the first line only. The
+ * caller places it and adds what a press does.
  * @param {object} t The theme.
  * @param {object} session The session.
  * @param {Map} live The live tabs by terminal.
- * @param {object} actions The tab's callbacks.
+ * @param {object} actions The Herds tab's actions (`model`, `canvas`, `link`, `pick`).
+ * @param {{ id: string, z?: number, width?: number, height?: number, role?: string, sub?: string,
+ *   extras?: object[], compact?: boolean, tooltip?: string }} options
  * @returns {object} The card.
  */
-function GrazingCard(t, session, live, actions) {
+export function SessionCard(t, session, live, actions, options) {
+  const { id, z = 1, width = CARD.w, height = CARD.h, role, sub, extras = [], compact = false, tooltip } = options;
+  const canvas = actions.canvas;
   const agent = live.get(session.terminal);
-  const tabName = placeOf(session, live, { space: false });
-  const second = agent && tabName === session.name ? agent.space_name : tabName;
-  const colors = spaceColors(actions.model);
+  const status = statusOf(session, live);
+  const blocked = status === "blocked";
+  const herdsman = role === "herdsman";
+  const hot = canvas?.hot === session.id;
+  const outlined = hot || (blocked && canvas?.outlineBlocked);
+  const ring = hot ? t.accent : t.blocked;
+  const text = (size) => Math.max(8, size * z);
+  const lead =
+    status === "working"
+      ? svg(SPINNER).size(text(11)).flex_none().text_color(t.working).spin(900)
+      : status === "done"
+        ? div().size(text(7)).flex_none().rounded(text(4)).bg(t.done)
+        : null;
+  const trail = [
+    blocked
+      ? div()
+          .flex_none()
+          .px(Math.max(2, 4 * z))
+          .rounded(Math.max(2, 4 * z))
+          .bg(`${t.blocked}26`)
+          .text_size(text(11.5))
+          .text_color(t.blocked)
+          .child("Needs you")
+      : null,
+    status === "idle" ? div().flex_none().text_size(text(11.5)).text_color(t.dim).child("idle") : null,
+    session.kind === "bg" ? BgTag(t, `${id}-bg`, z) : null,
+    herdsman ? RoleIcon(t, `${id}-role`, "herdsman", t.accent, text(13)) : null,
+  ].filter(Boolean);
+  // An outline is 2px: the padding gives up the extra pixel, so the text does not move.
+  const border = outlined ? 2 : 1;
   return h_flex()
-    .id(`hg-${session.id}`)
-    .w(CARD_WIDTH)
-    .h(CARD_HEIGHT)
+    .id(id)
+    .w(width * z)
+    .h(height * z)
     .flex_none()
     .items_stretch()
     .overflow_hidden()
-    .rounded(8)
-    .border_1()
-    .border_color(t.border)
-    .bg(t.canvas)
-    .when(Boolean(agent), (el) =>
-      el
-        .cursor_pointer()
-        .hover((style) => style.bg(t.hover))
-        // The demo's tabs are made up: nothing to open.
-        .on_click(() => !actions.model?.demo && run("pane.focus", { terminal: session.terminal }))
-        .tooltip(`Open its tab in ${agent.space_name}`),
+    .rounded(Math.max(4, 8 * z))
+    .border(border)
+    .border_color(outlined ? ring : blocked ? t.blocked : herdsman ? (t.ansi8 ?? t.dim) : t.border)
+    .bg(t.background)
+    .hover((style) => style.bg(t.hover))
+    .when(Boolean(tooltip), (el) => el.tooltip(tooltip))
+    .when(Boolean(canvas), (el) =>
+      el.on_hover((hovered, cx) => {
+        if (hovered) canvas.setHot(session.id, cx);
+        else if (canvas.hot === session.id) canvas.setHot(null, cx);
+      }),
     )
-    .child(div().w(3).flex_none().bg(agent ? spaceColor(t, agent.space, colors) : t.border))
+    .child(div().w(Math.max(2, 3 * z)).flex_none().bg(agent ? spaceColor(t, agent.space, spaceColors(actions.model)) : t.border))
     .child(
       v_flex()
         .flex_1()
         .min_w(0)
-        .px(10)
-        .py(8)
-        .gap(4)
+        .pl(Math.max(3, 9 * z) - (border - 1))
+        .pr(Math.max(3, 9 * z) - (border - 1))
+        .justify_center()
+        .gap(Math.max(1, 3 * z))
         .child(
           h_flex()
-            .gap(6)
+            .gap(Math.max(3, 5 * z))
             .items_center()
             .min_w(0)
-            .child(StatusMark(t, statusOf(session, live)))
+            .children(lead ? [lead] : [])
             .child(
-              div().flex_1().min_w(0).truncate().text_size(12).font_medium().text_color(t.foreground).child(session.name),
+              div().flex_1().min_w(0).truncate().text_size(text(12)).font_medium().text_color(t.foreground).child(session.name),
             )
-            .child(RoleIcon(t, `hg-role-${session.id}`, "grazing"))
-            .when(Boolean(agent), (el) =>
-              el.child(Avatar(t, `hg-av-${session.id}`, agent.space, agent.space_name, colors, 15).tooltip(agent.space_name)),
-            ),
+            .children(trail),
         )
+        .when(!compact, (el) =>
+          el.child(
+            h_flex()
+              .gap(Math.max(3, 6 * z))
+              .items_center()
+              .min_w(0)
+              .child(div().flex_1().min_w(0).truncate().text_size(text(11.5)).text_color(t.dim).child(sub ?? spaceAndBranch(session, live)))
+              .children(extras.filter(Boolean)),
+          ),
+        ),
+    );
+}
+
+/**
+ * Opens a session's tab, unless it has none or it is the demo's (made up: nothing to open).
+ * @param {object} session The session.
+ * @param {Map} live The live tabs by terminal.
+ * @param {object} model loadHerds()'s result.
+ */
+function openTab(session, live, model) {
+  if (live.has(session.terminal) && !model?.demo) run("pane.focus", { terminal: session.terminal });
+}
+
+/**
+ * A card in the Cards view: the session's card, a click opening its tab.
+ * @param {object} t The theme.
+ * @param {object} session The session.
+ * @param {Map} live The live tabs by terminal.
+ * @param {object} actions The Herds tab's actions.
+ * @param {{ role?: string, sub?: string }} [options] The herdsman's crook, and another second line.
+ * @returns {object} The card.
+ */
+function ListCard(t, session, live, actions, options = {}) {
+  const agent = live.get(session.terminal);
+  return SessionCard(t, session, live, actions, {
+    id: `hk-${session.id}`,
+    extras: [LinkButton(session, actions, "hk")],
+    tooltip: agent ? `Open its tab in ${agent.space_name}` : undefined,
+    ...options,
+  })
+    .when(Boolean(agent), (el) => el.cursor_pointer())
+    .on_click(() => openTab(session, live, actions.model));
+}
+
+/**
+ * A section heading in the Cards view: its name and count.
+ * @param {object} t The theme.
+ * @param {string} name The section's name.
+ * @param {number} count How many it holds.
+ * @param {string} [color] The name's color.
+ * @returns {object} The heading.
+ */
+function SectionHeading(t, name, count, color) {
+  return h_flex()
+    .gap(6)
+    .items_center()
+    .text_size(11.5)
+    .font_semibold()
+    .child(div().text_color(color ?? t.muted).child(name))
+    .child(div().text_color(t.dim).child(String(count)));
+}
+
+/** A wrapping row of cards. */
+const CardRow = () => h_flex().flex_wrap().items_center().gap(8);
+
+/**
+ * What a herd's agents are doing, in words: "2 agents working · Explore, Plan".
+ * @param {object} herd A herd from herdsOf().
+ * @returns {string | null} The words, or null when none works.
+ */
+function agentsWorking(herd) {
+  const working = [herd.herdsman, ...herd.members]
+    .flatMap((session) => agentsByAge(session).recent)
+    .filter((agent) => agent.status === "working");
+  if (!working.length) return null;
+  const types = [...new Set(working.map((agent) => (agent.fork ? "fork" : agent.type)))].slice(0, 3).join(", ");
+  return `${working.length} agent${working.length === 1 ? "" : "s"} working · ${types}`;
+}
+
+/**
+ * The Cards view: Needs you first (whatever its place), then each herd as its lead card, an
+ * arrow and its members, then the sessions grazing alone, then the sessions with no tab folded
+ * into one line. Each session shows once: a herd member that needs you is named in its herd's
+ * row ("+ checkout-ui, above"), and hovering that name lights its card.
+ * @param {object} t The theme.
+ * @param {object} model loadHerds()'s result.
+ * @param {{ herds: object[], grazing: object[] }} groups herdsOf()'s result.
+ * @param {Map} live The live tabs by terminal.
+ * @param {object} actions The Herds tab's actions.
+ * @returns {object} The view.
+ */
+function CardsView(t, model, groups, live, actions) {
+  const canvas = actions.canvas;
+  const blocked = (session) => statusOf(session, live) === "blocked";
+  const herdOf = new Map();
+  for (const herd of groups.herds) for (const member of herd.members) herdOf.set(member.id, herd);
+  const leads = new Set(groups.herds.map((herd) => herd.herdsman.id));
+  const everyone = [...groups.herds.flatMap((herd) => [herd.herdsman, ...herd.members]), ...groups.grazing];
+  const needsYou = sortedBySpace(everyone.filter(blocked), live, model);
+  const grazing = groups.grazing.filter((session) => !blocked(session));
+  const withTab = sortedBySpace(grazing.filter((session) => live.has(session.terminal)), live, model);
+  const background = sortedBySpace(grazing.filter((session) => !live.has(session.terminal)), live, model);
+  const space = (session) => live.get(session.terminal)?.space_name;
+  // Where a session that needs you belongs, since its card is not in its herd's row.
+  const whereFrom = (session) =>
+    [
+      space(session) ?? placeOf(session, live),
+      leads.has(session.id)
+        ? "leads a herd"
+        : herdOf.has(session.id)
+          ? `in ${herdOf.get(session.id).herdsman.name}'s herd`
+          : "grazing",
+    ].join(" · ");
+  /** A name in a herd's row for a card shown above; hovering it lights that card. */
+  const above = (session) =>
+    div()
+      .id(`hk-above-${session.id}`)
+      .text_size(11.5)
+      .text_color(canvas?.hot === session.id ? t.accent : t.dim)
+      .on_hover((hovered, cx) => {
+        if (hovered) canvas?.setHot(session.id, cx);
+        else if (canvas?.hot === session.id) canvas.setHot(null, cx);
+      })
+      .child(`+ ${session.name}, above`);
+  const arrow = () => div().text_size(12).text_color(t.dim).child("→");
+  return v_flex()
+    .gap(10)
+    .when(needsYou.length > 0, (el) =>
+      el
+        .child(SectionHeading(t, "Needs you", needsYou.length, t.blocked))
+        .child(
+          CardRow().children(
+            needsYou.map((session) =>
+              ListCard(t, session, live, actions, { role: leads.has(session.id) ? "herdsman" : undefined, sub: whereFrom(session) }),
+            ),
+          ),
+        ),
+    )
+    .when(groups.herds.length > 0, (el) =>
+      el.child(SectionHeading(t, "Herds", groups.herds.length)).children(
+        groups.herds.map((herd) => {
+          const kept = herd.members.filter((member) => !blocked(member));
+          const shownAbove = herd.members.filter(blocked);
+          const doing = agentsWorking(herd);
+          return CardRow()
+            .child(
+              blocked(herd.herdsman)
+                ? above(herd.herdsman)
+                : ListCard(t, herd.herdsman, live, actions, { role: "herdsman" }),
+            )
+            .child(arrow())
+            .children(kept.map((member) => ListCard(t, member, live, actions)))
+            .children(shownAbove.map(above))
+            .when(Boolean(doing), (row) => row.child(Chip(doing, { color: t.muted })));
+        }),
+      ),
+    )
+    .when(withTab.length > 0, (el) =>
+      el
+        .child(SectionHeading(t, "Grazing", withTab.length))
+        .child(CardRow().children(withTab.map((session) => ListCard(t, session, live, actions)))),
+    )
+    .when(background.length > 0, (el) =>
+      el
         .child(
           h_flex()
-            .h(20)
+            .id("hk-background")
             .gap(6)
             .items_center()
-            .child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(t.dim).child(second))
-            .children([LinkButton(session, actions, "hg")].filter(Boolean)),
+            .self_start()
+            .px(4)
+            .h(22)
+            .rounded(5)
+            .text_size(11.5)
+            .text_color(t.dim)
+            .cursor_pointer()
+            .hover((style) => style.bg(t.hover).text_color(t.foreground))
+            .tooltip("Sessions with no tab: in the background, in Claude Desktop, or their tab closed")
+            .on_click((_event, cx) => canvas?.toggleBackground(cx))
+            .child(svg(`mods/workspace-chrome/chevron-${canvas?.backgroundOpen ? "down" : "right"}.svg`).size(12).flex_none())
+            .child(`Background, no tab · ${background.length}`),
         )
-        .when(Boolean(branchOf(session)), (el) => el.child(h_flex().pt(2).child(BranchTag(t, branchOf(session))))),
-    );
+        .when(Boolean(canvas?.backgroundOpen), (open) =>
+          open.child(CardRow().children(background.map((session) => ListCard(t, session, live, actions)))),
+        ),
+    )
+    .when(!everyone.length, (el) => el.child(Note("No Claude Code sessions are running.")));
+}
+
+/**
+ * A count in the toolbar, as a rounded pill: its text color on a faint fill of it.
+ * @param {string} id A unique element id.
+ * @param {string} text The words.
+ * @param {string} color The text color.
+ * @param {string} fill The fill.
+ * @returns {object} The pill.
+ */
+function Pill(id, text, color, fill) {
+  return h_flex()
+    .id(id)
+    .flex_none()
+    .h(22)
+    .px(8)
+    .gap(5)
+    .items_center()
+    .rounded(11)
+    .bg(fill)
+    .text_size(11.5)
+    .font_semibold()
+    .text_color(color)
+    .child(text);
+}
+
+/**
+ * The key to the marks, under the toolbar, until you hide it: the crook, the fork's lamb, the
+ * agent's dog, the two lines, the "bg" tag and the space stripe.
+ * @param {object} t The theme.
+ * @param {object} canvas The HerdsCanvas, which remembers whether the key is hidden.
+ * @returns {object} The key row.
+ */
+function Key(t, canvas) {
+  const entry = (mark, words) => h_flex().flex_none().gap(6).items_center().child(mark).child(words);
+  const icon = (path, color) => svg(path).size(13).flex_none().text_color(color ?? t.muted);
+  return h_flex()
+    .flex_wrap()
+    .items_center()
+    .gap_x(18)
+    .gap_y(6)
+    .px(12)
+    .py(6)
+    .rounded(8)
+    .bg(t.canvas)
+    .border_1()
+    .border_color(t.border)
+    .text_size(11.5)
+    .text_color(t.muted)
+    .child(div().font_semibold().text_color(t.dim).child("Key"))
+    .child(entry(icon(ROLE_ICONS.herdsman.icon, t.accent), "leads others"))
+    .child(entry(icon(ROLE_ICONS.fork.icon), "fork"))
+    .child(entry(icon(ROLE_ICONS.agent.icon), "agent"))
+    .child(entry(div().w(20).h(1).bg(t.muted), "messaged"))
+    .child(entry(h_flex().w(20).gap(4).children([0, 1, 2].map(() => div().w(4).h(1).bg(t.muted))), "made its worktree"))
+    .child(entry(BgTag(t, "herds-key-bg"), "runs in background"))
+    .child(entry(div().w(3).h(14).rounded(1).bg(t.working), "space colour"))
+    .child(div().flex_1())
+    .child(TextButton("herds-key-hide", "Hide key", (cx) => canvas.setKeyHidden(true, cx)));
 }
 
 /**
  * The Herds tab. `model` is loadHerds()'s result, or null before the first load.
  * `actions`: `{ model, loading, picking, pick(sessionId|null, cx), link(sessionId, address|null, cx),
- * expandedAgents: Set<sessionId>, toggleAgents(sessionId, cx), canvas: HerdsCanvas, canvasHeight }`.
- * The herds are drawn by `canvas`, `canvasHeight` tall, or `fullHeight` tall alone in the tab while
- * `canvas.full`.
+ * expandedAgents: Set<sessionId>, toggleAgents(sessionId, cx), canvas: HerdsCanvas, canvasHeight,
+ * fullHeight }`. One toolbar for both views: the counts as pills ("N need you" first, red; a
+ * click outlines those cards), the Map | Cards switch, then on the Map Fit, zoom and Lines ▾,
+ * then full tab, and the key under it. With no herds there is nothing to draw: Cards alone, and
+ * no canvas controls. The map is `canvasHeight` tall, or `fullHeight` in full tab.
  * @param {object | null} model loadHerds()'s result.
  * @param {object} actions The actions above.
  * @returns {object} The tab's content.
@@ -305,93 +584,105 @@ function GrazingCard(t, session, live, actions) {
 export function Herds(model, actions) {
   const t = theme();
   if (!model) return Note(actions.loading ? "Reading your Claude sessions…" : "No sessions read yet.");
-  // Demo mode draws the demo's made-up tabs instead of Herdr's.
-  const live = new Map((model.demo?.agents ?? agents()).map((agent) => [agent.address, agent]));
-  const { herds, grazing } = herdsOf(model);
+  const live = liveTabs(model);
+  const groups = herdsOf(model);
+  const { herds, grazing } = groups;
   const shown = [...herds.flatMap((herd) => [herd.herdsman, ...herd.members]), ...grazing];
   const working = shown.filter((session) => statusOf(session, live) === "working").length;
   const blocked = shown.filter((session) => statusOf(session, live) === "blocked").length;
   const agentsWorking = shown.flatMap((session) => session.agents ?? []).filter((agent) => agent.status === "working").length;
   const canvas = actions.canvas;
-  const onCanvas = herds.length > 0;
-  // A herd session whose "Link a tab" is open: its tab picker shows under the canvas.
-  const herdPicking = herds.some((herd) => [herd.herdsman, ...herd.members].some((session) => session.id === actions.picking));
+  const full = canvas.full;
+  const onMap = herds.length > 0 && canvas.view === "map";
+  const picking = shown.find((session) => session.id === actions.picking);
   const name = (id) => model.sessions.find((session) => session.id === id)?.name ?? id;
-  // On the canvas, the links between members (not from the herdsman) are listed under it.
+  // On the map, the links between members (not from the herdsman) are listed under it.
   const others = herds.flatMap((herd) => herd.links.filter((link) => link.from !== herd.herdsman.id));
-  const summary = Chip(
-    `${shown.length} sessions · ${working} working · ${blocked} need you${
-      agentsWorking ? ` · ${agentsWorking} agents working` : ""
-    }`,
-    { color: t.dim },
-  );
-  // Full tab: the canvas alone, under one row of its title and controls.
-  if (onCanvas && canvas.full) {
-    return v_flex()
-      .gap(8)
-      .child(
-        h_flex()
-          .items_center()
-          .gap(8)
-          .child(div().text_size(12.5).font_semibold().text_color(t.foreground).child("Herds"))
-          .child(div().text_size(11.5).text_color(t.dim).child("sessions and their agents"))
-          .child(summary)
-          .child(div().flex_1())
-          .children(canvas.controls(t)),
-      )
-      .child(canvas.render(t, herds, live, actions, actions.fullHeight ?? 600));
-  }
-  return v_flex()
-    .gap(14)
-    .child(
-      Card(
-        "herds",
-        "Herds",
-        [
-          summary,
-          ...(canvas ? canvas.controls(t) : []),
-        ],
-        onCanvas
-          ? v_flex()
-              .gap(8)
-              .child(canvas.render(t, herds, live, actions, actions.canvasHeight ?? 520))
-              .when(herdPicking, (el) => el.child(TabPicker(t, actions.picking, model.sessions, live, actions)))
-              .when(others.length > 0, (el) =>
-                el.child(
-                  v_flex()
-                    .gap(2)
-                    .text_size(11.5)
-                    .text_color(t.dim)
-                    .children(
-                      others.map((link) =>
-                        div().child(
-                          `${name(link.from)} → ${name(link.to)} · ${
-                            link.kind === "message" ? `msg ${formatTime(link.at)}` : "worktree"
-                          }`,
-                        ),
-                      ),
-                    ),
-                ),
-              )
-          : Note("No herds: no session has messaged another, made a worktree for one, or started agents lately."),
-        "sessions and their agents",
-      ),
+
+  const pills = [
+    blocked
+      ? Pill("herds-need-you", `● ${blocked} need${blocked === 1 ? "s" : ""} you`, t.blocked, `${t.blocked}26`)
+          .cursor_pointer()
+          .when(canvas.outlineBlocked, (el) => el.border_1().border_color(t.blocked))
+          .hover((style) => style.bg(`${t.blocked}40`))
+          .tooltip(canvas.outlineBlocked ? "Stop outlining them" : "Outline the sessions that need you")
+          .on_click((_event, cx) => canvas.toggleOutline(herds, live, actions, cx))
+      : null,
+    working ? Pill("herds-working", `${working} working`, t.working, `${t.working}1f`) : null,
+    Pill(
+      "herds-sessions",
+      `${shown.length} session${shown.length === 1 ? "" : "s"}${
+        agentsWorking ? ` · ${agentsWorking} agent${agentsWorking === 1 ? "" : "s"}` : ""
+      }`,
+      t.muted,
+      t.hover,
+    ).when(agentsWorking > 0, (el) => el.tooltip(`${agentsWorking} agents working`)),
+  ].filter(Boolean);
+
+  const toolbar = h_flex()
+    .items_center()
+    .gap(8)
+    .child(div().flex_none().text_size(12.5).font_semibold().text_color(t.foreground).child("Herds"))
+    .child(div().w(4))
+    .children(pills)
+    .child(div().flex_1())
+    .children(herds.length ? canvas.switcher() : [])
+    .children(onMap ? [div().w(1).h(16).mx(4).bg(t.border), ...canvas.mapControls(t)] : [])
+    .when(canvas.keyHidden, (el) =>
+      el.child(TextButton("herds-key-show", "Key", (cx) => canvas.setKeyHidden(false, cx), { tooltip: "Show the key" })),
     )
-    .child(
-      Card(
-        "grazing",
-        "Grazing",
-        [Chip(String(grazing.length), { color: t.dim })],
-        h_flex()
-          .flex_wrap()
-          .items_start()
-          .gap(12)
-          .when(!grazing.length, (el) => el.child(Note("Every session is in a herd.")))
-          .children(sortedBySpace(grazing, live, model).map((session) => GrazingCard(t, session, live, actions)))
-          // The tab picker opens below the grid, so the cards keep one height.
-          .when(Boolean(grazing.find((session) => session.id === actions.picking)), (el) =>
-            el.child(div().w_full().child(TabPicker(t, actions.picking, model.sessions, live, actions))),
+    .children(herds.length || full ? [canvas.fullButton()] : []);
+
+  const body = onMap
+    ? v_flex()
+        .gap(8)
+        .child(
+          canvas.render(
+            t,
+            groups,
+            live,
+            actions,
+            // The key's row and its gap come off the map's height while it shows.
+            Math.max(220, (full ? (actions.fullHeight ?? 600) : (actions.canvasHeight ?? 520)) - (canvas.keyHidden ? 0 : KEY_ROOM)),
           ),
-      ),
-    );
+        )
+        .when(others.length > 0, (el) =>
+          el.child(
+            v_flex()
+              .gap(2)
+              .text_size(11.5)
+              .text_color(t.dim)
+              .children(
+                others.map((link) =>
+                  div().child(
+                    `${name(link.from)} → ${name(link.to)} · ${link.kind === "message" ? `msg ${formatTime(link.at)}` : "worktree"}`,
+                  ),
+                ),
+              ),
+          ),
+        )
+    : v_flex()
+        .gap(10)
+        .when(!herds.length, (el) =>
+          el.child(Note("No herds: no session has messaged another, made a worktree for one, or started agents lately.")),
+        )
+        .child(CardsView(t, model, groups, live, actions));
+
+  const content = v_flex()
+    .gap(10)
+    .child(toolbar)
+    .when(!canvas.keyHidden && herds.length > 0, (el) => el.child(Key(t, canvas)))
+    .child(body)
+    // The tab picker opens under the view, so the cards keep one height.
+    .when(Boolean(picking), (el) => el.child(TabPicker(t, actions.picking, model.sessions, live, actions)));
+  if (full) return content;
+  return v_flex()
+    .id("herds")
+    .min_w(0)
+    .p(14)
+    .rounded(10)
+    .bg(t.background)
+    .border_1()
+    .border_color(t.border)
+    .child(content);
 }

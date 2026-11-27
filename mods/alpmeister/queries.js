@@ -431,3 +431,31 @@ query($login: String!, $number: Int!) {
     }
   }
 }`;
+
+/**
+ * One Daypack card's search on its own, for a card whose filter was just changed: the same
+ * fields as that search in ACCOUNT. Variable: search (not "query", which gh uses for the document).
+ */
+export const ACCOUNT_SEARCHES = {
+  review: `
+query($search: String!) {
+  search(type: ISSUE, query: $search, first: 50) {
+    issueCount
+    nodes { ... on PullRequest { number title url updatedAt reviewDecision repository { nameWithOwner } author { login } ${CHECKS} } }
+  }
+}`,
+  myPrs: `
+query($search: String!) {
+  search(type: ISSUE, query: $search, first: 50) {
+    issueCount
+    nodes { ... on PullRequest { number title url updatedAt reviewDecision repository { nameWithOwner } ${CHECKS} } }
+  }
+}`,
+  mine: `
+query($search: String!) {
+  search(type: ISSUE, query: $search, first: 100) {
+    issueCount
+    nodes { ... on Issue { number title url updatedAt repository { nameWithOwner } milestone { title } ${ANY_BOARD_FIELDS} } }
+  }
+}`,
+};

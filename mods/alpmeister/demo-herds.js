@@ -1,8 +1,9 @@
 // A made-up herd for demos and screenshots, opened with `props.demo`:
 //   herdr-app do tab.new '{"mod":"alpmeister","props":{"tab":"herds","demo":true}}'
 // A release lead that messaged two sessions and made a worktree for a third, a session leading
-// only its own agents, sessions and agents in every status, and four sessions grazing alone,
-// spread over four spaces. Nothing here reads Claude Code's files or Herdr's real tabs.
+// only its own agents, sessions and agents in every status, four sessions grazing alone,
+// spread over four spaces, and three with no tab (one in the background). Nothing here reads
+// Claude Code's files or Herdr's real tabs.
 
 const MIN = 60000;
 
@@ -81,8 +82,8 @@ function agent({ id, description, type, fork = false, background = false, parent
  * One session, in the shape loadHerds() reports.
  * @param {string} id
  * @param {string} name
- * @param {string} terminal The demo tab it runs in.
- * @param {string} branch
+ * @param {string | null} terminal The demo tab it runs in, or null for none.
+ * @param {string | null} branch
  * @param {string} status
  * @param {object[]} [agents] The agents it started.
  * @returns {object}
@@ -136,6 +137,10 @@ export async function loadDemoHerds() {
     session("demo-s-pricing", "pricing-page", "demo-pricing", "feat/pricing-v2", "done"),
     session("demo-s-gateway", "phone-gateway", "demo-gateway", "feat/gateway-ws", "working"),
     session("demo-s-db", "db-migrations", "demo-db", "chore/postgres-17", "blocked"),
+    // Sessions with no tab: Cards folds them into "Background, no tab".
+    { ...session("demo-s-triage", "nightly-triage", null, "main", "working"), kind: "bg" },
+    session("demo-s-scratch", "projects-19", null, null, "idle"),
+    { ...session("demo-s-desktop", "release-notes", null, null, "idle"), entrypoint: "claude-desktop" },
   ];
   const links = [
     { from: "demo-s-release", to: "demo-s-auth", kind: "message", at: now - 4 * MIN },
