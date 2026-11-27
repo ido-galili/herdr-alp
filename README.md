@@ -98,11 +98,13 @@ switch spaces to get the terminals back. It can also open as a tab of its own in
 herdr-app do tab.new '{"mod":"alpmeister","name":"Alp"}'
 ```
 
-It has four tabs: Overview, Board, Herds and Daypack, and a gear beside Refresh that opens its
-settings in a tab of their own. It works before you set anything:
+It has four views: Overview, Board, Herds and Daypack, as tabs after its name, and a Settings
+button that shows its settings in place of the view. It works before you set anything:
 the Overview starts on all your repositories.
 
-- **Overview:** your GitHub as a whole, or one workspace, picked from a row of pills on top.
+- **Overview:** your GitHub as a whole, or one workspace, picked from the Workspace dropdown on
+  top, with what the workspace covers beside it. Each tile ends in what a click opens ("See all
+  7 →"); a missing nightly or customer label opens Settings on that workspace instead.
   - **All repos:** four tiles (review requests, your open PRs, your assigned issues, red
     checks), then every repository in scope with its open issues and PRs, the default branch's
     checks, and when it was last pushed. With open work hides the rest, and stays as you left it.
@@ -138,11 +140,14 @@ the Overview starts on all your repositories.
   sessions' transcripts and agent files) and redraws when a session starts, ends or changes
   status, and every few seconds while its agents work. Open it
   directly with `herdr-app do tab.new '{"mod":"alpmeister","props":{"tab":"herds"}}'`.
-- **Settings:** everything below, as a form (see [Settings](#settings)), in an "Alp
-  settings" tab opened from the gear (or gone to, when it is already open). A save there makes
-  every Alp tab fetch again.
-- **Refresh:** Overview and Daypack fetch when the tab opens and from its Refresh button only. The "updated" time turns
-  amber after 2 hours.
+- **Settings:** everything below, as a form (see [Settings](#settings)), shown in place of the
+  view, with "Back to Overview" (or the view you came from). Edits you haven't saved stay while Alp
+  is open, and the button says so: "Settings · 2 unsaved". After a save, Back fetches again, and
+  every other Alp tab fetches too.
+- **Refresh:** Overview and Daypack fetch when the tab opens, when it shows data over 2 hours
+  old, and from "Updated 3h ago · Refresh", which turns orange after 2 hours.
+- **Pinned:** shown in place of the terminals (the Alp layout's pinned tab), the header ends in
+  "Back to terminals".
 - **Today** shows each pinned issue's board status and each pinned PR's review
   decision, as of the last refresh.
 - **Open on a tab or workspace:** `props.tab` (`dashboard` or `overview` for the Overview,
@@ -153,7 +158,7 @@ the Overview starts on all your repositories.
   org with three workspaces (a repository and a board, a repository only, a board only), every
   bug priority, a failing nightly, cards in every status, PRs in every review state, a Today list
   and a herd on Herds. It calls no GitHub and writes nothing: not the settings, the cache or the
-  Today list, and Board moves only change what it shows. Its gear opens demo settings whose Save
+  Today list, and Board moves only change what it shows. Its Settings button shows demo settings whose Save
   writes nothing:
   `herdr-app do tab.new '{"mod":"alpmeister","props":{"tab":"dashboard","workspace":"Website","demo":true}}'`.
 - **State:** `~/.local/state/alp/focus.json` holds the Today list and

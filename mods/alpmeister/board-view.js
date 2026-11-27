@@ -387,11 +387,39 @@ function PeoplePicker(t, people, options) {
 }
 
 /**
+ * The Board tab with no board in any workspace: what it needs, and an "Add a board" button.
+ * @param {(cx: object) => void} onAdd Opens Settings at a workspace's board picker.
+ * @returns {object} The empty state.
+ */
+export function NoBoard(onAdd) {
+  const t = theme();
+  return v_flex()
+    .items_start()
+    .gap(10)
+    .child(Note("Add a project board to a workspace in Settings to see it here."))
+    .child(
+      h_flex()
+        .id("bv-add-board")
+        .h(26)
+        .px(12)
+        .items_center()
+        .rounded(6)
+        .bg(t.accent)
+        .text_size(12)
+        .font_medium()
+        .text_color(t.accent_foreground ?? t.background)
+        .cursor_pointer()
+        .on_click((_event, cx) => onAdd(cx))
+        .child("Add a board"),
+    );
+}
+
+/**
  * The Board tab's card for one workspace: the filter field, the people picker, then a column
  * per status, each with its count.
  * @param {object} ws The workspace, with a board.
  * @param {object | undefined} wsModel The workspace's last load.
- * @param {{ loading: boolean, avatarPath(login: string): string | null, onEditStatuses(): void,
+ * @param {{ loading: boolean, avatarPath(login: string): string | null, onEditStatuses(cx: object): void,
  *   filterInput: object, filterBusy: boolean, filterError: string | null, onFilterRevert(cx: object): void,
  *   picked: Set<string>, onTogglePerson(login: string, cx: object): void, onClearPeople(cx: object): void,
  *   pinFor(prefix: string): Function, launch: Function, prompt: Function }} options
@@ -403,7 +431,7 @@ export function Board(ws, wsModel, options) {
   const items = view ? view.items.filter((item) => pickedItem(item, options.picked)) : [];
   const extras = [
     view ? Chip(items.length === view.total ? String(view.total) : `${items.length} of ${view.total}`, { color: t.dim }) : null,
-    TextButton("bv-statuses", "Statuses", () => options.onEditStatuses(), {
+    TextButton("bv-statuses", "Statuses", (cx) => options.onEditStatuses(cx), {
       tooltip: "Pick the Board's columns in Settings, in the status table's On Board column",
     }),
     wsModel?.boardUrl

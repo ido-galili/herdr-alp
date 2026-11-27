@@ -111,9 +111,24 @@ export function Milestone(config, model) {
 }
 
 /**
- * One number tile: a label, a big value, then lines or any element under it. `sub` is a string,
- * an element, or a list of them. `action` is a
- * URL to open or a function to run on click.
+ * The words that end a tile which opens a list: "See all 7 →", "See both →", "See it →".
+ * @param {number | null | undefined} count How many the list holds.
+ * @returns {string | null} The words, or null for an empty or unknown list.
+ */
+export function seeAll(count) {
+  if (!count) return null;
+  if (count === 1) return "See it →";
+  if (count === 2) return "See both →";
+  return `See all ${count} →`;
+}
+
+/** The words that end a tile whose setting is missing; a click opens Settings on it. */
+export const SET_UP = "Set up in Settings →";
+
+/**
+ * One number tile: a label, a big value, then lines or any element under it, and at the
+ * bottom the words that say what a click opens. `sub` is a string, an element, or a list of
+ * them. `action` is a URL to open or a function to run on click.
  * @param {string} id The tile's element id.
  * @param {string} label The tile's label.
  * @param {string} value The big value.
@@ -121,9 +136,11 @@ export function Milestone(config, model) {
  * @param {string} color The value's color.
  * @param {string | Function | null} action A URL to open, or a function to run, on click.
  * @param {string} [note] A short clause after the label that says what the tile counts.
+ * @param {{ link?: string | null, outline?: string | null }} [options] `link`: the words at the
+ *   bottom, such as "See all 7 →"; `outline`: a border color, such as red for a failed run.
  * @returns {object} The tile.
  */
-export function Tile(id, label, value, sub, color, action, note) {
+export function Tile(id, label, value, sub, color, action, note, { link, outline } = {}) {
   const t = theme();
   return v_flex()
     .id(id)
@@ -134,9 +151,8 @@ export function Tile(id, label, value, sub, color, action, note) {
     .rounded(10)
     .bg(t.background)
     .border_1()
-    .border_color(t.border)
-    .cursor_pointer()
-    .hover((style) => style.border_color(t.input))
+    .border_color(outline ?? t.border)
+    .when(Boolean(action), (el) => el.cursor_pointer().hover((style) => style.border_color(outline ? t.blocked : t.input)))
     .on_click((_event, cx) => {
       if (typeof action === "function") action(cx);
       else if (action) openUrl(action);
@@ -147,6 +163,9 @@ export function Tile(id, label, value, sub, color, action, note) {
       (Array.isArray(sub) ? sub : [sub]).map((line) =>
         typeof line === "string" ? div().text_size(11.5).truncate().text_color(t.muted).child(line) : line,
       ),
+    )
+    .when(Boolean(link && action), (el) =>
+      el.child(div().flex_1()).child(div().pt(2).text_size(11.5).text_color(t.accent).child(link)),
     );
 }
 
@@ -229,14 +248,23 @@ function nightlyParts(t, run, error) {
 
 /**
  * The top row: open bugs by priority, triage bugs, open customer issues and the nightly run.
- * Four across when `wide`, else two by two.
+ * Four across when `wide`, else two by two. Each ends in what a click opens; a failed nightly is
+ * outlined in red. A missing nightly or customer label opens Settings on this workspace instead.
+ * @param {object} config The workspace's config.
+ * @param {object} model The workspace's model.
+ * @param {{ wide: boolean, onSettings(cx: object): void }} options `onSettings` opens Settings on
+ *   this workspace.
+ * @returns {object} The row of tiles.
  */
-export function Tiles(config, model, { wide }) {
+export function Tiles(config, model, { wide, onSettings }) {
   const t = theme();
   const counts = model.counts;
   const [nightlyValue, nightlyColor, nightlySub] = nightlyParts(t, model.nightly, model.errors.nightly);
   const bugs = model.bugs;
   const customer = model.customer;
+  const noNightly = !model.nightly && !model.errors.nightly;
+  const noLabel = Boolean(customer) && !customer.labels.length;
+  const failed = model.nightly?.overall === "failure";
   const tiles = [
     Tile(
       "tile-bugs",
@@ -245,6 +273,8 @@ export function Tiles(config, model, { wide }) {
       bugs ? BugPriorities(t, config, bugs) : (model.errors.bugs ?? ""),
       t.foreground,
       searchUrl(config.repo, model.queries.bugsQuery),
+      undefined,
+      { link: seeAll(bugs?.total) },
     ),
     Tile(
       "tile-triage",
@@ -253,6 +283,8 @@ export function Tiles(config, model, { wide }) {
       "waiting for triage",
       t.foreground,
       searchUrl(config.repo, model.queries.triageQuery),
+      undefined,
+      { link: seeAll(counts?.triage) },
     ),
     Tile(
       "tile-customer",
@@ -260,9 +292,20 @@ export function Tiles(config, model, { wide }) {
       customer ? String(customer.count) : "–",
       customer ? customer.labels.join(", ") || "No customer label" : (model.errors.customer ?? ""),
       t.foreground,
-      customer?.query ? searchUrl(config.repo, customer.query) : null,
+      noLabel ? onSettings : customer?.query ? searchUrl(config.repo, customer.query) : null,
+      undefined,
+      { link: noLabel ? SET_UP : seeAll(customer?.count) },
     ),
-    Tile("tile-nightly", "Nightly", nightlyValue, nightlySub, nightlyColor, model.nightly?.url, "latest run"),
+    Tile(
+      "tile-nightly",
+      "Nightly",
+      nightlyValue,
+      nightlySub,
+      nightlyColor,
+      noNightly ? onSettings : model.nightly?.url,
+      "latest run",
+      { link: noNightly ? SET_UP : "Open the run →", outline: failed ? `${t.blocked}80` : null },
+    ),
   ];
   if (wide) return h_flex().gap(10).items_stretch().children(tiles);
   return v_flex()

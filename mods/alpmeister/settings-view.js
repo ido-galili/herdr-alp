@@ -126,6 +126,26 @@ const FIELDS = {
 /** A board's key in the caches: "owner#number". */
 const boardKey = (board) => `${board.owner}#${board.number}`;
 
+/**
+ * How many settings differ between two versions: each changed value counts once. Objects and
+ * lists of objects of the same length are compared field by field; any other list counts as one.
+ * @param {unknown} a One version.
+ * @param {unknown} b The other.
+ * @returns {number} The number of values that differ.
+ */
+function countChanges(a, b) {
+  if (JSON.stringify(a) === JSON.stringify(b)) return 0;
+  const plain = (value) => Boolean(value) && typeof value === "object" && !Array.isArray(value);
+  if (plain(a) && plain(b)) {
+    const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+    return [...keys].reduce((sum, key) => sum + countChanges(a[key], b[key]), 0);
+  }
+  if (Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every(plain)) {
+    return a.reduce((sum, item, index) => sum + countChanges(item, b[index]), 0);
+  }
+  return 1;
+}
+
 export class SettingsForm {
   /**
    * Creates the form's text fields. Call from `init`: text state needs a live host call.
@@ -185,6 +205,33 @@ export class SettingsForm {
   /** Whether the draft differs from the file. */
   dirty() {
     return Boolean(this.draft) && JSON.stringify(this.draft) !== this.saved;
+  }
+
+  /**
+   * How many settings the draft changes, for "Settings · 2 unsaved".
+   * @returns {number} 0 when nothing is unsaved; at least 1 when `dirty()`.
+   */
+  changeCount() {
+    if (!this.dirty()) return 0;
+    return Math.max(1, countChanges(this.draft, JSON.parse(this.saved)));
+  }
+
+  /**
+   * Shows a workspace by its name, and optionally opens one of its dropdowns, such as the board
+   * picker ("ws-board"). Unsaved edits stay.
+   * @param {string} name The workspace's name.
+   * @param {{ picker?: string }} [options] The dropdown to open.
+   * @returns {boolean} Whether the draft has that workspace.
+   */
+  showWorkspace(name, { picker } = {}) {
+    const index = this.draft?.workspaces.findIndex((ws) => ws.name === name) ?? -1;
+    if (index < 0) return false;
+    this.wsIndex = index;
+    this.removeArmed = false;
+    this.syncInputs();
+    this.open = picker ?? null;
+    this.inputs.filter.set_value("");
+    return true;
   }
 
   /** The workspace shown, or null. */
@@ -412,27 +459,36 @@ export class SettingsForm {
    * @returns {object} The element.
    */
   render(cx, options) {
+    return v_flex().gap(14).children(this.parts(cx, options));
+  }
+
+  /**
+   * The tab's content as separate parts, for a scroll area that scrolls to one: the save bar, the
+   * account card, then the workspaces card last. Before the settings are read, one note.
+   * @param {object} cx The view's context, for starting reads.
+   * @param {{ configError: string | null, onRevert(cx: object): void, onReset(cx: object): void }} options
+   * @returns {object[]} The parts, in order.
+   */
+  parts(cx, options) {
     const t = theme();
     if (!this.draft) {
-      return v_flex()
-        .gap(10)
-        .child(Note(options.configError ?? "Loading the settings…", options.configError ? t.blocked : t.dim))
-        .when(Boolean(options.configError), (el) =>
-          el.child(
-            h_flex().child(
-              TextButton("st-reset", "Start from the defaults", (cx) => options.onReset(cx), {
-                tooltip: "Edit fresh settings; Save keeps the broken file as alpmeister.json.bak",
-              }),
+      return [
+        v_flex()
+          .gap(10)
+          .child(Note(options.configError ?? "Loading the settings…", options.configError ? t.blocked : t.dim))
+          .when(Boolean(options.configError), (el) =>
+            el.child(
+              h_flex().child(
+                TextButton("st-reset", "Start from the defaults", (cx) => options.onReset(cx), {
+                  tooltip: "Edit fresh settings; Save keeps the broken file as alpmeister.json.bak",
+                }),
+              ),
             ),
           ),
-        );
+      ];
     }
     this.ensureLoaded(cx);
-    return v_flex()
-      .gap(14)
-      .child(this.saveBar(t, options))
-      .child(this.accountCard(t))
-      .child(this.workspacesCard(t));
+    return [this.saveBar(t, options), this.accountCard(t), this.workspacesCard(t)];
   }
 
   /**
