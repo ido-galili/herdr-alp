@@ -1,6 +1,7 @@
 // Basecamp's Run tab: the focused workspace's runs from Alp's config (your file, the repo's
 // .herdr/alp.json and your .herdr/alp.local.json, merged), under their sections, each with a play
-// button. A row whose run has a session shows its state and selects it in the bottom panel. Runs
+// button (a stop square while it runs) and a ⋯ menu. A row whose run has a session shows its state
+// and selects it in the bottom panel; Output beside the workspace's name shows or hides that panel. Runs
 // that can't run here fold away at the end, with the reason on each. Runs the person hides fold
 // away too, remembered per repository in this copy's localStorage. With VS Code configs in the
 // repo, Import from VS Code copies the ones the person picks into the config.
@@ -11,9 +12,11 @@ import {
   checking,
   focused,
   home,
+  layout,
   notify,
   openOverlay,
   panes,
+  run,
   setShared,
   shared,
   spaces,
@@ -22,8 +25,8 @@ import {
   window,
 } from "herdr";
 import { findWorkspace, loadEntries, migrateCommands } from "./config.js";
-import { neededInputs, sessionFor, startEntry } from "./runner.js";
-import { showSession } from "./panel.js";
+import { neededInputs, sessionFor, startEntry, stopSession } from "./runner.js";
+import { find, PANEL_ID, showSession } from "./panel.js";
 
 export const LAUNCH_KEY = "alp.runs.launch";
 export const VISIBILITY_KEY = "alp.runs.visibility";
@@ -33,8 +36,14 @@ const VISIBILITY_QUEUE_LIMIT = 50;
 export const STAMP_KEY = "alp.runs.stamp";
 export const ANSWERS_KEY = "alp.runs.inputs";
 const PLAY_ICON = "mods/alp-runs/play.svg";
+const STOP_ICON = "mods/alp-runs/stop.svg";
+const OUTPUT_ICON = "mods/alp-runs/terminal.svg";
 const PLUS_ICON = "mods/workspace-chrome/plus.svg";
 const RELOAD_ICON = "mods/alp-runs/reload.svg";
+/** A second stop this soon after the first terminates the run instead of interrupting it. */
+const ESCALATE_MS = 4000;
+/** How many rows can take the keyboard on their ⋯ (focus handles are made once, in `init`). */
+const FOCUS_POOL = 64;
 /** How a run's origin is marked after its name; the repo's runs carry no mark. */
 const ORIGIN_MARK = { you: "me everywhere", local: "just me" };
 
@@ -174,6 +183,10 @@ export class ListPart {
     this.hidden = readHidden();
     this.visibilityAt = readNumber(VISIBILITY_STORAGE);
     this.watchToken = 0;
+    this.hoverKey = null;
+    this.stopAt = new Map();
+    this.focusPool = Array.from({ length: FOCUS_POOL }, () => cx.focus_handle());
+    this.focusByKey = new Map();
     this.filter = InputState.new({ placeholder: "Filter" });
     this.filter.on("change", (_event, cx) => cx.notify());
     this.sync(cx);
@@ -325,7 +338,34 @@ export class ListPart {
   }
 
   /**
-   * One entry: its session's state, its name, and its play button.
+   * The focus handle for a row's ⋯, taken from the pool the first time the row shows.
+   * @param {string} key The entry's key.
+   * @returns {object | null} The handle, or null once the pool is used up.
+   */
+  focusFor(key) {
+    if (!this.focusByKey.has(key) && this.focusByKey.size < this.focusPool.length) {
+      this.focusByKey.set(key, this.focusPool[this.focusByKey.size]);
+    }
+    return this.focusByKey.get(key) ?? null;
+  }
+
+  /**
+   * Stops a running session: Ctrl-C first, then a terminate when pressed again soon after.
+   * @param {object} cx The event's context.
+   * @param {object} entry The run.
+   * @param {object} session Its session, from `sessionFor`.
+   * @returns {void}
+   */
+  stop(cx, entry, session) {
+    const escalate = Date.now() - (this.stopAt.get(entry.key) ?? 0) < ESCALATE_MS;
+    this.stopAt.set(entry.key, Date.now());
+    cx.spawn(async () => stopSession(session, escalate ? "TERM" : "INT"));
+    cx.notify();
+  }
+
+  /**
+   * One entry: its session's state, its name, "running" and a stop square while it runs (else
+   * its play button), and a ⋯ that shows on hover or keyboard focus and opens the run's menu.
    * @param {object} t The theme.
    * @param {object} entry The run.
    * @param {boolean} [hidden] Whether the person hid it.
@@ -333,11 +373,12 @@ export class ListPart {
    */
   row(t, entry, hidden = false) {
     const session = this.workspace ? sessionFor(entry.key, this.workspace.root) : null;
+    const running = Boolean(session?.running);
     const mark = sessionMark(t, session);
     const starting = this.pending.has(entry.key);
     const play = (_event, cx) => {
       cx.stop_propagation();
-      if (session?.running) showSession(session.address);
+      if (running) this.stop(cx, entry, session);
       else cx.spawn(async (cx) => this.start(cx, entry, this.catalog, this.workspace, null));
     };
     const menu = (_event, cx) => {
@@ -345,7 +386,7 @@ export class ListPart {
       openOverlay({
         mod: "alp-runs",
         kind: "popup",
-        width: 230,
+        width: 270,
         height: 12 + 3 * 34,
         props: {
           part: "menu",
@@ -358,6 +399,9 @@ export class ListPart {
         },
       });
     };
+    const focus = this.focusFor(entry.key);
+    const showMore = this.hoverKey === entry.key || Boolean(focus?.is_focused());
+    const terminating = running && Date.now() - (this.stopAt.get(entry.key) ?? 0) < ESCALATE_MS;
     const originMark = ORIGIN_MARK[entry.origin];
     return h_flex()
       .id(`run-${entry.key}`)
@@ -370,6 +414,11 @@ export class ListPart {
       .cursor_pointer()
       .hover((style) => style.bg(t.hover))
       .tooltip(entry.unsupported ? `Can't run here: it ${entry.unsupported}` : entry.name)
+      .on_hover((hovered, cx) => {
+        if (hovered) this.hoverKey = entry.key;
+        else if (this.hoverKey === entry.key) this.hoverKey = null;
+        cx.notify();
+      })
       .on_click((event, cx) => (session ? showSession(session.address) : entry.unsupported ? null : play(event, cx)))
       .on_mouse_down("right", menu)
       .child(
@@ -399,6 +448,7 @@ export class ListPart {
             .child(originMark),
         ),
       )
+      .when(running, (el) => el.child(div().flex_none().text_size(11.5).text_color(t.working).child("running")))
       .when(!entry.unsupported, (el) =>
         el.child(
           h_flex()
@@ -408,16 +458,41 @@ export class ListPart {
             .items_center()
             .justify_center()
             .rounded(5)
-            .text_color(session?.running ? t.working : t.accent)
+            .text_color(running ? t.blocked : t.accent)
             .hover((style) => style.bg(t.selected))
-            .tooltip(session?.running ? "Running: show its output" : `Run ${entry.name}`)
+            .tooltip(running ? (terminating ? "Stop again: terminate" : `Stop ${entry.name} (Ctrl-C)`) : `Run ${entry.name}`)
             .on_click(play)
             .child(
               starting
                 ? div().text_size(11.5).frames(["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"], 90)
-                : svg(PLAY_ICON).size(11),
+                : svg(running ? STOP_ICON : PLAY_ICON).size(running ? 13 : 11),
             ),
         ),
+      )
+      .child(
+        h_flex()
+          .id(`run-more-${entry.key}`)
+          .flex_none()
+          .size(22)
+          .items_center()
+          .justify_center()
+          .rounded(5)
+          .text_size(14)
+          .text_color(t.muted)
+          .opacity(showMore ? 1 : 0)
+          .hover((style) => style.bg(t.selected).text_color(t.foreground))
+          .focus((style) => style.opacity(1).bg(t.selected).text_color(t.foreground))
+          .when(Boolean(focus), (el) =>
+            el
+              .track_focus(focus)
+              .tab_index(0)
+              .on_key_down((event, cx) => {
+                if (event.key === "enter" || event.key === "space") menu(event, cx);
+              }),
+          )
+          .tooltip(`Edit, hide or delete ${entry.name}`)
+          .on_click(menu)
+          .child("⋯"),
       );
   }
 
@@ -479,7 +554,38 @@ export class ListPart {
   }
 
   /**
-   * The Run list: the workspace's name, config errors, then the runs under their sections and
+   * The Output button beside the workspace's name: shows or hides the runs panel, like the status
+   * bar's button. Lit while the panel shows.
+   * @param {object} t The theme.
+   * @param {object} panel The layout's runs panel node.
+   * @returns {object}
+   */
+  outputButton(t, panel) {
+    const open = !panel.hidden;
+    return h_flex()
+      .id("run-output-toggle")
+      .flex_none()
+      .h(22)
+      .px(7)
+      .gap(5)
+      .items_center()
+      .rounded(5)
+      .cursor_pointer()
+      .text_size(11.5)
+      .bg(open ? t.selected : t.chrome)
+      .text_color(open ? t.foreground : t.muted)
+      .hover((style) => style.bg(t.hover).text_color(t.foreground))
+      .tooltip(open ? "Hide the runs' output" : "Show the runs' output")
+      .on_click((_event, cx) => {
+        cx.stop_propagation();
+        run("layout.toggle", { id: PANEL_ID });
+      })
+      .child(svg(OUTPUT_ICON).size(12).flex_none())
+      .child("Output");
+  }
+
+  /**
+   * The Run list: the workspace's name and its Output button, config errors, then the runs under their sections and
    * the folds for those that can't run here or are hidden.
    * @param {object} cx The view's context.
    * @returns {object}
@@ -494,6 +600,7 @@ export class ListPart {
     const all = catalog ? catalog.runs : [];
     const blocked = all.filter((entry) => entry.unsupported && !hiddenKeys.has(entry.key) && matches(entry));
     const hidden = all.filter((entry) => hiddenKeys.has(entry.key) && matches(entry));
+    const panel = find(layout(), PANEL_ID);
     const items = [];
     if (catalog) {
       if (!all.length) items.push(this.emptyState(t));
@@ -590,7 +697,15 @@ export class ListPart {
           ),
       )
       .when(Boolean(this.workspace), (el) =>
-        el.child(div().px(10).text_size(11.5).text_color(t.dim).truncate().child(this.workspace.name)),
+        el.child(
+          h_flex()
+            .flex_none()
+            .px(10)
+            .gap(8)
+            .items_center()
+            .child(div().flex_1().min_w(0).text_size(11.5).text_color(t.dim).truncate().child(this.workspace.name))
+            .when(Boolean(panel), (el) => el.child(this.outputButton(t, panel))),
+        ),
       )
       .children(
         (catalog?.errors ?? []).map((error, i) =>
