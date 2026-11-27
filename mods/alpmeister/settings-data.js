@@ -132,10 +132,10 @@ export async function findClones() {
 }
 
 /**
- * How a board's statuses most likely split into not started, in flight and hidden from your
- * issues, by their names, as setup used to guess them.
+ * How a board's statuses most likely split into in flight and hidden from your issues, by their
+ * names, as setup used to guess them (the not-started ones are neither).
  * @param {string[]} statuses The board's status options, in board order.
- * @returns {{ notStarted: string[], inFlight: string[], mineHidden: string[], holdStatus: string }}
+ * @returns {{ inFlight: string[], mineHidden: string[], holdStatus: string }}
  */
 export function guessRoles(statuses) {
   const matching = (pattern) => statuses.filter((status) => pattern.test(status));
@@ -143,7 +143,6 @@ export function guessRoles(statuses) {
   const started = notStarted.length ? notStarted : statuses.slice(0, 1);
   const late = /done|closed|hold|block|invalid|tested|cancel|won.?t/i;
   return {
-    notStarted: started,
     inFlight: statuses.filter((status) => !started.includes(status) && !late.test(status)),
     mineHidden: [...new Set([...started.slice(0, 1), ...matching(/done|hold|invalid/i)])],
     holdStatus: matching(/hold/i)[0] ?? "On Hold",

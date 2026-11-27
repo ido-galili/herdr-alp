@@ -5,7 +5,7 @@ import { div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { theme } from "herdr";
 import { searchUrl } from "./data.js";
-import { Chip, ICONS, IconButton, LinkLabel, Note, formatDate, formatTime, openUrl, warningColor } from "./ui.js";
+import { Chip, ICONS, IconButton, Note, formatDate, formatTime, openUrl, warningColor } from "./ui.js";
 
 /**
  * The tooltip of a tile's GitHub mark when it opens a list: "See all 7 on GitHub", "See both on
@@ -20,36 +20,34 @@ export function seeAll(count) {
   return `See all ${count} on GitHub`;
 }
 
-/** The words that end a tile whose setting is missing; a click opens Settings on it. */
-export const SET_UP = "Set up in Settings →";
-
 /**
- * One number tile: a label, a big value, then lines or any element under it. A tile that opens
- * GitHub has the GitHub mark in its top-right corner (no words; the tooltip says where it goes),
- * then its filter icon when it has one. A tile whose setting is missing ends in "Set up in
- * Settings →" with the gear. `sub` is a string, an element, or a list of them. `action` is a URL
- * to open or a function to run on click.
+ * One number tile: a label, a big value, then lines or any element under it. Its top-right
+ * corner holds, left to right, each when it has one: its filter icon, a gear to its settings,
+ * and the GitHub mark (no words; the tooltip says where it goes). Only those open anything: the
+ * tile itself takes no click. `sub` is a string, an element, or a list of them.
  * @param {string} id The tile's element id.
  * @param {string} label The tile's label.
  * @param {string} value The big value.
  * @param {string | object | Array<string | object>} sub The lines under the value.
  * @param {string} color The value's color.
- * @param {string | Function | null} action A URL to open, or a function to run, on click.
+ * @param {string | null} url What the GitHub mark opens, or null for no mark.
  * @param {string} [note] A short clause after the label that says what the tile counts.
- * @param {{ link?: string | null, linkIcon?: string | null, github?: string | null, outline?: string | null,
- *   filter?: object | null }} [options] `link`: words at the bottom, such as "Set up in Settings →",
- *   and `linkIcon` the icon on their left (the gear); `github`: the GitHub mark's tooltip, shown
- *   when `action` is a URL, such as "See all 7 on GitHub"; `outline`: a border color, such as red
- *   for a failed run; `filter`: the tile's filter icon (`FilterIcon`), for its top-right corner.
+ * @param {{ github?: string | null, outline?: string | null, filter?: object | null,
+ *   settings?: { tooltip: string, onPress(cx: object): void } | null }} [options] `github`: the
+ *   GitHub mark's tooltip, such as "See all 7 on GitHub"; `outline`: a border color, such as red
+ *   for a failed run; `filter`: the tile's filter icon (`FilterIcon`); `settings`: the gear's
+ *   tooltip and what it opens.
  * @returns {object} The tile.
  */
-export function Tile(id, label, value, sub, color, action, note, { link, linkIcon, github, outline, filter } = {}) {
+export function Tile(id, label, value, sub, color, url, note, { github, outline, filter, settings } = {}) {
   const t = theme();
   const mark =
-    github && typeof action === "string"
-      ? IconButton(`${id}-github`, ICONS.github, () => openUrl(action), { tooltip: github })
+    github && url ? IconButton(`${id}-github`, ICONS.github, () => openUrl(url), { tooltip: github })
       : null;
-  const corner = [mark, filter].filter(Boolean);
+  const gear = settings
+    ? IconButton(`${id}-settings`, ICONS.settings, (cx) => settings.onPress(cx), { tooltip: settings.tooltip })
+    : null;
+  const corner = [filter, gear, mark].filter(Boolean);
   return v_flex()
     .id(id)
     .relative()
@@ -61,11 +59,6 @@ export function Tile(id, label, value, sub, color, action, note, { link, linkIco
     .bg(t.background)
     .border_1()
     .border_color(outline ?? t.border)
-    .when(Boolean(action), (el) => el.cursor_pointer().hover((style) => style.border_color(outline ? t.blocked : t.input)))
-    .on_click((_event, cx) => {
-      if (typeof action === "function") action(cx);
-      else if (action) openUrl(action);
-    })
     .child(
       div()
         .when(corner.length > 0, (el) => el.pr(24 * corner.length))
@@ -79,10 +72,6 @@ export function Tile(id, label, value, sub, color, action, note, { link, linkIco
       (Array.isArray(sub) ? sub : [sub]).map((line) =>
         typeof line === "string" ? div().text_size(11.5).truncate().text_color(t.muted).child(line) : line,
       ),
-    )
-    .when(Boolean(link && action), (el) => el.child(div().flex_1()))
-    .when(Boolean(link && action), (el) =>
-      el.child(h_flex().pt(2).text_size(11.5).text_color(t.accent).child(LinkLabel(linkIcon ?? null, link))),
     )
     .when(corner.length > 0, (el) => el.child(div().absolute().top(7).right(7).child(h_flex().gap(2).children(corner))));
 }
@@ -179,15 +168,16 @@ function nightlyParts(t, run, error) {
 
 /**
  * The top row: open bugs by priority, triage bugs, open customer issues and the nightly run.
- * Four across when `wide`, else two by two. Each ends in what a click opens; a failed nightly is
- * outlined in red. A missing nightly or customer label opens Settings on this workspace instead.
- * Open bugs, Triage bugs and Customer issues have their filter icon in the corner when `filter`
- * gives one.
+ * Four across when `wide`, else two by two; a failed nightly is outlined in red. In each corner:
+ * the filter icon (Open bugs, Triage bugs and Customer issues, when `filter` gives one), a gear
+ * to the settings (Customer issues and Nightly: Settings on this workspace with that section
+ * unfolded), then the GitHub mark when there is something to open.
  * @param {object} config The workspace's config.
  * @param {object} model The workspace's model.
- * @param {{ wide: boolean, onSettings(cx: object): void,
+ * @param {{ wide: boolean, onSettings(cx: object, section?: string): void,
  *   filter?(key: "bugs" | "triage" | "customer"): object | null }} options
- *   `onSettings` opens Settings on this workspace; `filter` gives a tile's filter icon.
+ *   `onSettings` opens Settings on this workspace, with one of its sections ("nightly",
+ *   "customer") open when given; `filter` gives a tile's filter icon.
  * @returns {object} The row of tiles.
  */
 export function Tiles(config, model, { wide, onSettings, filter }) {
@@ -196,7 +186,6 @@ export function Tiles(config, model, { wide, onSettings, filter }) {
   const [nightlyValue, nightlyColor, nightlySub] = nightlyParts(t, model.nightly, model.errors.nightly);
   const bugs = model.bugs;
   const customer = model.customer;
-  const noNightly = !model.nightly && !model.errors.nightly;
   const noLabel = Boolean(customer) && !customer.labels.length;
   const failed = model.nightly?.overall === "failure";
   const filters = Object.fromEntries(["bugs", "triage", "customer"].map((key) => [key, filter?.(key) ?? null]));
@@ -227,13 +216,12 @@ export function Tiles(config, model, { wide, onSettings, filter }) {
       customer ? String(customer.count) : "–",
       customer ? customer.labels.join(", ") || "No customer label" : (model.errors.customer ?? ""),
       t.foreground,
-      noLabel ? onSettings : customer?.query ? searchUrl(config.repo, customer.query) : null,
+      !noLabel && customer?.query ? searchUrl(config.repo, customer.query) : null,
       undefined,
       {
-        link: noLabel ? SET_UP : null,
-        linkIcon: ICONS.settings,
-        github: noLabel ? null : seeAll(customer?.count),
+        github: seeAll(customer?.count),
         filter: filters.customer,
+        settings: { tooltip: "Customer issues settings", onPress: (cx) => onSettings(cx, "customer") },
       },
     ),
     Tile(
@@ -242,12 +230,11 @@ export function Tiles(config, model, { wide, onSettings, filter }) {
       nightlyValue,
       nightlySub,
       nightlyColor,
-      noNightly ? onSettings : model.nightly?.url,
+      model.nightly?.url ?? null,
       "latest run",
       {
-        link: noNightly ? SET_UP : null,
-        linkIcon: ICONS.settings,
-        github: noNightly ? null : "Open the run on GitHub",
+        github: "Open the run on GitHub",
+        settings: { tooltip: "Nightly settings", onPress: (cx) => onSettings(cx, "nightly") },
         outline: failed ? `${t.blocked}80` : null,
       },
     ),

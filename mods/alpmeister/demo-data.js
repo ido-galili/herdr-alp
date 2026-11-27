@@ -34,7 +34,6 @@ const RAW_CONFIG = {
       repo: WEB,
       board: { owner: ORG, number: 4, title: "Website roadmap", statusField: "Status", iterationField: "Iteration" },
       statuses: ["Backlog", "Todo", "In Progress", "In Review", "QA", "Done", "On Hold"],
-      notStarted: ["Backlog", "Todo"],
       inFlight: { statuses: ["In Progress", "In Review", "QA"], excludeTypes: ["Epic"] },
       mineHidden: ["Backlog", "Done", "On Hold"],
       boardView: { query: "iteration:@current", statuses: ["Todo", "In Progress", "In Review", "QA", "Done"] },
@@ -149,13 +148,13 @@ function issue(repo, number, title, { status = null, assignees = [], type = "Tas
  * @param {number} number The milestone's number, for its URL.
  * @param {string} title Its title.
  * @param {object} more `due` and `start` (ms or null), `startFrom` (the milestone whose due date
- *   started it, or null for its creation), `total`, `closed`, `byStatus`, `issues`, `unassigned`,
- *   `notStarted`, `onHold`, and `now` to tell an overdue one.
+ *   started it, or null for its creation), `total`, `closed`, `byStatus`, `issues`, `onHold`, and
+ *   `now` to tell an overdue one.
  * @returns {object} The milestone.
  */
-function milestone(repo, number, title, { due = null, start = null, startFrom = null, total, closed, byStatus, issues = [], unassigned = [], notStarted = [], onHold = null, now }) {
+function milestone(repo, number, title, { due = null, start = null, startFrom = null, total, closed, byStatus, issues = [], onHold = null, now }) {
   const overdue = due != null && new Date(due).toISOString().slice(0, 10) < new Date(now).toISOString().slice(0, 10);
-  return { title, url: `https://github.com/${repo}/milestone/${number}`, due, overdue, start, startFrom, total, closed, openCount: total - closed, byStatus, issues, unassigned, notStarted, onHold };
+  return { title, url: `https://github.com/${repo}/milestone/${number}`, due, overdue, start, startFrom, total, closed, openCount: total - closed, byStatus, issues, onHold };
 }
 
 /**
@@ -350,7 +349,6 @@ function website(ws, now) {
           closed: 12,
           byStatus: { Done: 12, "In Review": 1, Todo: 1 },
           issues: [issue(WEB, 371, "3-D Secure fallback for old cards", { status: "In Review", assignees: ["lena-k"], type: "Bug", priority: "Major" })],
-          notStarted: [issue(WEB, 368, "Receipt e-mails in German", { status: "Todo", assignees: ["mara-v"] })],
           onHold: [],
         }),
         milestone(WEB, 12, m24, {
@@ -362,8 +360,6 @@ function website(ws, now) {
           closed: 15,
           byStatus: { Done: 15, QA: 1, "In Review": 2, "In Progress": 4, Todo: 3, Backlog: 1 },
           issues: v24,
-          unassigned: [v24[4]],
-          notStarted: [v24[1], v24[4], issue(WEB, 423, "Currency switcher in the footer", { status: "Backlog", assignees: ["lena-k"] })],
           onHold: [],
         }),
         milestone(WEB, 13, m25, {
@@ -375,8 +371,6 @@ function website(ws, now) {
           closed: 3,
           byStatus: { Backlog: 3, Todo: 4, "In Progress": 1, Done: 3 },
           issues: v25,
-          unassigned: [v25[0], issue(WEB, 449, "Gift card terms page", { status: "Backlog" })],
-          notStarted: [v25[0], v25[1]],
           onHold: [issue(WEB, 414, "Apple Pay on the web", { status: "On Hold", type: "Story", assignees: ["tobi-s"] })],
         }),
         milestone(WEB, 14, "v2.6", {
@@ -386,8 +380,6 @@ function website(ws, now) {
           closed: 0,
           byStatus: { Backlog: 4 },
           issues: [issue(WEB, 455, "Wish lists", { status: "Backlog", type: "Epic", labels: ["product-prioritized"], subIssues: { total: 4, completed: 0 } })],
-          unassigned: [issue(WEB, 455, "Wish lists", { status: "Backlog", type: "Epic" })],
-          notStarted: [issue(WEB, 455, "Wish lists", { status: "Backlog", type: "Epic" })],
           onHold: [],
         }),
       ],
@@ -440,7 +432,6 @@ function herdrCore(ws, now) {
           closed: 0,
           byStatus: { Open: 5 },
           issues: [issue(CORE, 230, "Plugins from a registry", { type: "Epic", subIssues: { total: 5, completed: 0 } })],
-          unassigned: [issue(CORE, 230, "Plugins from a registry", { type: "Epic" })],
         }),
       ],
     },
@@ -705,8 +696,6 @@ export function demoNoMilestone(ws) {
     return {
       openCount: 3,
       byStatus: { Open: 3 },
-      unassigned: [issue(CORE, 240, "Typo in the hc help")],
-      notStarted: [],
       open: [],
       issues: [issue(CORE, 236, "Wayland: drag a tab to another window", { type: "Bug", priority: "Minor", assignees: ["lena-k"] })],
       onHold: null,
@@ -720,8 +709,6 @@ export function demoNoMilestone(ws) {
   return {
     openCount: 6,
     byStatus: { Backlog: 3, Todo: 2, "On Hold": 1 },
-    unassigned: [issues[1], issue(WEB, 436, "Footer links audit", { status: "Backlog" })],
-    notStarted: [issues[0], issues[1], issues[2]],
     open: [],
     issues: issues.slice(0, 2),
     onHold: [issue(WEB, 427, "Klarna payments", { status: "On Hold", type: "Story", assignees: ["mara-v"] })],

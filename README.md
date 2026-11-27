@@ -107,9 +107,10 @@ the Overview starts on all your repositories, with a card that offers to add a w
 
 - **Overview:** your GitHub as a whole, or one workspace, picked from the Workspace dropdown on
   top, with what the workspace covers beside it. A tile or card that opens GitHub has the GitHub
-  mark in its top-right corner (its tooltip says where: "See all 7 on GitHub", "Open the run on
-  GitHub"); a missing nightly or customer label opens Settings on that workspace instead ("Set
-  up in Settings →", with the gear). Every tile and card that lists a
+  mark at the right end of its top-right icons (its tooltip says where: "See all 7 on GitHub",
+  "Open the run on GitHub"); the tile itself takes no click. The Customer issues and Nightly
+  tiles also have a gear that opens Settings on that section (also the way in when no
+  customer label or nightly is set). Every tile and card that lists a
   GitHub search (open bugs, triage bugs, customer issues, Waiting for your review, Your open PRs
   and Your issues) has a small filter icon in its top-right corner, with a dot when its
   saved filter isn't the default; hovering says the filter in words. The

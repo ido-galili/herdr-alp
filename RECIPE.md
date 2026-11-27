@@ -85,7 +85,7 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
     searches of your lists on the Overview (`queries.review`, `queries.mine`, `queries.myPrs`).
   - `workspaces`: each a `repo`, a project `board` (`owner`, `number`, `statusField`,
     `iterationField`, on a user or an organization), or both, with its own `statuses`,
-    `notStarted`, `inFlight`, `mineHidden`, `queries.triage`, `bugs`,
+    `inFlight`, `mineHidden`, `queries.triage`, `bugs`,
     `spotlight` (the Milestone card's issues), `customer`, `nightly` and `boardView`.
   - `files`: the Files editor's auto save (`autoSave`: `off`, `afterDelay` or `onFocusChange`;
     `autoSaveDelay` in ms, 200–60000, default 1000).
@@ -114,10 +114,14 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
     view), for demos and screenshots.
   - **Overview**: on top, "Workspace: <name> ▾", a dropdown of All repos (first) and every
     workspace, with a dim line beside it saying what the workspace covers ("repo … · board …").
-    A tile or card that opens GitHub has the GitHub mark (an icon button, no words) in its
-    top-right corner, before its filter icon, with a tooltip saying where ("See all 7 on
-    GitHub", "See both on GitHub", "Open the run on GitHub"); a missing nightly or customer label
-    opens Settings on that workspace instead ("Set up in Settings →", with the gear). Every tile and card that lists a GitHub
+    A tile or card that opens GitHub has the GitHub mark (an icon button, no words) at the right
+    end of its top-right icons, after its filter icon, with a tooltip saying where ("See all 7
+    on GitHub", "See both on GitHub", "Open the run on GitHub"); a tile itself takes no click
+    and shows no hover. Customer issues and Nightly have a gear ("Customer issues settings",
+    "Nightly settings") before the mark, which opens Settings on the workspace with that
+    section alone unfolded; it is also the way in when no customer label or nightly is set (the
+    tile then says "No customer label" / "No nightly configured"). Order, left to right: filter,
+    gear, GitHub. Every tile and card that lists a GitHub
     search (open bugs, triage bugs, customer issues, and your three lists)
     has a filter icon in its top-right corner, with a dot when its saved filter isn't the
     default and the filter in words as its tooltip; it opens the filter dialog (below).
@@ -263,8 +267,8 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
     - A workspace: Name, Repository and Project board (dropdowns: your repositories; the boards
       linked to the repository, then every open board on your account and organizations), then
       folds, each with a line saying what it is set to: Board columns (the Status and Iteration
-      fields and a row per status, from the board in board order: Means Not started / In flight
-      / Other and Show on board; "More per-status options…" adds hidden from Your issues and on
+      fields and a row per status, from the board in board order: Means In flight / Other
+      and Show on board; "More per-status options…" adds hidden from Your issues and on
       hold), Nightly (the workflow, from the repository's workflows, its branch and the runs
       that count; its checks read only, edited in the file), Bugs and triage, Milestone issues
       and Customer issues. Picking a board takes its statuses and guesses their roles from their

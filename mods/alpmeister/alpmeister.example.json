@@ -28,7 +28,6 @@
         "iterationField": "Iteration"
       },
       "statuses": ["Backlog", "Todo", "In Progress", "In Review", "QA", "Done", "On Hold"],
-      "notStarted": ["Backlog", "Todo"],
       "inFlight": {
         "statuses": ["In Progress", "In Review", "QA"],
         "excludeTypes": ["Epic"]

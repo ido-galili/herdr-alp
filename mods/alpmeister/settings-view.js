@@ -277,16 +277,19 @@ export class SettingsForm {
 
   /**
    * Shows a workspace's page by its name, and optionally opens one of its dropdowns, such as the
-   * board picker ("ws-board"). Unsaved edits stay.
+   * board picker ("ws-board"), and unfolds one of its sections alone, such as "nightly". Unsaved
+   * edits stay.
    * @param {string} name The workspace's name.
-   * @param {{ picker?: string }} [options] The dropdown to open.
+   * @param {{ picker?: string, section?: string }} [options] The dropdown to open and the section to unfold.
    * @returns {boolean} Whether the draft has that workspace.
    */
-  showWorkspace(name, { picker } = {}) {
+  showWorkspace(name, { picker, section } = {}) {
     const index = this.draft?.workspaces.findIndex((ws) => ws.name === name) ?? -1;
     if (index < 0) return false;
     this.turnTo("workspace", index);
     this.open = picker ?? null;
+    // Only that section unfolded, so it shows right under the board picker.
+    if (section) this.folds = new Set([section]);
     return true;
   }
 
@@ -470,30 +473,32 @@ export class SettingsForm {
 
   /**
    * Takes the board's statuses, in board order. Roles already set keep where the names still
-   * exist; a workspace with none of them gets them guessed from the names.
+   * exist; a workspace with none of them gets them guessed from the names. (A `notStarted` an
+   * older file holds is kept as it is and not used.)
    */
   useBoardStatuses(ws) {
     const options = this.boardStatuses(ws);
     if (!options) return;
     const kept = (values) => values.filter((value) => options.includes(value));
     const guess = guessRoles(options);
-    const known = kept(ws.notStarted).length || kept(ws.inFlight.statuses).length;
+    const known = kept(ws.inFlight.statuses).length;
     ws.statuses = [...options];
-    ws.notStarted = known ? kept(ws.notStarted) : guess.notStarted;
     ws.inFlight.statuses = known ? kept(ws.inFlight.statuses) : guess.inFlight;
     ws.mineHidden = known ? kept(ws.mineHidden) : guess.mineHidden;
     if (!options.includes(ws.spotlight.holdStatus)) ws.spotlight.holdStatus = guess.holdStatus;
   }
 
-  /** Sets a status's role: "not-started", "in-flight" or "other". */
+  /**
+   * Sets a status's role: "in-flight" or "other".
+   * @param {object} ws The workspace's draft.
+   * @param {string} status The status.
+   * @param {"in-flight" | "other"} role The role.
+   * @returns {void}
+   */
   setRole(ws, status, role) {
-    const ordered = (values) => ws.statuses.filter((value) => values.includes(value));
-    const notStarted = ws.notStarted.filter((value) => value !== status);
     const inFlight = ws.inFlight.statuses.filter((value) => value !== status);
-    if (role === "not-started") notStarted.push(status);
     if (role === "in-flight") inFlight.push(status);
-    ws.notStarted = ordered(notStarted);
-    ws.inFlight.statuses = ordered(inFlight);
+    ws.inFlight.statuses = ws.statuses.filter((value) => inFlight.includes(value));
   }
 
   /**
@@ -1801,10 +1806,8 @@ export class SettingsForm {
    * @returns {object} The table.
    */
   statusTable(t, ws) {
-    const role = (status) =>
-      ws.notStarted.includes(status) ? "not-started" : ws.inFlight.statuses.includes(status) ? "in-flight" : "other";
+    const role = (status) => (ws.inFlight.statuses.includes(status) ? "in-flight" : "other");
     const roles = [
-      { value: "not-started", label: "Not started", tooltip: "Flagged on the milestone when the due date is close" },
       { value: "in-flight", label: "In flight", tooltip: "Listed in the team in flight" },
       { value: "other", label: "Other" },
     ];

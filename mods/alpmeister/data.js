@@ -213,12 +213,12 @@ function focusIssues(ws, issues) {
 
 /**
  * What the Milestone card shows of a set of issues: the counts by board status (with a board,
- * else open and closed), the open ones unassigned or not started, the issues it lists, and the
- * ones on hold (null without a board, where nothing can be on hold).
+ * else open and closed), the open ones, the issues it lists, and the ones on hold (null without a
+ * board, where nothing can be on hold).
  * @param {object} ws The workspace.
  * @param {object[]} issues The issues, from `milestoneIssue`.
- * @returns {{ byStatus: Record<string, number>, unassigned: object[], notStarted: object[],
- *   open: object[], issues: object[], onHold: object[] | null }}
+ * @returns {{ byStatus: Record<string, number>, open: object[], issues: object[],
+ *   onHold: object[] | null }}
  */
 export function milestoneParts(ws, issues) {
   const byStatus = {};
@@ -227,8 +227,6 @@ export function milestoneParts(ws, issues) {
   const open = issues.filter((issue) => !issue.closed);
   return {
     byStatus,
-    unassigned: open.filter((issue) => issue.assignees.length === 0),
-    notStarted: open.filter((issue) => ws.notStarted.includes(issue.status)),
     open,
     issues: focusIssues(ws, issues),
     onHold: ws.board ? open.filter((issue) => issue.status === ws.spotlight.holdStatus) : null,

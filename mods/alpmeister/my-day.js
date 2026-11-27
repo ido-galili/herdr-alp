@@ -180,7 +180,7 @@ const listUrl = (account, key) =>
  * @param {object} account The account model.
  * @param {{ pinButton(item: object): object, launch(item: object): void, prompt(kind: string): string,
  *   filter?(key: string): object }} actions `filter` gives the card's filter icon (`FilterIcon`),
- *   last on the header.
+ *   before the GitHub mark at the header's right end.
  * @returns {object} The card.
  */
 export function Reviews(account, actions) {
@@ -204,10 +204,10 @@ export function Reviews(account, actions) {
     "Waiting for your review",
     [
       Chip(String(account.counts?.reviews ?? reviews.length), { color: reviews.length ? t.blocked : t.dim }),
+      ...(filter ? [filter] : []),
       IconButton("rv-all", ICONS.github, () => openUrl(listUrl(account, "review")), {
         tooltip: "Open the list on GitHub",
       }),
-      ...(filter ? [filter] : []),
     ],
     v_flex()
       .gap(2)
@@ -263,10 +263,10 @@ export function MyPrs(account, actions) {
     "Your open PRs",
     [
       Chip(String(account.counts?.myPrs ?? prs.length), { color: t.muted }),
+      ...(filter ? [filter] : []),
       IconButton("mp-all", ICONS.github, () => openUrl(listUrl(account, "myPrs")), {
         tooltip: "Open the list on GitHub",
       }),
-      ...(filter ? [filter] : []),
     ],
     v_flex()
       .gap(2)
@@ -303,10 +303,10 @@ export function MyIssues(config, account, actions) {
     "Your issues",
     [
       Chip(hidden ? `${visible.length} shown · ${hidden} hidden by status` : `${visible.length}`, { color: t.dim }),
+      ...(filter ? [filter] : []),
       IconButton("mi-all", ICONS.github, () => openUrl(listUrl(account, "mine")), {
         tooltip: "Open the list on GitHub",
       }),
-      ...(filter ? [filter] : []),
     ],
     v_flex()
       .gap(2)

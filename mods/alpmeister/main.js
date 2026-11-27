@@ -584,17 +584,18 @@ export default class Alpmeister extends View {
   /**
    * Shows Settings in place of the view, with "Back to <view>", on the page it showed last.
    * Edits not saved yet are still there. Given a workspace, Settings opens on its page, with one
-   * of its dropdowns open when `picker` names one ("ws-board" for the board picker). The
-   * settings copy shows Settings already.
-   * @param {{ workspace?: string | null, picker?: string }} [options] Where Settings opens.
+   * of its dropdowns open when `picker` names one ("ws-board" for the board picker) and one of
+   * its sections unfolded when `section` names one ("nightly"). The settings copy shows Settings
+   * already.
+   * @param {{ workspace?: string | null, picker?: string, section?: string }} [options] Where Settings opens.
    * @param {object} [cx] The context, to redraw.
    * @returns {void}
    */
-  openSettings({ workspace, picker } = {}, cx) {
+  openSettings({ workspace, picker, section } = {}, cx) {
     if (this.tab === TABS.settings) return;
     this.inSettings = true;
     this.pickerOpen = null;
-    if (workspace != null) this.settings.showWorkspace(workspace, { picker });
+    if (workspace != null) this.settings.showWorkspace(workspace, { picker, section });
     this.scrollTo = "top";
     cx?.notify();
   }
@@ -1754,7 +1755,7 @@ export default class Alpmeister extends View {
       content = content.child(
         Tiles(ws, wsModel, {
           wide,
-          onSettings: (cx) => this.openSettings({ workspace: ws.name }, cx),
+          onSettings: (cx, section) => this.openSettings({ workspace: ws.name, section }, cx),
           filter: (key) => this.cardFilter(wsFilterId(ws.name, key)),
         }),
       );
