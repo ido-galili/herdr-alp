@@ -102,7 +102,7 @@ const FIELDS = {
   },
   spotlightLabels: {
     scope: "workspace",
-    placeholder: "Labels that put an issue in the spotlight",
+    placeholder: "Labels that put an issue under the Milestone card's Issues",
     get: (ws) => joinList(ws.spotlight.labels),
     set: (ws, value) => (ws.spotlight.labels = splitList(value)),
   },
@@ -1581,7 +1581,7 @@ export class SettingsForm {
 
   /**
    * One workspace's page: its title, name, repository and board, then its sections, folded:
-   * Board columns (open at first), Nightly, Bugs and triage, Spotlight and Customer issues, and
+   * Board columns (open at first), Nightly, Bugs and triage, Milestone issues and Customer issues, and
    * "Remove this workspace" last.
    * @param {object} t The theme.
    * @param {object} ws The workspace.
@@ -1612,12 +1612,12 @@ export class SettingsForm {
         `triage: ${summaryWords(ws.queries.triage)}`,
       ].join(" · ");
       const labels = ws.spotlight.labels.length;
-      const spotlight = `next ${counted(ws.spotlight.milestones, "milestone")} · ${labels ? counted(labels, "label") : "no labels"}`;
+      const spotlight = `${labels ? counted(labels, "label") : "no labels"} · ${ws.spotlight.featureTypes.join(", ") || "no feature types"}`;
       const customer = ws.customer.labelMatch ? `labels containing "${ws.customer.labelMatch}"` : "No customer label";
       parts.push(
         this.fold(t, "nightly", "Nightly", nightly, () => this.nightlySection(t, ws, details)),
         this.fold(t, "bugs", "Bugs and triage", bugs, () => this.bugsSection(t, ws)),
-        this.fold(t, "spotlight", "Spotlight", spotlight, () => this.spotlightSection(t, ws)),
+        this.fold(t, "spotlight", "Milestone issues", spotlight, () => this.spotlightSection(t, ws)),
         this.fold(t, "customer", "Customer issues", customer, () =>
           this.field(t, "Label contains", this.text(t, "customer"), "Open issues with a label that contains this"),
         ),
@@ -1709,7 +1709,7 @@ export class SettingsForm {
             }
             if (ws.nightly && !repo) ws.nightly = null;
           }),
-          "Milestones, spotlight, bugs, triage, customer issues and nightly come from it.",
+          "Milestones, bugs, triage, customer issues and nightly come from it.",
         ),
       )
       .child(
@@ -1896,7 +1896,7 @@ export class SettingsForm {
                       ws.spotlight.holdStatus = ws.spotlight.holdStatus === status ? "" : status;
                       cx.notify();
                     },
-                    { tooltip: "Spotlight lists these issues apart, under this status" },
+                    { tooltip: "The Milestone card lists these issues apart, under this status" },
                   ),
                 ),
             ),
@@ -1994,8 +1994,9 @@ export class SettingsForm {
   }
 
   /**
-   * Spotlight: how many milestones it shows, the labels that put an issue in it, and the issue
-   * types always shown.
+   * Milestone issues: the labels and issue types that put an issue under the Milestone card's
+   * Issues (with any priority value). The card shows one milestone, picked on the card, so
+   * there is no count of milestones any more (`spotlight.milestones` stays in the file, unused).
    * @param {object} t The theme.
    * @param {object} ws The workspace.
    * @returns {object} The section's body.
@@ -2003,23 +2004,7 @@ export class SettingsForm {
   spotlightSection(t, ws) {
     return v_flex()
       .gap(10)
-      .child(
-        this.field(
-          t,
-          "Milestones",
-          this.pills(
-            t,
-            "st-milestones",
-            [1, 2, 3, 4].map((count) => ({ value: count, label: String(count) })),
-            ws.spotlight.milestones,
-            (count, cx) => {
-              ws.spotlight.milestones = count;
-              cx.notify();
-            },
-          ),
-          "How many upcoming milestones the spotlight shows",
-        ),
-      )
+      .child(Note("The Milestone card lists, under Issues, the open issues with a priority, one of these labels or one of these types."))
       .child(this.field(t, "Labels", this.text(t, "spotlightLabels")))
       .child(this.field(t, "Feature types", this.text(t, "featureTypes"), "Issue types always shown, in this order"));
   }

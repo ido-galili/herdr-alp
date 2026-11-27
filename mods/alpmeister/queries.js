@@ -98,31 +98,36 @@ query($reviewQuery: String!, $mineQuery: String!, $myPrsQuery: String!) {
   }
 }`;
 
+/** The fields of a milestone's issue, for the Milestone card. Needs $statusField and $iterationField. */
+const MILESTONE_ISSUE = `
+  number title state url
+  issueType { name }
+  parent { number title url }
+  labels(first: 10) { nodes { name } }
+  subIssuesSummary { total completed }
+  assignees(first: 3) { nodes { login } }
+  ${ISSUE_FIELDS}
+  ${BOARD_FIELDS}`;
+
 /**
- * A workspace's repository: its milestones with their issues, and the triage count.
- * Variables: owner, name, statusField, iterationField, triageQuery.
+ * A workspace's repository: its open milestones with their issues and counts, the open issues
+ * without a milestone (counted), and the triage count.
+ * Variables: owner, name, statusField, iterationField, triageQuery, noMilestoneQuery.
  */
 export const WORKSPACE_REPO = `
 query(
-  $owner: String!, $name: String!, $statusField: String!, $iterationField: String!, $triageQuery: String!
+  $owner: String!, $name: String!, $statusField: String!, $iterationField: String!, $triageQuery: String!,
+  $noMilestoneQuery: String!
 ) {
   repository(owner: $owner, name: $name) {
     url
     open: milestones(first: 20, states: OPEN, orderBy: { field: DUE_DATE, direction: ASC }) {
       nodes {
-        title number dueOn url
+        title number dueOn url createdAt
+        closedIssues: issues(states: CLOSED) { totalCount }
         issues(first: 100) {
           totalCount
-          nodes {
-            number title state url
-            issueType { name }
-            parent { number title url }
-            labels(first: 10) { nodes { name } }
-            subIssuesSummary { total completed }
-            assignees(first: 3) { nodes { login } }
-            ${ISSUE_FIELDS}
-            ${BOARD_FIELDS}
-          }
+          nodes { ${MILESTONE_ISSUE} }
         }
       }
     }
@@ -131,6 +136,19 @@ query(
     }
   }
   triage: search(type: ISSUE, query: $triageQuery, first: 0) { issueCount }
+  noMilestone: search(type: ISSUE, query: $noMilestoneQuery, first: 0) { issueCount }
+}`;
+
+/**
+ * A repository's open issues without a milestone, for the Milestone card when "No milestone" is
+ * picked. Variables: searchQuery, statusField, iterationField.
+ */
+export const NO_MILESTONE_ISSUES = `
+query($searchQuery: String!, $statusField: String!, $iterationField: String!) {
+  search(type: ISSUE, query: $searchQuery, first: 100) {
+    issueCount
+    nodes { ... on Issue { ${MILESTONE_ISSUE} } }
+  }
 }`;
 
 /**

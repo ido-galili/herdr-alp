@@ -13,6 +13,7 @@ import {
   BUGS_PAGE,
   CUSTOMER_LABELS,
   ISSUE_COUNT,
+  NO_MILESTONE_ISSUES,
   OPEN_PRS,
   WORKSPACE_BOARD,
   WORKSPACE_REPO,
@@ -25,7 +26,7 @@ const BOARD_VIEW_PAGES = 5;
 const FAILED_CONCLUSIONS = ["failure", "timed_out", "startup_failure"];
 
 /** The cache format: a cache written by another version is ignored. */
-export const MODEL_VERSION = 2;
+export const MODEL_VERSION = 3;
 
 /**
  * Runs `gh` with the given arguments and parses its JSON output.
@@ -170,7 +171,7 @@ function priorityOf(ws, issue) {
   return issue.issueFieldValues?.nodes?.find((field) => field.field?.name === ws.bugs.priorityField)?.name ?? null;
 }
 
-/** A milestone's issue, shaped for the milestone card and the spotlight card. */
+/** A milestone's issue, shaped for the Milestone card. */
 function milestoneIssue(ws, issue) {
   return {
     repo: ws.repo,
@@ -188,17 +189,15 @@ function milestoneIssue(ws, issue) {
   };
 }
 
-/** The open milestones whose due date has not passed, soonest first. */
-function upcomingMilestones(repository, now) {
-  const today = new Date(now).toISOString().slice(0, 10);
-  return repository.open.nodes.filter((milestone) => milestone.dueOn && milestone.dueOn.slice(0, 10) >= today);
-}
-
 /**
- * One milestone's spotlight: its open issues that have a priority value or a configured label,
- * or a feature type. Most urgent first, then by feature type. Issues on hold are left out.
+ * The issues the Milestone card lists under "Issues": the open ones with a priority value, a
+ * prioritizing label or a feature type, most urgent first, then by feature type. Issues on hold
+ * are left out (they have their own group).
+ * @param {object} ws The workspace.
+ * @param {object[]} issues The milestone's issues, from `milestoneIssue`.
+ * @returns {object[]} The issues to list.
  */
-function milestoneSpotlight(ws, milestone, issues) {
+function focusIssues(ws, issues) {
   const settings = ws.spotlight;
   const levels = ws.bugs.priorities;
   const types = settings.featureTypes;
@@ -206,59 +205,108 @@ function milestoneSpotlight(ws, milestone, issues) {
   const typeRank = (issue) => (types.includes(issue.type) ? types.indexOf(issue.type) : types.length);
   const isPrioritized = (issue) =>
     Boolean(issue.priority) || issue.labels.some((label) => settings.labels.includes(label));
-  const shown = issues
+  return issues
     .filter((issue) => !issue.closed && issue.status !== settings.holdStatus)
     .filter((issue) => isPrioritized(issue) || types.includes(issue.type))
     .sort(
       (first, second) =>
         rank(first) - rank(second) || typeRank(first) - typeRank(second) || first.number - second.number,
     );
-  return { title: milestone.title, url: milestone.url, issues: shown };
 }
 
-/** The spotlight card: the next milestones' issues in focus, and their issues on hold. */
-function spotlight(ws, upcoming) {
-  const milestones = upcoming.slice(0, ws.spotlight.milestones).map((milestone) => ({
-    milestone,
-    issues: milestone.issues.nodes.map((issue) => milestoneIssue(ws, issue)),
-  }));
+/**
+ * What the Milestone card shows of a set of issues: the counts by board status (with a board,
+ * else open and closed), the open ones unassigned or not started, the issues it lists, and the
+ * ones on hold (null without a board, where nothing can be on hold).
+ * @param {object} ws The workspace.
+ * @param {object[]} issues The issues, from `milestoneIssue`.
+ * @returns {{ byStatus: Record<string, number>, unassigned: object[], notStarted: object[],
+ *   open: object[], issues: object[], onHold: object[] | null }}
+ */
+export function milestoneParts(ws, issues) {
+  const byStatus = {};
+  const bucket = (issue) => (ws.board ? (issue.status ?? "No status") : issue.closed ? "Closed" : "Open");
+  for (const issue of issues) byStatus[bucket(issue)] = (byStatus[bucket(issue)] ?? 0) + 1;
+  const open = issues.filter((issue) => !issue.closed);
   return {
-    milestones: milestones.map(({ milestone, issues }) => milestoneSpotlight(ws, milestone, issues)),
-    onHold: ws.board
-      ? milestones.flatMap(({ milestone, issues }) =>
-          issues
-            .filter((issue) => !issue.closed && issue.status === ws.spotlight.holdStatus)
-            .map((issue) => ({ ...issue, milestone: milestone.title })),
-        )
-      : null,
+    byStatus,
+    unassigned: open.filter((issue) => issue.assignees.length === 0),
+    notStarted: open.filter((issue) => ws.notStarted.includes(issue.status)),
+    open,
+    issues: focusIssues(ws, issues),
+    onHold: ws.board ? open.filter((issue) => issue.status === ws.spotlight.holdStatus) : null,
   };
 }
 
 /**
- * The next milestone, with its breakdown: by board status with a board, else open and closed.
+ * A workspace's open milestones for the Milestone card and Team in flight's filter: each with
+ * its due date, when its time started (the due date of the milestone before it, or when it was
+ * created when that is later or there is none), its counts and its issues. Ordered by due date,
+ * the ones without a due date last. `next` is the first one due today or later: an overdue
+ * milestone is never the next one.
+ * @param {object} ws The workspace.
+ * @param {object} repository The repository, from WORKSPACE_REPO.
+ * @param {object | null} noMilestone The search counting the open issues without a milestone.
+ * @param {number} now Milliseconds since the epoch.
+ * @returns {{ list: object[], next: string | null, noMilestone: { count: number } }}
  */
-function nextMilestone(ws, repository, next) {
-  if (!next) return null;
-  const earlierDues = [...repository.open.nodes, ...repository.closed.nodes]
-    .map((milestone) => milestone.dueOn)
-    .filter((due) => due && due < next.dueOn)
-    .sort();
-  const issues = next.issues.nodes.map((issue) => milestoneIssue(ws, issue));
-  const byStatus = {};
-  const bucket = (issue) => (ws.board ? (issue.status ?? "No status") : issue.closed ? "Closed" : "Open");
-  for (const issue of issues) byStatus[bucket(issue)] = (byStatus[bucket(issue)] ?? 0) + 1;
-  return {
-    title: next.title,
-    url: next.url,
-    due: Date.parse(next.dueOn),
-    previousDue: earlierDues.length ? Date.parse(earlierDues[earlierDues.length - 1]) : null,
-    total: next.issues.totalCount,
-    closed: issues.filter((issue) => issue.closed).length,
-    byStatus,
-    unassigned: issues.filter((issue) => !issue.closed && issue.assignees.length === 0),
-    notStarted: issues.filter((issue) => !issue.closed && ws.notStarted.includes(issue.status)),
-  };
+function workspaceMilestones(ws, repository, noMilestone, now) {
+  const today = new Date(now).toISOString().slice(0, 10);
+  const dues = [...repository.open.nodes, ...repository.closed.nodes]
+    .filter((milestone) => milestone.dueOn)
+    .map((milestone) => ({ title: milestone.title, due: milestone.dueOn }));
+  const list = repository.open.nodes.map((milestone) => {
+    const issues = milestone.issues.nodes.map((issue) => milestoneIssue(ws, issue));
+    const previous = milestone.dueOn
+      ? dues.filter((other) => other.due < milestone.dueOn).sort((a, b) => a.due.localeCompare(b.due)).pop()
+      : null;
+    const created = milestone.createdAt ? Date.parse(milestone.createdAt) : null;
+    const previousDue = previous ? Date.parse(previous.due) : null;
+    const fromPrevious = previousDue != null && (created == null || previousDue >= created);
+    const total = milestone.issues.totalCount;
+    const closed = milestone.closedIssues?.totalCount ?? issues.filter((issue) => issue.closed).length;
+    return {
+      title: milestone.title,
+      url: milestone.url,
+      due: milestone.dueOn ? Date.parse(milestone.dueOn) : null,
+      overdue: Boolean(milestone.dueOn) && milestone.dueOn.slice(0, 10) < today,
+      start: fromPrevious ? previousDue : created,
+      startFrom: fromPrevious ? previous.title : null,
+      total,
+      closed,
+      openCount: total - closed,
+      ...milestoneParts(ws, issues),
+    };
+  });
+  const dated = list.filter((milestone) => milestone.due != null).sort((a, b) => a.due - b.due);
+  const ordered = [...dated, ...list.filter((milestone) => milestone.due == null)];
+  const next = dated.find((milestone) => !milestone.overdue)?.title ?? null;
+  return { list: ordered, next, noMilestone: { count: noMilestone?.issueCount ?? 0 } };
 }
+
+/**
+ * The open issues of a workspace's repository without a milestone, for the Milestone card when
+ * "No milestone" is picked: fetched only then, the first 100.
+ * @param {object} ws The workspace, with a repository.
+ * @returns {Promise<object>} The Milestone card's parts (`milestoneParts`), with `openCount`.
+ * @throws {Error} With GitHub's message when the search fails.
+ */
+export async function loadNoMilestone(ws) {
+  const data = await graphql(NO_MILESTONE_ISSUES, {
+    searchQuery: noMilestoneQuery(ws),
+    statusField: ws.board?.statusField ?? "Status",
+    iterationField: ws.board?.iterationField ?? "Iteration",
+  });
+  const issues = data.search.nodes.filter((node) => node.number).map((issue) => milestoneIssue(ws, issue));
+  return { openCount: data.search.issueCount, ...milestoneParts(ws, issues) };
+}
+
+/**
+ * The search for a workspace's open issues without a milestone.
+ * @param {object} ws The workspace, with a repository.
+ * @returns {string}
+ */
+const noMilestoneQuery = (ws) => `repo:${ws.repo} is:issue is:open no:milestone`;
 
 /**
  * One outcome for a check's jobs or steps: failed, running, cancelled, skipped or success.
@@ -474,7 +522,19 @@ export async function loadWorkspace(ws) {
   const [owner, name] = ws.repo ? ws.repo.split("/") : [];
   const none = Promise.resolve(null);
   const [repo, board, nightlyRun, bugs, customer, prs, boardView] = await Promise.all([
-    ws.repo ? part(errors, "github", graphql(WORKSPACE_REPO, { owner, name, ...fields, triageQuery: queries.triageQuery })) : none,
+    ws.repo
+      ? part(
+          errors,
+          "github",
+          graphql(WORKSPACE_REPO, {
+            owner,
+            name,
+            ...fields,
+            triageQuery: queries.triageQuery,
+            noMilestoneQuery: noMilestoneQuery(ws),
+          }),
+        )
+      : none,
     ws.board
       ? part(
           errors,
@@ -495,9 +555,7 @@ export async function loadWorkspace(ws) {
   ]);
   const model = { fetchedAt: now, errors, nightly: nightlyRun, bugs, customer, queries, boardView };
   if (repo?.repository) {
-    const upcoming = upcomingMilestones(repo.repository, now);
-    model.milestone = nextMilestone(ws, repo.repository, upcoming[0]);
-    model.spotlight = spotlight(ws, upcoming);
+    model.milestones = workspaceMilestones(ws, repo.repository, repo.noMilestone, now);
     model.counts = { triage: repo.triage.issueCount };
   }
   const project = board?.owner?.projectV2;

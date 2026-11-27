@@ -1,8 +1,8 @@
 // Alpmeister: the team lead's start-of-day view, in four views, and its settings, which the
 // Settings button shows in place of the view (Back returns to it).
 //   Dashboard  one workspace at a time (tiles for open bugs by priority, triage bugs, customer
-//              issues and the nightly run, the spotlight, the next milestone and the team in
-//              flight), or All repos: your GitHub as a whole.
+//              issues and the nightly run, the Milestone card and the team in flight), or
+//              All repos: your GitHub as a whole.
 //   Board      a workspace's board items that match its Board tab filter, a column per status.
 //   Herds      your Claude Code sessions and how they are linked.
 //   Daypack    today's focus, then review requests, your PRs and your issues across your repos.
@@ -46,12 +46,20 @@ import {
   withWorkspaceSearch,
   workspaceFilter,
 } from "./config.js";
-import { MODEL_VERSION, loadAll, loadCardSearch, loadPickStates, loadWorkspaceCard } from "./data.js";
+import { MODEL_VERSION, loadAll, loadCardSearch, loadNoMilestone, loadPickStates, loadWorkspaceCard } from "./data.js";
 import { FocusStore, pickId } from "./focus.js";
 import { FocusList } from "./focus-list.js";
 import { FilterDialog, openFilterDialog } from "./filter-dialog.js";
 import { loadDemoHerds } from "./demo-herds.js";
-import { demoCardSearch, demoConfig, demoDiscovery, demoFocus, demoModel, demoWorkspaceCard } from "./demo-data.js";
+import {
+  demoCardSearch,
+  demoConfig,
+  demoDiscovery,
+  demoFocus,
+  demoModel,
+  demoNoMilestone,
+  demoWorkspaceCard,
+} from "./demo-data.js";
 import { loadHerds, saveTabLink, sessionsDir } from "./herds-data.js";
 import { Herds } from "./herds-view.js";
 import { HerdsCanvas } from "./herds-canvas.js";
@@ -59,8 +67,8 @@ import { InFlight } from "./in-flight.js";
 import { DaypackKey, MyIssues, MyPrs, Reviews, filterChips } from "./my-day.js";
 import { summaryWords, toggleTerm } from "./search-terms.js";
 import { saveSettings } from "./settings-data.js";
-import { Spotlight } from "./spotlight.js";
-import { Milestone, Tiles } from "./project.js";
+import { MilestoneCard } from "./spotlight.js";
+import { Tiles } from "./project.js";
 import { SettingsForm } from "./settings-view.js";
 import {
   Card,
@@ -90,8 +98,14 @@ const TAB_KEY = "alpmeister.tab";
 /** Set after the settings file is saved, so every other copy fetches with the new settings. */
 const SETTINGS_STAMP_KEY = "alp.settingsStamp";
 const WORKSPACE_KEY = "alpmeister.workspace";
-/** Team in flight's "Only <milestone>" switch, as a JSON object of workspace name to true. */
+/** Team in flight's old "Only the next milestone" switch (packages 2 and 16), as a JSON object of workspace name to true; read once to migrate. */
 const MILESTONE_ONLY_KEY = "alpmeister.milestoneOnly";
+/** Team in flight's own milestone filter, as a JSON object of workspace name to a milestone's title, or "" for No milestone; All milestones when absent. */
+const IN_FLIGHT_MILESTONE_KEY = "alpmeister.inFlightMilestone";
+/** The Milestone card's pick, as a JSON object of workspace name to a milestone's title, or "" for No milestone; Next when absent. */
+const MILESTONE_PICK_KEY = "alpmeister.milestonePick";
+/** A migrated "Only the next milestone" switch, until the workspace's next milestone is known. */
+const NEXT_MILESTONE = "\u0001next";
 /** The Repos card's "With open work" switch on All repos: "true" when it is on. */
 const REPOS_ACTIVE_ONLY_KEY = "alpmeister.reposActiveOnly";
 /** The Dashboard switch's value for your GitHub as a whole. */
@@ -210,17 +224,59 @@ function rememberedWorkspace() {
 }
 
 /**
- * The workspaces whose Team in flight shows only the next milestone, as remembered.
- * @returns {Set<string>} The workspaces' names; empty when nothing is remembered.
+ * A remembered choice per workspace: a JSON object of workspace name to a string.
+ * @param {string} key The local storage key.
+ * @returns {Record<string, string> | null} The choices; null when nothing is remembered.
  */
-function rememberedMilestoneOnly() {
+function rememberedChoices(key) {
   try {
-    const saved = JSON.parse(localStorage.getItem(MILESTONE_ONLY_KEY) ?? "{}");
-    if (!saved || typeof saved !== "object") return new Set();
-    return new Set(Object.keys(saved).filter((name) => saved[name] === true));
+    const saved = JSON.parse(localStorage.getItem(key) ?? "null");
+    if (!saved || typeof saved !== "object") return null;
+    return Object.fromEntries(Object.entries(saved).filter(([, value]) => typeof value === "string"));
   } catch (error) {
-    console.log(`alpmeister: no remembered milestone switch: ${error}`);
-    return new Set();
+    console.log(`alpmeister: no remembered ${key}: ${error}`);
+    return null;
+  }
+}
+
+/**
+ * Remembers a choice per workspace.
+ * @param {string} key The local storage key.
+ * @param {Record<string, string>} choices Workspace name to its choice.
+ * @returns {void}
+ */
+function rememberChoices(key, choices) {
+  try {
+    localStorage.setItem(key, JSON.stringify(choices));
+  } catch (error) {
+    console.log(`alpmeister: ${key} not remembered: ${error}`);
+  }
+}
+
+/**
+ * Team in flight's milestone filter per workspace, as remembered. The first time, the old
+ * "Only the next milestone" switch is carried over: on becomes the next milestone (resolved once
+ * the workspace's milestones are loaded), off is All milestones.
+ * @returns {Record<string, string>} Workspace name to a milestone's title, "" or `NEXT_MILESTONE`.
+ */
+function rememberedInFlightMilestones() {
+  const saved = rememberedChoices(IN_FLIGHT_MILESTONE_KEY);
+  if (saved) return saved;
+  try {
+    const old = localStorage.getItem(MILESTONE_ONLY_KEY);
+    if (old == null) return {};
+    const raw = JSON.parse(old) ?? {};
+    const migrated = Object.fromEntries(
+      Object.keys(raw)
+        .filter((name) => raw[name] === true)
+        .map((name) => [name, NEXT_MILESTONE]),
+    );
+    rememberChoices(IN_FLIGHT_MILESTONE_KEY, migrated);
+    localStorage.removeItem(MILESTONE_ONLY_KEY);
+    return migrated;
+  } catch (error) {
+    console.log(`alpmeister: old milestone switch not carried over: ${error}`);
+    return {};
   }
 }
 
@@ -281,8 +337,18 @@ export default class Alpmeister extends View {
     this.keyHidden = rememberedKeyHidden();
     this.addWorkspaceDismissed = rememberedFlag(ADD_WORKSPACE_DISMISSED_KEY);
     this.failure = null;
-    // The workspaces whose Team in flight shows only the next milestone.
-    this.milestoneOnly = rememberedMilestoneOnly();
+    // Per workspace: the Milestone card's pick (absent: Next) and Team in flight's own milestone
+    // filter (absent: All milestones). A title, or "" for No milestone.
+    this.milestonePick = this.demo ? {} : (rememberedChoices(MILESTONE_PICK_KEY) ?? {});
+    this.inFlightMilestone = this.demo ? {} : rememberedInFlightMilestones();
+    // Per workspace: the Milestone card's pressed flag ("unassigned" or "notStarted"), not remembered.
+    this.milestoneFlag = {};
+    // Per workspace: the open issues without a milestone, fetched when the card shows No milestone:
+    // `{ parts, fetchedFor }`, `{ loading: true }` or `{ error }`.
+    this.noMilestone = {};
+    // The Board narrowed to one milestone from the Milestone card's link: `{ ws, title }` (title
+    // null for No milestone), until "Show every milestone" or another tab.
+    this.boardMilestone = null;
     this.expandedGroups = new Set();
     this.avatars = new Avatars();
     this.boardState = new BoardState(this);
@@ -1147,27 +1213,147 @@ export default class Alpmeister extends View {
   }
 
   /**
-   * Switches a workspace's Team in flight between every milestone and the next one, and
-   * remembers it for that workspace.
-   * @param {string} name The workspace's name.
+   * Opens or closes one of the milestone dropdowns (the Milestone card's, "ms-card", or Team in
+   * flight's, "ms-if"). A press on the button that just closed it (outside the list) leaves it shut.
+   * @param {string} key The dropdown.
    * @param {object} cx The context.
    */
-  toggleMilestoneOnly(name, cx) {
-    if (this.milestoneOnly.has(name)) this.milestoneOnly.delete(name);
-    else this.milestoneOnly.add(name);
-    if (this.demo) return cx.notify();
-    try {
-      const saved = Object.fromEntries([...this.milestoneOnly].map((only) => [only, true]));
-      localStorage.setItem(MILESTONE_ONLY_KEY, JSON.stringify(saved));
-    } catch (error) {
-      console.log(`alpmeister: milestone switch not remembered: ${error}`);
-    }
+  toggleMenu(key, cx) {
+    const justClosed = Date.now() - (this.pickerClosedAt ?? 0) < 400;
+    this.pickerOpen = this.pickerOpen === key || justClosed ? null : key;
     cx.notify();
+  }
+
+  /**
+   * Closes a dropdown after a press outside it.
+   * @param {string} key The dropdown.
+   * @param {object} cx The context.
+   */
+  closeMenu(key, cx) {
+    if (this.pickerOpen !== key) return;
+    this.pickerOpen = null;
+    this.pickerClosedAt = Date.now();
+    cx.notify();
+  }
+
+  /**
+   * Shows a milestone on a workspace's Milestone card, and remembers it for that workspace:
+   * null goes back to Next, "" is No milestone (its issues are fetched then).
+   * @param {object} ws The workspace.
+   * @param {string | null} pick The milestone's title, "" or null.
+   * @param {object} cx The context.
+   */
+  pickMilestone(ws, pick, cx) {
+    this.pickerOpen = null;
+    delete this.milestoneFlag[ws.name];
+    if (pick === null) delete this.milestonePick[ws.name];
+    else this.milestonePick[ws.name] = pick;
+    if (!this.demo) rememberChoices(MILESTONE_PICK_KEY, this.milestonePick);
+    cx.notify();
+  }
+
+  /**
+   * Shows one milestone in a workspace's Team in flight, or all (null), or the issues without
+   * one (""), and remembers it for that workspace.
+   * @param {string} name The workspace's name.
+   * @param {string | null} pick The milestone's title, "" or null.
+   * @param {object} cx The context.
+   */
+  pickInFlightMilestone(name, pick, cx) {
+    this.pickerOpen = null;
+    if (pick === null) delete this.inFlightMilestone[name];
+    else this.inFlightMilestone[name] = pick;
+    if (!this.demo) rememberChoices(IN_FLIGHT_MILESTONE_KEY, this.inFlightMilestone);
+    cx.notify();
+  }
+
+  /**
+   * Lists a flag's issues on the Milestone card in place of its Issues, or the Issues again.
+   * @param {string} name The workspace's name.
+   * @param {"unassigned" | "notStarted"} flag The flag pressed.
+   * @param {object} cx The context.
+   */
+  toggleMilestoneFlag(name, flag, cx) {
+    if (this.milestoneFlag[name] === flag) delete this.milestoneFlag[name];
+    else this.milestoneFlag[name] = flag;
+    cx.notify();
+  }
+
+  /**
+   * The Milestone card's pick and Team in flight's filter for a workspace, as they apply to its
+   * loaded milestones: a picked milestone that has closed goes back to Next (and All), and a
+   * carried-over "Only the next milestone" becomes the next one. Both are remembered again
+   * when they change.
+   * @param {object} ws The workspace.
+   * @param {object} wsModel The workspace's model.
+   * @returns {{ pick: string | null, inFlight: string | null }}
+   */
+  milestoneChoices(ws, wsModel) {
+    const data = wsModel.milestones;
+    const open = (title) => !data || data.list.some((milestone) => milestone.title === title);
+    let pick = this.milestonePick[ws.name] ?? null;
+    if (pick && data && !open(pick)) {
+      delete this.milestonePick[ws.name];
+      if (!this.demo) rememberChoices(MILESTONE_PICK_KEY, this.milestonePick);
+      pick = null;
+    }
+    let inFlight = this.inFlightMilestone[ws.name] ?? null;
+    // undefined: no change. A carried-over switch waits for the repository's milestones; a
+    // workspace without a repository had no next milestone, so it showed all.
+    let changed;
+    if (inFlight === NEXT_MILESTONE && (data || !ws.repo)) changed = data?.next ?? null;
+    else if (inFlight && inFlight !== NEXT_MILESTONE && !open(inFlight)) changed = null;
+    if (changed !== undefined) {
+      if (changed === null) delete this.inFlightMilestone[ws.name];
+      else this.inFlightMilestone[ws.name] = changed;
+      if (!this.demo) rememberChoices(IN_FLIGHT_MILESTONE_KEY, this.inFlightMilestone);
+      inFlight = changed;
+    }
+    return { pick, inFlight: inFlight === NEXT_MILESTONE ? null : inFlight };
+  }
+
+  /**
+   * The open issues without a milestone for a workspace's Milestone card, fetched the first time
+   * they are shown and again after each refresh.
+   * @param {object} ws The workspace, with a repository.
+   * @param {object} wsModel The workspace's model.
+   * @param {object} cx The context.
+   * @returns {{ parts?: object, error?: string } | null} What is known so far.
+   */
+  noMilestoneFor(ws, wsModel, cx) {
+    const known = this.noMilestone[ws.name];
+    if (known?.loading || (known && known.fetchedFor === wsModel.fetchedAt)) return known;
+    if (this.demo) {
+      this.noMilestone[ws.name] = { parts: demoNoMilestone(ws), fetchedFor: wsModel.fetchedAt };
+      return this.noMilestone[ws.name];
+    }
+    this.noMilestone[ws.name] = { ...(known ?? {}), loading: true };
+    cx.spawn(async (cx) => {
+      try {
+        this.noMilestone[ws.name] = { parts: await loadNoMilestone(ws), fetchedFor: wsModel.fetchedAt };
+      } catch (error) {
+        this.noMilestone[ws.name] = { error: String(error?.message ?? error), fetchedFor: wsModel.fetchedAt };
+      }
+      cx.notify();
+    });
+    return known ?? null;
+  }
+
+  /**
+   * Shows the Board on a workspace with only one milestone's items, from the Milestone card.
+   * @param {object} ws The workspace, with a board.
+   * @param {string | null} title The milestone, or null for the items without one.
+   * @param {object} cx The context.
+   */
+  openMilestoneOnBoard(ws, title, cx) {
+    this.boardMilestone = { ws: ws.name, title };
+    this.selectTab(TABS.board, cx);
   }
 
   /** Shows one of the tabs and remembers it for this copy. */
   selectTab(tab, cx) {
     this.tab = tab;
+    if (tab !== TABS.board) this.boardMilestone = null;
     if (tab === TABS.herds) this.watchHerds(cx);
     if (this.demo) return cx.notify();
     try {
@@ -1564,8 +1750,15 @@ export default class Alpmeister extends View {
     const state = this.boardState;
     const { boards, ws } = state.workspace();
     if (!ws) return NoBoard((cx) => this.addBoard(cx));
-    const switcher = this.workspaceSwitch(theme(), { boards, shown: ws.name });
-    const wsModel = model.workspaces?.[ws.name];
+    const t = theme();
+    const switcher = this.workspaceSwitch(t, { boards, shown: ws.name });
+    let wsModel = model.workspaces?.[ws.name];
+    // Narrowed from the Milestone card's "Open v2.4 on the Board →": only that milestone's items.
+    const only = this.boardMilestone?.ws === ws.name ? this.boardMilestone : null;
+    if (only && wsModel?.boardView) {
+      const items = wsModel.boardView.items.filter((item) => (item.milestone?.title ?? null) === only.title);
+      wsModel = { ...wsModel, boardView: { ...wsModel.boardView, items, total: items.length } };
+    }
     const people = (wsModel?.boardView?.items ?? []).flatMap((item) => item.assignees);
     if (this.avatars.missing(people).length) {
       cx.spawn(async (cx) => {
@@ -1576,6 +1769,25 @@ export default class Alpmeister extends View {
     return v_flex()
       .gap(14)
       .when(Boolean(switcher), (el) => el.child(switcher))
+      .when(Boolean(only), (el) =>
+        el.child(
+          h_flex()
+            .gap(8)
+            .items_center()
+            .child(
+              div()
+                .text_size(12)
+                .text_color(t.foreground)
+                .child(only.title === null ? "Only the items without a milestone" : `Only the items in ${only.title}`),
+            )
+            .child(
+              TextButton("bv-every-milestone", "Show every milestone", (cx) => {
+                this.boardMilestone = null;
+                cx.notify();
+              }),
+            ),
+        ),
+      )
       .child(
         Board(ws, wsModel, {
           ...this.launchActions(),
@@ -1589,14 +1801,15 @@ export default class Alpmeister extends View {
 
   /**
    * The Dashboard tab: All repos (four tiles and every repository in scope), or one workspace
-   * (its tiles, spotlight, next milestone, and the team in flight or the open PRs). A workspace
+   * (its tiles, the Milestone card, and the team in flight or the open PRs). A workspace
    * with only a board says what adding a repository would show.
    * @param {object} config The settings.
    * @param {object} model The fetched model.
    * @param {boolean} wide Whether the tab is wide enough for four tiles across.
+   * @param {object} cx The render's context, to fetch the issues without a milestone when shown.
    * @returns {object} The tab's content.
    */
-  dashboard(config, model, wide) {
+  dashboard(config, model, wide, cx) {
     const t = theme();
     const ws = this.shownWorkspace();
     let content = v_flex().gap(14);
@@ -1625,6 +1838,7 @@ export default class Alpmeister extends View {
     for (const [part, error] of Object.entries(wsModel.errors ?? {})) {
       if (part === "github" || part === "board") content = content.child(Note(`GitHub (${part}): ${error}`, t.blocked));
     }
+    const choices = this.milestoneChoices(ws, wsModel);
     if (ws.repo) {
       content = content
         .child(
@@ -1635,20 +1849,30 @@ export default class Alpmeister extends View {
           }),
         )
         .child(
-          Spotlight(ws, wsModel, {
-            wide,
+          MilestoneCard(ws, wsModel, {
             expanded: this.expandedGroups,
             onToggleGroup,
             pinButton: this.pinFor("sp"),
+            pick: choices.pick,
+            menuOpen: this.pickerOpen === "ms-card",
+            onToggleMenu: (cx) => this.toggleMenu("ms-card", cx),
+            onCloseMenu: (cx) => this.closeMenu("ms-card", cx),
+            onPick: (pick, cx) => this.pickMilestone(ws, pick, cx),
+            noMilestone: choices.pick === "" && wsModel.milestones ? this.noMilestoneFor(ws, wsModel, cx) : null,
+            flag: this.milestoneFlag[ws.name] ?? null,
+            onFlag: (flag, cx) => this.toggleMilestoneFlag(ws.name, flag, cx),
+            onBoard: ws.board ? (title, cx) => this.openMilestoneOnBoard(ws, title, cx) : null,
           }),
-        )
-        .child(Milestone(ws, wsModel));
+        );
     }
     if (ws.board) {
       content = content.child(
         InFlight(ws, wsModel, {
-          milestoneOnly: this.milestoneOnly.has(ws.name),
-          onToggleMilestone: (cx) => this.toggleMilestoneOnly(ws.name, cx),
+          milestone: choices.inFlight,
+          menuOpen: this.pickerOpen === "ms-if",
+          onToggleMenu: (cx) => this.toggleMenu("ms-if", cx),
+          onCloseMenu: (cx) => this.closeMenu("ms-if", cx),
+          onPick: (pick, cx) => this.pickInFlightMilestone(ws.name, pick, cx),
           expanded: this.expandedGroups,
           onToggleGroup,
           pinButton: this.pinFor("if"),
@@ -1892,7 +2116,7 @@ export default class Alpmeister extends View {
             ? this.today(config, model, wide)
             : this.tab === TABS.board
               ? this.board(model, cx)
-              : this.dashboard(config, model, wide),
+              : this.dashboard(config, model, wide, cx),
         );
       }
     }

@@ -119,12 +119,19 @@ the Overview starts on all your repositories, with a card that offers to add a w
     checks), then every repository in scope with its open issues and PRs, the default branch's
     checks, and when it was last pushed. With open work hides the rest, and stays as you left it.
   - **A workspace** is a repository, a project board, or both. With a repository: four tiles
-    (open bugs by priority, triage bugs, open customer issues, the last nightly run), the
-    spotlight on the next two milestones, and the next milestone (X of Y closed, due date,
-    status strip, flags). With a board: the issues in flight, by status, the longest in their
-    status first; the switch "All milestones | v2.4" shows every milestone or the next one's
-    only, and each workspace keeps its choice. A repository with no board lists its open PRs
-    instead.
+    (open bugs by priority, triage bugs, open customer issues, the last nightly run), then the
+    Milestone card: one milestone, picked in its header ("v2.4 · next ▾": Next, which moves on
+    by itself, any open milestone by due date with overdue ones in red, or No milestone). It
+    shows X of Y closed (orange when behind schedule), the due date, the time from the start to
+    the due date with today's tick, the board statuses, and the flags "1 unassigned" and
+    "3 not started", which list their issues on the card. Under it, Issues (the open issues
+    with a priority, a prioritizing label or a feature type) and those on hold. A milestone
+    picked by hand outlines the card and offers "Back to next"; each workspace keeps its pick,
+    and one that closes goes back to Next. With a board, "Open v2.4 on the Board →" shows the
+    Board with only that milestone's items. With a board: the issues in flight, by status, the
+    longest in their status first, with their own milestone dropdown (All milestones, one
+    milestone, or No milestone), which each workspace keeps too. A repository with no board
+    lists its open PRs instead.
 - **Daypack:** Today (rows you Pin to Today and todos you type, carried over the next day),
   Waiting for your review with a Review button, Your open PRs, and Your issues with a Start
   button, from every repository in scope. Both buttons open a Claude Code tab running the prompt set in
@@ -197,7 +204,7 @@ a page per workspace and "+ Add workspace".
 | Local folders | each repository's clone, where its Claude buttons open; clones found under `~/projects`, `~/code` and the like are offered |
 | Claude buttons | what they type into the new Claude tab. `{repo}` and `{number}` are filled in; a `/command` works too |
 | Card filters | every card's filter in one list, each with an Edit button that opens the same filter dialog the Daypack and Overview cards open (its Save writes that one filter at once, not through the Save bar): Waiting for your review, Your open PRs and Your issues, then each workspace's Open bugs, Triage bugs and Open PRs (`queries.prs`, `is:pr is:open` by default; the repository and a sort are added). "Save for this card" on a Daypack or Overview card writes the same setting |
-| Workspace: *name* | its name, repository and project board, then sections that fold, each with a line saying what it is set to: Board columns (per status: what it means and whether the Board shows it; "More per-status options" adds hidden from Your issues and on hold; the status and iteration fields), Nightly (the workflow, its branch and the runs that count), Bugs and triage, Spotlight and Customer issues |
+| Workspace: *name* | its name, repository and project board, then sections that fold, each with a line saying what it is set to: Board columns (per status: what it means and whether the Board shows it; "More per-status options" adds hidden from Your issues and on hold; the status and iteration fields), Nightly (the workflow, its branch and the runs that count), Bugs and triage, Milestone issues (what the Milestone card lists under Issues) and Customer issues |
 
 Nightly checks (one row per job or step) are edited in the file: see
 `mods/alpmeister/alpmeister.example.json` for every key. A file in the earlier one-repo shape

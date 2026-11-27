@@ -3,8 +3,8 @@
 //   herdr-app do tab.new '{"mod":"alpmeister","props":{"tab":"dashboard","demo":true}}'
 // Three workspaces show every Dashboard layout: one with a repository and a board, one with a
 // repository only, one with a board only. Between them they hold bugs at every priority, a
-// failing nightly, a milestone that is late to start, issues on hold, cards in every status and
-// iteration, and PRs in every review state. Nothing here calls GitHub or reads your files, and
+// failing nightly, milestones in every state (overdue, next and behind schedule, later, without a
+// due date), issues on hold, cards in every status and iteration, and PRs in every review state. Nothing here calls GitHub or reads your files, and
 // the demo writes nothing back: not the settings, not the cache, not today's focus.
 
 import { normalizeConfig } from "./config.js";
@@ -132,7 +132,7 @@ function pr(
 }
 
 /**
- * An issue as a milestone or the spotlight lists it.
+ * An issue as the Milestone card lists it.
  * @param {string} repo `owner/name`.
  * @param {number} number The issue number.
  * @param {string} title The issue title.
@@ -141,6 +141,21 @@ function pr(
  */
 function issue(repo, number, title, { status = null, assignees = [], type = "Task", labels = [], priority = null, closed = false, subIssues = { total: 0, completed: 0 } } = {}) {
   return { repo, number, title, url: `https://github.com/${repo}/issues/${number}`, closed, status, assignees, type, parent: null, labels, priority, subIssues };
+}
+
+/**
+ * A milestone as the Milestone card shows it, in `workspaceMilestones()`'s shape.
+ * @param {string} repo `owner/name`.
+ * @param {number} number The milestone's number, for its URL.
+ * @param {string} title Its title.
+ * @param {object} more `due` and `start` (ms or null), `startFrom` (the milestone whose due date
+ *   started it, or null for its creation), `total`, `closed`, `byStatus`, `issues`, `unassigned`,
+ *   `notStarted`, `onHold`, and `now` to tell an overdue one.
+ * @returns {object} The milestone.
+ */
+function milestone(repo, number, title, { due = null, start = null, startFrom = null, total, closed, byStatus, issues = [], unassigned = [], notStarted = [], onHold = null, now }) {
+  const overdue = due != null && new Date(due).toISOString().slice(0, 10) < new Date(now).toISOString().slice(0, 10);
+  return { title, url: `https://github.com/${repo}/milestone/${number}`, due, overdue, start, startFrom, total, closed, openCount: total - closed, byStatus, issues, unassigned, notStarted, onHold };
 }
 
 /**
@@ -273,6 +288,8 @@ function website(ws, now) {
     card(WEB, 433, "Pricing page v2", { kind: "pr", status: "In Review", iteration: current, assignees: ["mara-v"], reviewDecision: "CHANGES_REQUESTED" }),
     card(WEB, 401, "Flaky checkout e2e on Safari", { status: "In Review", iteration: current, type: "Bug", assignees: ["tobi-s"], milestone: m24, prs: [{ number: 428, reviewDecision: "APPROVED" }] }),
     card(WEB, 389, "Onboarding copy pass", { status: "QA", iteration: current, assignees: ["lena-k"], milestone: m24 }),
+    card(WEB, 447, "Gift card balance API", { status: "In Progress", iteration: current, assignees: ["tobi-s"], milestone: m25 }),
+    card(WEB, 371, "3-D Secure fallback for old cards", { status: "In Review", iteration: previous, type: "Bug", assignees: ["lena-k"], milestone: "v2.3" }),
     card(WEB, 377, "Move images to the CDN", { status: "Done", iteration: current, assignees: [VIEWER], milestone: m24 }),
     card(WEB, 380, "Lighthouse budget in CI", { status: "Done", iteration: current, type: "Improvement", assignees: ["mara-v"] }),
   ];
@@ -320,23 +337,60 @@ function website(ws, now) {
     bugs: tiles.bugs,
     customer: tiles.customer,
     boardView: { filter: boardFilter(ws), total: items.length, items, meta: meta(ws.statuses, its) },
-    milestone: {
-      title: m24,
-      url: `https://github.com/${WEB}/milestone/12`,
-      due: now + 5 * DAY,
-      previousDue: now - 23 * DAY,
-      total: 26,
-      closed: 15,
-      byStatus: { Done: 15, QA: 1, "In Review": 2, "In Progress": 4, Todo: 3, Backlog: 1 },
-      unassigned: [v24[4]],
-      notStarted: [v24[1], v24[4], issue(WEB, 423, "Currency switcher in the footer", { status: "Backlog" })],
-    },
-    spotlight: {
-      milestones: [
-        { title: m24, url: `https://github.com/${WEB}/milestone/12`, issues: v24 },
-        { title: m25, url: `https://github.com/${WEB}/milestone/13`, issues: v25 },
+    milestones: {
+      next: m24,
+      noMilestone: { count: 6 },
+      list: [
+        milestone(WEB, 11, "v2.3", {
+          now,
+          due: now - 9 * DAY,
+          start: now - 30 * DAY,
+          startFrom: "v2.2",
+          total: 14,
+          closed: 12,
+          byStatus: { Done: 12, "In Review": 1, Todo: 1 },
+          issues: [issue(WEB, 371, "3-D Secure fallback for old cards", { status: "In Review", assignees: ["lena-k"], type: "Bug", priority: "Major" })],
+          notStarted: [issue(WEB, 368, "Receipt e-mails in German", { status: "Todo", assignees: ["mara-v"] })],
+          onHold: [],
+        }),
+        milestone(WEB, 12, m24, {
+          now,
+          due: now + 5 * DAY,
+          start: now - 9 * DAY,
+          startFrom: "v2.3",
+          total: 26,
+          closed: 15,
+          byStatus: { Done: 15, QA: 1, "In Review": 2, "In Progress": 4, Todo: 3, Backlog: 1 },
+          issues: v24,
+          unassigned: [v24[4]],
+          notStarted: [v24[1], v24[4], issue(WEB, 423, "Currency switcher in the footer", { status: "Backlog", assignees: ["lena-k"] })],
+          onHold: [],
+        }),
+        milestone(WEB, 13, m25, {
+          now,
+          due: now + 19 * DAY,
+          start: now + 5 * DAY,
+          startFrom: m24,
+          total: 11,
+          closed: 3,
+          byStatus: { Backlog: 3, Todo: 4, "In Progress": 1, Done: 3 },
+          issues: v25,
+          unassigned: [v25[0], issue(WEB, 449, "Gift card terms page", { status: "Backlog" })],
+          notStarted: [v25[0], v25[1]],
+          onHold: [issue(WEB, 414, "Apple Pay on the web", { status: "On Hold", type: "Story", assignees: ["tobi-s"] })],
+        }),
+        milestone(WEB, 14, "v2.6", {
+          now,
+          start: now - 4 * DAY,
+          total: 4,
+          closed: 0,
+          byStatus: { Backlog: 4 },
+          issues: [issue(WEB, 455, "Wish lists", { status: "Backlog", type: "Epic", labels: ["product-prioritized"], subIssues: { total: 4, completed: 0 } })],
+          unassigned: [issue(WEB, 455, "Wish lists", { status: "Backlog", type: "Epic" })],
+          notStarted: [issue(WEB, 455, "Wish lists", { status: "Backlog", type: "Epic" })],
+          onHold: [],
+        }),
       ],
-      onHold: [{ ...issue(WEB, 414, "Apple Pay on the web", { status: "On Hold", type: "Story", assignees: ["tobi-s"] }), milestone: m25 }],
     },
     counts: { triage: tiles.triage },
     boardUrl: `https://github.com/orgs/${ORG}/projects/4`,
@@ -370,29 +424,33 @@ function herdrCore(ws, now) {
     bugs: tiles.bugs,
     customer: tiles.customer,
     boardView: null,
-    milestone: {
-      title: "0.2",
-      url: `https://github.com/${CORE}/milestone/3`,
-      due: now + 19 * DAY,
-      previousDue: now - 11 * DAY,
-      total: 12,
-      closed: 4,
-      byStatus: { Open: 8, Closed: 4 },
-      unassigned: [],
-      notStarted: [],
-    },
-    spotlight: {
-      milestones: [
-        {
-          title: "0.2",
-          url: `https://github.com/${CORE}/milestone/3`,
+    milestones: {
+      next: "0.2",
+      noMilestone: { count: 3 },
+      list: [
+        milestone(CORE, 3, "0.2", {
+          now,
+          due: now + 19 * DAY,
+          start: now - 11 * DAY,
+          startFrom: "0.1",
+          total: 12,
+          closed: 4,
+          byStatus: { Open: 8, Closed: 4 },
           issues: [
             issue(CORE, 188, "Remote machines", { type: "Epic", assignees: ["mara-v"], subIssues: { total: 7, completed: 2 } }),
             issue(CORE, 201, "Crash when a pane closes mid-resize", { type: "Bug", priority: "Critical", assignees: ["tobi-s"] }),
           ],
-        },
+        }),
+        milestone(CORE, 4, "0.3", {
+          now,
+          start: now - 2 * DAY,
+          total: 5,
+          closed: 0,
+          byStatus: { Open: 5 },
+          issues: [issue(CORE, 230, "Plugins from a registry", { type: "Epic", subIssues: { total: 5, completed: 0 } })],
+          unassigned: [issue(CORE, 230, "Plugins from a registry", { type: "Epic" })],
+        }),
       ],
-      onHold: null,
     },
     counts: { triage: tiles.triage },
     openPrsTotal: openPrs.length,
@@ -411,8 +469,8 @@ function alphorn(ws, now) {
   const current = its[2];
   const items = [
     card(HORN, 61, "Push notifications for Needs you", { status: "Todo", iteration: current, type: "Story", assignees: ["lena-k"] }),
-    card(HORN, 58, "Pair a phone with a QR code", { status: "In Progress", iteration: current, type: "Story", assignees: [VIEWER] }),
-    card(HORN, 63, "Reconnect after the phone sleeps", { status: "In Review", iteration: current, type: "Bug", assignees: ["tobi-s"], prs: [{ number: 64, reviewDecision: null }] }),
+    card(HORN, 58, "Pair a phone with a QR code", { status: "In Progress", iteration: current, type: "Story", assignees: [VIEWER], milestone: "1.0" }),
+    card(HORN, 63, "Reconnect after the phone sleeps", { status: "In Review", iteration: current, type: "Bug", assignees: ["tobi-s"], prs: [{ number: 64, reviewDecision: null }], milestone: "1.0" }),
     card(HORN, 55, "Read a terminal's last 200 lines", { status: "Done", iteration: current, assignees: [VIEWER] }),
   ];
   const inFlight = items
@@ -426,7 +484,7 @@ function alphorn(ws, now) {
       since: now - (index + 2) * 7 * HOUR,
       iteration: item.iteration,
       assignees: item.assignees.map((person) => person.login),
-      milestone: null,
+      milestone: item.milestone?.title ?? null,
       prs: item.prs,
     }));
   return {
@@ -648,6 +706,40 @@ export function demoDiscovery(config) {
 }
 
 /**
+ * A demo workspace's open issues without a milestone, for the Milestone card's "No milestone",
+ * in `loadNoMilestone()`'s shape.
+ * @param {object} ws The normalized workspace.
+ * @returns {object} The card's parts, with `openCount`.
+ */
+export function demoNoMilestone(ws) {
+  if (ws.repo === CORE) {
+    return {
+      openCount: 3,
+      byStatus: { Open: 3 },
+      unassigned: [issue(CORE, 240, "Typo in the hc help")],
+      notStarted: [],
+      open: [],
+      issues: [issue(CORE, 236, "Wayland: drag a tab to another window", { type: "Bug", priority: "Minor", assignees: ["lena-k"] })],
+      onHold: null,
+    };
+  }
+  const issues = [
+    issue(WEB, 421, "Price badges overlap on narrow screens", { status: "Todo", type: "Bug", priority: "Major", assignees: ["lena-k"] }),
+    issue(WEB, 430, "Dark mode for the account pages", { status: "Backlog", type: "Story" }),
+    issue(WEB, 452, "Spike: server-side cart", { status: "Todo", assignees: [VIEWER] }),
+  ];
+  return {
+    openCount: 6,
+    byStatus: { Backlog: 3, Todo: 2, "On Hold": 1 },
+    unassigned: [issues[1], issue(WEB, 436, "Footer links audit", { status: "Backlog" })],
+    notStarted: [issues[0], issues[1], issues[2]],
+    open: [],
+    issues: issues.slice(0, 2),
+    onHold: [issue(WEB, 427, "Klarna payments", { status: "On Hold", type: "Story", assignees: ["mara-v"] })],
+  };
+}
+
+/**
  * A repository's open milestones for the Board's card menu.
  * @param {string} repo `owner/name`.
  * @returns {{ id: string, title: string, dueOn: string | null }[]}
@@ -656,8 +748,15 @@ export function demoMilestones(repo) {
   const now = Date.now();
   return repo === WEB
     ? [
+        { id: "demo-ms-v2.3", title: "v2.3", dueOn: new Date(now - 9 * DAY).toISOString() },
         { id: "demo-ms-v2.4", title: "v2.4", dueOn: new Date(now + 5 * DAY).toISOString() },
-        { id: "demo-ms-v2.5", title: "v2.5", dueOn: new Date(now + 33 * DAY).toISOString() },
+        { id: "demo-ms-v2.5", title: "v2.5", dueOn: new Date(now + 19 * DAY).toISOString() },
+        { id: "demo-ms-v2.6", title: "v2.6", dueOn: null },
       ]
-    : [{ id: "demo-ms-0.2", title: "0.2", dueOn: new Date(now + 19 * DAY).toISOString() }];
+    : repo === CORE
+      ? [
+          { id: "demo-ms-0.2", title: "0.2", dueOn: new Date(now + 19 * DAY).toISOString() },
+          { id: "demo-ms-0.3", title: "0.3", dueOn: null },
+        ]
+      : [{ id: "demo-ms-1.0", title: "1.0", dueOn: null }];
 }

@@ -12,12 +12,12 @@ import {
   NeedsYou,
   Note,
   Row,
-  Segmented,
   TextButton,
   ago,
   statusColor,
   warningColor,
 } from "./ui.js";
+import { MilestoneMenu, milestoneRows } from "./spotlight.js";
 
 const GROUP_LIMIT = 5;
 
@@ -39,34 +39,70 @@ export function prChip(t, item, pr, prefix = "if") {
 }
 
 /**
+ * Team in flight's milestone filter: a dropdown like the Milestone card's, on its own. "All
+ * milestones" (the default), then the open milestones by due date (with a repository; with a
+ * board only, the milestones of the issues in flight), then "No milestone". Each row says how
+ * many of its issues are in flight. Left out while nothing in flight has a milestone and none
+ * is picked.
+ * @param {object} t The theme.
+ * @param {object} model The workspace's model.
+ * @param {object[]} items Every issue in flight.
+ * @param {object} options The card's options.
+ * @returns {object | null} The dropdown.
+ */
+function milestoneFilter(t, model, items, options) {
+  const picked = options.milestone ?? null;
+  const inFlight = (title) => items.filter((item) => item.milestone === title).length;
+  const words = (count) => (count ? `${count} in flight` : "none in flight");
+  let rows;
+  if (model.milestones) {
+    rows = milestoneRows(t, model.milestones, (milestone) => words(inFlight(milestone.title)));
+  } else {
+    const titles = [...new Set(items.map((item) => item.milestone).filter(Boolean))];
+    if (picked && !titles.includes(picked)) titles.push(picked);
+    titles.sort((first, second) => first.localeCompare(second, undefined, { numeric: true }));
+    rows = [
+      ...(titles.length ? [{ heading: "Milestones in flight" }] : []),
+      ...titles.map((title) => ({ key: `ms:${title}`, title, right: words(inFlight(title)) })),
+    ];
+  }
+  if (!rows.length && picked === null) return null;
+  return MilestoneMenu("if-milestone", {
+    open: options.menuOpen,
+    label: picked === null ? "All milestones" : picked === "" ? "No milestone" : picked,
+    rows: [
+      { key: "all", title: "All milestones", right: words(items.length) },
+      ...rows,
+      { key: "none", title: "No milestone", right: words(inFlight(null)) },
+    ],
+    picked: picked === null ? "all" : picked === "" ? "none" : `ms:${picked}`,
+    tooltip: "Show the issues in flight in one milestone",
+    anchor: "top_right",
+    onToggle: (cx) => options.onToggleMenu(cx),
+    onOutside: (cx) => options.onCloseMenu(cx),
+    onPick: (key, cx) => options.onPick(key === "all" ? null : key === "none" ? "" : key.slice(3), cx),
+  });
+}
+
+/**
  * The in-flight card. `expanded` is the set of status groups that show every row; the rest show
- * the first five. `pinButton(item)` draws the row's pin control. While the workspace has a next
- * milestone, the header has a switch "All milestones | v2.4", the shown one filled.
+ * the first five. `pinButton(item)` draws the row's pin control. The header has the card's own
+ * milestone filter, a dropdown: All milestones, one milestone, or No milestone.
  * @param {object} config The workspace's settings.
  * @param {object} model The workspace's model.
- * @param {object} options `{ milestoneOnly, onToggleMilestone(cx), expanded, onToggleGroup(key, cx), pinButton }`.
+ * @param {object} options `{ milestone, menuOpen, onToggleMenu(cx), onCloseMenu(cx), onPick(milestone, cx),
+ *   expanded, onToggleGroup(key, cx), pinButton }`. `milestone`: null for All milestones, "" for
+ *   No milestone, else a milestone's title.
  * @returns {object} The card.
  */
 export function InFlight(config, model, options) {
   const t = theme();
-  const nextMilestone = model.milestone?.title;
-  // A remembered "Only <milestone>" waits while the workspace has no next milestone.
-  const milestoneOnly = options.milestoneOnly && Boolean(nextMilestone);
-  const items = (model.inFlight ?? []).filter((item) => !milestoneOnly || item.milestone === nextMilestone);
+  const all = model.inFlight ?? [];
+  const picked = options.milestone ?? null;
+  const items = picked === null ? all : all.filter((item) => (item.milestone ?? "") === picked);
   const warning = warningColor(t);
-  const extras = nextMilestone
-    ? [
-        Segmented(
-          "if-milestone",
-          [
-            { value: "all", label: "All milestones", tooltip: "Every issue in flight" },
-            { value: "next", label: nextMilestone, tooltip: `Only the issues in ${nextMilestone}, the next milestone` },
-          ],
-          milestoneOnly ? "next" : "all",
-          (_value, cx) => options.onToggleMilestone(cx),
-        ),
-      ]
-    : [];
+  const filter = milestoneFilter(t, model, all, options);
+  const extras = filter ? [filter] : [];
   // The longest in their status first.
   const order = (first, second) => (first.since ?? 0) - (second.since ?? 0);
   const statuses = [...config.inFlight.statuses, null];
@@ -81,7 +117,17 @@ export function InFlight(config, model, options) {
   const now = Date.now();
   const body = v_flex()
     .gap(2)
-    .when(!groups.length, (el) => el.child(Note("Nothing in flight.")))
+    .when(!groups.length, (el) =>
+      el.child(
+        Note(
+          picked === null
+            ? "Nothing in flight."
+            : picked === ""
+              ? "Nothing in flight without a milestone."
+              : `Nothing in flight in ${picked}.`,
+        ),
+      ),
+    )
     .children(
       groups.flatMap((group) => {
         const key = group.status ?? "Other";
