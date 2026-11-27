@@ -1,9 +1,15 @@
 // Team in flight: the board's open issues in the in-flight statuses, grouped in board order,
-// the longest in their status first.
+// the longest in their status first, narrowed by the card's filter (the next milestone by
+// default). The filter is written in the Board's syntax and read here, on the loaded items:
+// `milestone:@next`, `milestone:v2.4,v2.5`, `no:milestone`, `assignee:lena-k,tobi-s`,
+// `no:assignee`, each optionally negated with "-". Any other term is kept and ignored.
 
 import { div } from "gpui-kit";
 import { v_flex } from "gpui-base";
 import { theme } from "herdr";
+import { boardTerm } from "./board-terms.js";
+import { IN_FLIGHT_DEFAULT } from "./config.js";
+import { tokenize } from "./search-terms.js";
 import {
   Card,
   itemKey,
@@ -17,9 +23,125 @@ import {
   statusColor,
   warningColor,
 } from "./ui.js";
-import { MilestoneMenu, milestoneRows } from "./spotlight.js";
 
 const GROUP_LIMIT = 5;
+
+export { IN_FLIGHT_DEFAULT };
+
+/** The milestone term that stands for the next milestone, whichever that is today. */
+const NEXT = "@next";
+
+/**
+ * Whether one term of the filter is about the milestone: `milestone:…` or `no:milestone`.
+ * @param {{ field: string | null, values: string[] }} term The term, read.
+ * @returns {boolean}
+ */
+const milestoneTerm = (term) => term.field === "milestone" || (term.field === "no" && term.values.includes("milestone"));
+
+/**
+ * Whether an issue in flight passes the filter. Every term must hold; a term it doesn't know
+ * holds. `milestone:@next` with no next milestone known (no repository, or none due) holds for
+ * every issue.
+ * @param {object} item The issue in flight.
+ * @param {string} query The filter.
+ * @param {string | null} next The next milestone's title, or null when none is known.
+ * @returns {boolean}
+ */
+export function inFlightMatches(item, query, next) {
+  return tokenize(query)
+    .map(boardTerm)
+    .every((term) => {
+      let hit;
+      if (term.field === "milestone") {
+        hit = term.values.some((value) => (value === NEXT ? next === null || item.milestone === next : item.milestone === value));
+      } else if (term.field === "assignee") {
+        hit = term.values.some((login) => item.assignees.includes(login));
+      } else if (term.field === "no") {
+        hit = term.values.every((what) =>
+          what === "milestone" ? !item.milestone : what === "assignee" ? !item.assignees.length : true,
+        );
+      } else {
+        return true;
+      }
+      return term.negated ? !hit : hit;
+    });
+}
+
+/**
+ * The filter in words, for the card's header, its filter icon and Settings › Card filters:
+ * "next milestone · v2.4", "milestone v2.5 · assigned to lena-k", "every milestone".
+ * @param {string} query The filter.
+ * @param {string | null} [next] The next milestone's title, null when none is known, or left out
+ *   where the milestones aren't loaded (Settings): then just "next milestone".
+ * @returns {string}
+ */
+export function inFlightWords(query, next) {
+  const words = [];
+  let milestone = false;
+  for (const term of tokenize(query).map(boardTerm)) {
+    const not = term.negated ? "not " : "";
+    if (term.field === "milestone") {
+      milestone = true;
+      for (const value of term.values) {
+        if (value !== NEXT) words.push(`${not}milestone ${value}`);
+        else if (next === undefined) words.push(`${not}next milestone`);
+        else words.push(`${not}next milestone · ${next ?? "none known, so every milestone"}`);
+      }
+    } else if (term.field === "assignee") {
+      words.push(`${not}assigned to ${term.values.join(", ")}`);
+    } else if (term.field === "no") {
+      if (term.values.includes("milestone")) {
+        milestone = true;
+        words.push(term.negated ? "with a milestone" : "no milestone");
+      }
+      if (term.values.includes("assignee")) words.push(term.negated ? "assigned" : "unassigned");
+    } else if (term.token) {
+      words.push(term.token);
+    }
+  }
+  if (!milestone) words.unshift("every milestone");
+  return words.join(" · ");
+}
+
+/**
+ * The filter with its milestone terms replaced by one, or none for every milestone.
+ * @param {string} query The filter.
+ * @param {string | null} term Such as `milestone:@next`, `milestone:"v2.4"` or `no:milestone`.
+ * @returns {string}
+ */
+export function withMilestone(query, term) {
+  const kept = tokenize(query).filter((token) => !milestoneTerm(boardTerm(token)));
+  return [...(term ? [term] : []), ...kept].join(" ");
+}
+
+/**
+ * The filter with one person turned on or off in its `assignee:` term (one term, its values
+ * split by commas, so the people are any of them).
+ * @param {string} query The filter.
+ * @param {string} login The person.
+ * @returns {string}
+ */
+export function withAssigneeToggled(query, login) {
+  const tokens = tokenize(query);
+  const at = tokens.findIndex((token) => {
+    const term = boardTerm(token);
+    return term.field === "assignee" && !term.negated;
+  });
+  const people = at < 0 ? [] : boardTerm(tokens[at]).values;
+  const next = people.includes(login) ? people.filter((each) => each !== login) : [...people, login];
+  const term = next.length ? `assignee:${next.join(",")}` : null;
+  if (at < 0) return term ? [...tokens, term].join(" ") : query.trim();
+  if (term) tokens.splice(at, 1, term);
+  else tokens.splice(at, 1);
+  return tokens.join(" ");
+}
+
+/**
+ * A milestone as a filter term, quoted when its title has a space or a comma.
+ * @param {string} title The milestone's title.
+ * @returns {string}
+ */
+export const milestoneTermOf = (title) => `milestone:${/[\s,]/.test(title) ? `"${title}"` : title}`;
 
 /**
  * The chip for a linked PR: its review state in the pane header's colors.
@@ -39,70 +161,23 @@ export function prChip(t, item, pr, prefix = "if") {
 }
 
 /**
- * Team in flight's milestone filter: a dropdown like the Milestone card's, on its own. "All
- * milestones" (the default), then the open milestones by due date (with a repository; with a
- * board only, the milestones of the issues in flight), then "No milestone". Each row says how
- * many of its issues are in flight. Left out while nothing in flight has a milestone and none
- * is picked.
- * @param {object} t The theme.
- * @param {object} model The workspace's model.
- * @param {object[]} items Every issue in flight.
- * @param {object} options The card's options.
- * @returns {object | null} The dropdown.
- */
-function milestoneFilter(t, model, items, options) {
-  const picked = options.milestone ?? null;
-  const inFlight = (title) => items.filter((item) => item.milestone === title).length;
-  const words = (count) => (count ? `${count} in flight` : "none in flight");
-  let rows;
-  if (model.milestones) {
-    rows = milestoneRows(t, model.milestones, (milestone) => words(inFlight(milestone.title)));
-  } else {
-    const titles = [...new Set(items.map((item) => item.milestone).filter(Boolean))];
-    if (picked && !titles.includes(picked)) titles.push(picked);
-    titles.sort((first, second) => first.localeCompare(second, undefined, { numeric: true }));
-    rows = [
-      ...(titles.length ? [{ heading: "Milestones in flight" }] : []),
-      ...titles.map((title) => ({ key: `ms:${title}`, title, right: words(inFlight(title)) })),
-    ];
-  }
-  if (!rows.length && picked === null) return null;
-  return MilestoneMenu("if-milestone", {
-    open: options.menuOpen,
-    label: picked === null ? "All milestones" : picked === "" ? "No milestone" : picked,
-    rows: [
-      { key: "all", title: "All milestones", right: words(items.length) },
-      ...rows,
-      { key: "none", title: "No milestone", right: words(inFlight(null)) },
-    ],
-    picked: picked === null ? "all" : picked === "" ? "none" : `ms:${picked}`,
-    tooltip: "Show the issues in flight in one milestone",
-    anchor: "top_right",
-    onToggle: (cx) => options.onToggleMenu(cx),
-    onOutside: (cx) => options.onCloseMenu(cx),
-    onPick: (key, cx) => options.onPick(key === "all" ? null : key === "none" ? "" : key.slice(3), cx),
-  });
-}
-
-/**
  * The in-flight card. `expanded` is the set of status groups that show every row; the rest show
- * the first five. `pinButton(item)` draws the row's pin control. The header has the card's own
- * milestone filter, a dropdown: All milestones, one milestone, or No milestone.
+ * the first five. `pinButton(item)` draws the row's pin control. The header says the filter in
+ * words and ends in its filter icon, which opens the filter dialog.
  * @param {object} config The workspace's settings.
  * @param {object} model The workspace's model.
- * @param {object} options `{ milestone, menuOpen, onToggleMenu(cx), onCloseMenu(cx), onPick(milestone, cx),
- *   expanded, onToggleGroup(key, cx), pinButton }`. `milestone`: null for All milestones, "" for
- *   No milestone, else a milestone's title.
+ * @param {{ query: string, filter: object | null, expanded: Set<string>,
+ *   onToggleGroup(key: string, cx: object): void, pinButton(item: object): object }} options
+ *   `query`: the saved filter; `filter`: its icon (`FilterIcon`).
  * @returns {object} The card.
  */
 export function InFlight(config, model, options) {
   const t = theme();
   const all = model.inFlight ?? [];
-  const picked = options.milestone ?? null;
-  const items = picked === null ? all : all.filter((item) => (item.milestone ?? "") === picked);
+  const next = model.milestones?.next ?? null;
+  const items = all.filter((item) => inFlightMatches(item, options.query, next));
   const warning = warningColor(t);
-  const filter = milestoneFilter(t, model, all, options);
-  const extras = filter ? [filter] : [];
+  const extras = options.filter ? [options.filter] : [];
   // The longest in their status first.
   const order = (first, second) => (first.since ?? 0) - (second.since ?? 0);
   const statuses = [...config.inFlight.statuses, null];
@@ -119,13 +194,7 @@ export function InFlight(config, model, options) {
     .gap(2)
     .when(!groups.length, (el) =>
       el.child(
-        Note(
-          picked === null
-            ? "Nothing in flight."
-            : picked === ""
-              ? "Nothing in flight without a milestone."
-              : `Nothing in flight in ${picked}.`,
-        ),
+        Note(items.length === all.length ? "Nothing in flight." : `Nothing in flight matches: ${inFlightWords(options.query, next)}.`),
       ),
     )
     .children(
@@ -171,5 +240,5 @@ export function InFlight(config, model, options) {
           .child(Note(`Showing ${model.inFlight.length} of ${model.inFlightTotal}.`)),
       ),
     );
-  return Card("in-flight", "Team in flight", extras, body);
+  return Card("in-flight", "Team in flight", extras, body, inFlightWords(options.query, next));
 }

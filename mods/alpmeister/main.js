@@ -64,9 +64,10 @@ import {
 import { loadHerds, saveTabLink, sessionsDir } from "./herds-data.js";
 import { Herds } from "./herds-view.js";
 import { HerdsCanvas } from "./herds-canvas.js";
-import { InFlight } from "./in-flight.js";
+import { InFlight, inFlightMatches, inFlightWords, milestoneTermOf, withAssigneeToggled, withMilestone } from "./in-flight.js";
+import { boardTerm } from "./board-terms.js";
 import { MyIssues, MyPrs, Reviews, filterChips, narrowAccount } from "./my-day.js";
-import { summaryWords, toggleTerm } from "./search-terms.js";
+import { summaryWords, toggleTerm, tokenize } from "./search-terms.js";
 import { saveSettings } from "./settings-data.js";
 import { MilestoneCard } from "./spotlight.js";
 import { Tiles } from "./project.js";
@@ -105,14 +106,8 @@ const TAB_KEY = "alpmeister.tab";
 /** Set after the settings file is saved, so every other copy fetches with the new settings. */
 const SETTINGS_STAMP_KEY = "alp.settingsStamp";
 const WORKSPACE_KEY = "alpmeister.workspace";
-/** Team in flight's old "Only the next milestone" switch (packages 2 and 16), as a JSON object of workspace name to true; read once to migrate. */
-const MILESTONE_ONLY_KEY = "alpmeister.milestoneOnly";
-/** Team in flight's own milestone filter, as a JSON object of workspace name to a milestone's title, or "" for No milestone; All milestones when absent. */
-const IN_FLIGHT_MILESTONE_KEY = "alpmeister.inFlightMilestone";
 /** The Milestone card's pick, as a JSON object of workspace name to a milestone's title, or "" for No milestone; Next when absent. */
 const MILESTONE_PICK_KEY = "alpmeister.milestonePick";
-/** A migrated "Only the next milestone" switch, until the workspace's next milestone is known. */
-const NEXT_MILESTONE = "\u0001next";
 /** The Repos card's "With open work" switch on All repos: "true" when it is on. */
 const REPOS_ACTIVE_ONLY_KEY = "alpmeister.reposActiveOnly";
 /** The Dashboard switch's value for your GitHub as a whole. */
@@ -142,6 +137,7 @@ const CARD_NAMES = {
   bugs: "Open bugs",
   triage: "Triage bugs",
   customer: "Customer issues",
+  inFlight: "Team in flight",
 };
 
 /**
@@ -260,33 +256,6 @@ function rememberChoices(key, choices) {
 }
 
 /**
- * Team in flight's milestone filter per workspace, as remembered. The first time, the old
- * "Only the next milestone" switch is carried over: on becomes the next milestone (resolved once
- * the workspace's milestones are loaded), off is All milestones.
- * @returns {Record<string, string>} Workspace name to a milestone's title, "" or `NEXT_MILESTONE`.
- */
-function rememberedInFlightMilestones() {
-  const saved = rememberedChoices(IN_FLIGHT_MILESTONE_KEY);
-  if (saved) return saved;
-  try {
-    const old = localStorage.getItem(MILESTONE_ONLY_KEY);
-    if (old == null) return {};
-    const raw = JSON.parse(old) ?? {};
-    const migrated = Object.fromEntries(
-      Object.keys(raw)
-        .filter((name) => raw[name] === true)
-        .map((name) => [name, NEXT_MILESTONE]),
-    );
-    rememberChoices(IN_FLIGHT_MILESTONE_KEY, migrated);
-    localStorage.removeItem(MILESTONE_ONLY_KEY);
-    return migrated;
-  } catch (error) {
-    console.log(`alpmeister: old milestone switch not carried over: ${error}`);
-    return {};
-  }
-}
-
-/**
  * Whether a switch stored as "true" in this copy's storage is on.
  * @param {string} key The storage key.
  * @returns {boolean} True when it is; false when nothing is remembered.
@@ -332,7 +301,6 @@ export default class Alpmeister extends View {
     // Per workspace: the Milestone card's pick (absent: Next) and Team in flight's own milestone
     // filter (absent: All milestones). A title, or "" for No milestone.
     this.milestonePick = this.demo ? {} : (rememberedChoices(MILESTONE_PICK_KEY) ?? {});
-    this.inFlightMilestone = this.demo ? {} : rememberedInFlightMilestones();
     // Per workspace: the open issues without a milestone, fetched when the card shows No milestone:
     // `{ parts, fetchedFor }`, `{ loading: true }` or `{ error }`.
     this.noMilestone = {};
@@ -727,8 +695,28 @@ export default class Alpmeister extends View {
    * @returns {string}
    */
   filterWords(id, query) {
-    if (this.filterTarget(id).key !== "customer") return summaryWords(query);
+    const { ws, key } = this.filterTarget(id);
+    if (key === "inFlight") return inFlightWords(query, this.inFlightPart(ws).next);
+    if (key !== "customer") return summaryWords(query);
     return query ? `labels with ${query}` : "any label";
+  }
+
+  /**
+   * A workspace's issues in flight and its next milestone, from the loaded data (the made-up
+   * data in a demo copy that has loaded nothing), for Team in flight's filter.
+   * @param {object | null} ws The workspace.
+   * @returns {{ items: object[], next: string | null, milestones: string[] }} `milestones`: the
+   *   open milestones by due date, else the ones the issues in flight are in.
+   */
+  inFlightPart(ws) {
+    const base = this.model ?? (this.demo && this.config ? demoModel(this.config) : null);
+    const wsModel = ws ? base?.workspaces?.[ws.name] : null;
+    const items = wsModel?.inFlight ?? [];
+    const listed = wsModel?.milestones?.list?.map((milestone) => milestone.title);
+    const inItems = [...new Set(items.map((item) => item.milestone).filter(Boolean))].sort((first, second) =>
+      first.localeCompare(second, undefined, { numeric: true }),
+    );
+    return { items, next: wsModel?.milestones?.next ?? null, milestones: listed ?? inItems };
   }
 
   /**
@@ -737,8 +725,12 @@ export default class Alpmeister extends View {
    * @returns {number | null} The count, or null before the card is loaded.
    */
   cardCount(id) {
-    const { ws, key } = this.filterTarget(id);
+    const { ws, key, saved } = this.filterTarget(id);
     if (!ws) return this.model?.account?.counts?.[CARD_LISTS[key]] ?? null;
+    if (key === "inFlight") {
+      const { items, next } = this.inFlightPart(ws);
+      return items.filter((item) => inFlightMatches(item, saved, next)).length;
+    }
     return workspaceCardCount(this.model?.workspaces?.[ws.name], key);
   }
 
@@ -755,6 +747,7 @@ export default class Alpmeister extends View {
     const prefix = id.replace(/[^\w-]/g, "_");
     // Settings lists every workspace's cards, so its dialog names the workspace too.
     const where = ws && (this.inSettings || this.tab === TABS.settings) ? ` · ${ws.name}` : "";
+    if (key === "inFlight") return this.inFlightSpec(id, ws, draft, prefix, where);
     const customer = key === "customer";
     const chips = customer ? [] : filterChips(key, draft.query);
     const own = chips.filter((entry) => !entry.term.startsWith("label:"));
@@ -794,6 +787,89 @@ export default class Alpmeister extends View {
   }
 
   /**
+   * The filter dialog for Team in flight: Milestone chips (Next milestone, each open milestone,
+   * No milestone, Any milestone; one at a time) and People chips (whoever has an issue in
+   * flight, any of them, and Unassigned), over the filter in the Board's syntax.
+   * @param {string} id The filter's id.
+   * @param {object | null} ws The workspace.
+   * @param {{ query: string }} draft The dialog's edit.
+   * @param {string} prefix Keeps the chips' ids unique.
+   * @param {string} where " · <workspace>" in Settings, else "".
+   * @returns {import("./filter-dialog.js").DialogSpec}
+   */
+  inFlightSpec(id, ws, draft, prefix, where) {
+    const { items, next, milestones } = this.inFlightPart(ws);
+    const terms = tokenize(draft.query).map(boardTerm);
+    const milestoneValues = terms.filter((term) => term.field === "milestone" && !term.negated).flatMap((term) => term.values);
+    const none = terms.some((term) => term.field === "no" && !term.negated && term.values.includes("milestone"));
+    const anyMilestone = !milestoneValues.length && !none && !terms.some((term) => term.field === "milestone");
+    const people = [...new Set(items.flatMap((item) => item.assignees))].sort();
+    const assignees = terms.filter((term) => term.field === "assignee" && !term.negated).flatMap((term) => term.values);
+    const unassigned = terms.some((term) => term.field === "no" && !term.negated && term.values.includes("assignee"));
+    const milestoneChip = (key, label, on, term, tooltip) => ({
+      id: `${prefix}-ms-${key}`,
+      label,
+      on,
+      tooltip,
+      press: (edit) => ({ ...edit, query: withMilestone(edit.query, on ? null : term) }),
+    });
+    return {
+      title: `Filter: ${CARD_NAMES.inFlight}${where}`,
+      groups: [
+        {
+          label: "Milestone",
+          chips: [
+            milestoneChip(
+              "next",
+              next ? `Next milestone · ${next}` : "Next milestone",
+              milestoneValues.includes("@next"),
+              "milestone:@next",
+              "milestone:@next: the open milestone due soonest, whichever that is",
+            ),
+            ...milestones.map((title, index) =>
+              milestoneChip(`m${index}`, title, milestoneValues.includes(title), milestoneTermOf(title), milestoneTermOf(title)),
+            ),
+            milestoneChip("none", "No milestone", none, "no:milestone", "no:milestone"),
+            {
+              id: `${prefix}-ms-any`,
+              label: "Any milestone",
+              on: anyMilestone,
+              tooltip: "No milestone term",
+              press: (edit) => ({ ...edit, query: withMilestone(edit.query, null) }),
+            },
+          ],
+        },
+        {
+          label: "People",
+          chips: [
+            ...people.map((login, index) => ({
+              id: `${prefix}-who-${index}`,
+              label: login,
+              on: assignees.includes(login),
+              tooltip: `assignee:${login}`,
+              press: (edit) => ({ ...edit, query: withAssigneeToggled(edit.query, login) }),
+            })),
+            {
+              id: `${prefix}-who-none`,
+              label: "Unassigned",
+              on: unassigned,
+              tooltip: "no:assignee",
+              press: (edit) => ({ ...edit, query: toggleTerm(edit.query, "no:assignee") }),
+            },
+          ],
+        },
+      ],
+      inputLabel: "Filter",
+      placeholder: "Such as milestone:@next assignee:lena-k",
+      hint: "In the Board's syntax: milestone:, no:milestone, assignee:, no:assignee. The chips write it.",
+      noun: ["issue", "issues"],
+      now: this.cardCount(id),
+      saveLabel: "Save for this card",
+      demo: this.demo,
+    };
+  }
+
+  /**
    * Counts what a card would show with a search, for the filter dialog, without touching the
    * card. In the demo it counts the made-up items. A copy that has loaded nothing (the Settings
    * tab) counts with GitHub's search alone.
@@ -807,6 +883,10 @@ export default class Alpmeister extends View {
     const config = this.config;
     if (!config) throw new Error("The settings aren't read yet.");
     if (id.startsWith("ws:") && !ws) throw new Error("This workspace isn't in the settings file yet.");
+    if (key === "inFlight") {
+      const { items, next } = this.inFlightPart(ws);
+      return items.filter((item) => inFlightMatches(item, query, next)).length;
+    }
     const base = this.model ?? (this.demo ? demoModel(config) : null);
     if (!ws) {
       const picked = Array.isArray(config.account.repos) ? config.account.repos : [];
@@ -830,7 +910,8 @@ export default class Alpmeister extends View {
    */
   async searchCard(id, query) {
     const { ws, key } = this.filterTarget(id);
-    if (!this.config || !this.model) return;
+    // Team in flight filters what is loaded already, as it draws.
+    if (!this.config || !this.model || key === "inFlight") return;
     if (!ws) {
       const account = this.model.account;
       if (!account) return;
@@ -1143,8 +1224,7 @@ export default class Alpmeister extends View {
   }
 
   /**
-   * Opens or closes one of the milestone dropdowns (the Milestone card's, "ms-card", or Team in
-   * flight's, "ms-if"). A press on the button that just closed it (outside the list) leaves it shut.
+   * Opens or closes the Milestone card's milestone dropdown ("ms-card"). A press on the button that just closed it (outside the list) leaves it shut.
    * @param {string} key The dropdown.
    * @param {object} cx The context.
    */
@@ -1182,28 +1262,11 @@ export default class Alpmeister extends View {
   }
 
   /**
-   * Shows one milestone in a workspace's Team in flight, or all (null), or the issues without
-   * one (""), and remembers it for that workspace.
-   * @param {string} name The workspace's name.
-   * @param {string | null} pick The milestone's title, "" or null.
-   * @param {object} cx The context.
-   */
-  pickInFlightMilestone(name, pick, cx) {
-    this.pickerOpen = null;
-    if (pick === null) delete this.inFlightMilestone[name];
-    else this.inFlightMilestone[name] = pick;
-    if (!this.demo) rememberChoices(IN_FLIGHT_MILESTONE_KEY, this.inFlightMilestone);
-    cx.notify();
-  }
-
-  /**
-   * The Milestone card's pick and Team in flight's filter for a workspace, as they apply to its
-   * loaded milestones: a picked milestone that has closed goes back to Next (and All), and a
-   * carried-over "Only the next milestone" becomes the next one. Both are remembered again
-   * when they change.
+   * The Milestone card's pick for a workspace, as it applies to its loaded milestones: a picked
+   * milestone that has closed goes back to Next, remembered again.
    * @param {object} ws The workspace.
    * @param {object} wsModel The workspace's model.
-   * @returns {{ pick: string | null, inFlight: string | null }}
+   * @returns {{ pick: string | null }}
    */
   milestoneChoices(ws, wsModel) {
     const data = wsModel.milestones;
@@ -1214,19 +1277,7 @@ export default class Alpmeister extends View {
       if (!this.demo) rememberChoices(MILESTONE_PICK_KEY, this.milestonePick);
       pick = null;
     }
-    let inFlight = this.inFlightMilestone[ws.name] ?? null;
-    // undefined: no change. A carried-over switch waits for the repository's milestones; a
-    // workspace without a repository had no next milestone, so it showed all.
-    let changed;
-    if (inFlight === NEXT_MILESTONE && (data || !ws.repo)) changed = data?.next ?? null;
-    else if (inFlight && inFlight !== NEXT_MILESTONE && !open(inFlight)) changed = null;
-    if (changed !== undefined) {
-      if (changed === null) delete this.inFlightMilestone[ws.name];
-      else this.inFlightMilestone[ws.name] = changed;
-      if (!this.demo) rememberChoices(IN_FLIGHT_MILESTONE_KEY, this.inFlightMilestone);
-      inFlight = changed;
-    }
-    return { pick, inFlight: inFlight === NEXT_MILESTONE ? null : inFlight };
+    return { pick };
   }
 
   /**
@@ -1741,11 +1792,8 @@ export default class Alpmeister extends View {
       : null;
     const inFlight = ws.board
       ? InFlight(ws, wsModel, {
-          milestone: choices.inFlight,
-          menuOpen: this.pickerOpen === "ms-if",
-          onToggleMenu: (cx) => this.toggleMenu("ms-if", cx),
-          onCloseMenu: (cx) => this.closeMenu("ms-if", cx),
-          onPick: (pick, cx) => this.pickInFlightMilestone(ws.name, pick, cx),
+          query: workspaceFilter(ws, "inFlight"),
+          filter: this.cardFilter(wsFilterId(ws.name, "inFlight")),
           expanded: this.expandedGroups,
           onToggleGroup,
           pinButton: this.pinFor("if"),

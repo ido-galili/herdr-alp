@@ -242,22 +242,32 @@ export function withCardFilter(raw, key, query) {
 }
 
 /**
- * The searches a workspace's Overview cards filter by, with their defaults: Open bugs and Triage
- * bugs, and the part of a label's name Customer issues counts.
+ * Team in flight's default filter, in the Board's syntax: the next milestone (the open one due
+ * soonest), whichever that is today.
  */
-export const WORKSPACE_FILTER_DEFAULTS = { ...WORKSPACE_QUERY_DEFAULTS, customer: "customer" };
+export const IN_FLIGHT_DEFAULT = "milestone:@next";
 
-/** Where a workspace keeps each card's search: `bugs.query`, `queries.triage`, `customer.labelMatch`. */
+/**
+ * The searches a workspace's Overview cards filter by, with their defaults: Open bugs and Triage
+ * bugs, the part of a label's name Customer issues counts, and Team in flight's filter.
+ */
+export const WORKSPACE_FILTER_DEFAULTS = { ...WORKSPACE_QUERY_DEFAULTS, customer: "customer", inFlight: IN_FLIGHT_DEFAULT };
+
+/**
+ * Where a workspace keeps each card's search: `bugs.query`, `queries.triage`,
+ * `customer.labelMatch`, `inFlight.filter`.
+ */
 const WORKSPACE_FILTER_PATHS = {
   bugs: ["bugs", "query"],
   triage: ["queries", "triage"],
   customer: ["customer", "labelMatch"],
+  inFlight: ["inFlight", "filter"],
 };
 
 /**
  * A workspace card's search, as the settings hold it.
  * @param {object} ws The normalized workspace.
- * @param {"bugs" | "triage" | "customer"} key The card.
+ * @param {"bugs" | "triage" | "customer" | "inFlight"} key The card.
  * @returns {string} The search, or the default when none is set.
  */
 export function workspaceFilter(ws, key) {
@@ -268,7 +278,7 @@ export function workspaceFilter(ws, key) {
 /**
  * A copy of a normalized workspace with one card's search changed, to fetch that card with.
  * @param {object} ws The normalized workspace.
- * @param {"bugs" | "triage" | "customer"} key The card.
+ * @param {"bugs" | "triage" | "customer" | "inFlight"} key The card.
  * @param {string} value The search.
  * @returns {object} The copy; `ws` is not changed.
  */
@@ -280,11 +290,11 @@ export function withWorkspaceSearch(ws, key, value) {
 /**
  * The settings file's contents with one workspace card's search saved, or removed so the card
  * goes back to its default: the same keys Settings writes (`bugs.query`, `queries.triage`,
- * `customer.labelMatch`). Everything else stays as the file had it. A file in the
+ * `customer.labelMatch`, `inFlight.filter`). Everything else stays as the file had it. A file in the
  * one-repo shape keeps its one workspace's keys at its top level.
  * @param {object} raw The parsed file.
  * @param {number} index The workspace's place in the file's `workspaces`.
- * @param {"bugs" | "triage" | "customer"} key The card.
+ * @param {"bugs" | "triage" | "customer" | "inFlight"} key The card.
  * @param {string | null} value The search to save, or null to remove it.
  * @returns {object} A new object to write; `raw` is not changed.
  * @throws {Error} When the file has no workspace at that place.

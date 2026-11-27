@@ -137,15 +137,18 @@ the Overview starts on all your repositories, with a card that offers to add a w
     board no tiles and no Milestone card. On a narrow tab every card stacks, in the same order.
     The Milestone card shows one milestone, picked in its header ("v2.4 · next ▾": Next, which moves on
     by itself, any open milestone by due date with overdue ones in red, or No milestone). It
-    shows two bars: Progress (the share closed, orange when behind schedule, with today's tick
-    on the time from the start to the due date, and the due date and days left over its right
+    shows two bars: Progress (the share closed, orange at none closed blending to green at
+    all, with today's tick on the time from the start to the due date, and the due date and
+    days left over its right
     end) and By status (the board statuses, a chip each). Under them, Issues (the open issues
     with a priority, a prioritizing label or a feature type) and those on hold. A milestone
     picked by hand outlines the card and offers "Back to next"; each workspace keeps its pick,
     and one that closes goes back to Next. The GitHub mark opens the milestone (or the open
     issues without one) on GitHub. With a board: the issues in flight, by status, the
-    longest in their status first, with their own milestone dropdown (All milestones, one
-    milestone, or No milestone), which each workspace keeps too.
+    longest in their status first, narrowed by the card's filter (its filter icon opens the
+    same dialog as the other cards): the next milestone by default, which moves on by itself
+    when that milestone closes, or one milestone, no milestone or any, and who they're assigned
+    to. The header says it in words ("next milestone · v2.4"); each workspace keeps its own.
 - **Board:** a workspace's board items, a column per status, with each card's assignee avatars.
   The filter in words on the header ("Filter: current iteration · 5 columns") opens the same
   filter dialog: chips for Type, Columns and People, and the board filter in the board's own

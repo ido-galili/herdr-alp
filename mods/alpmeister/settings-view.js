@@ -13,12 +13,14 @@ import {
   DEFAULT_ISSUE_PROMPT,
   DEFAULT_PR_PROMPT,
   DEFAULT_QUERIES,
+  IN_FLIGHT_DEFAULT,
   WORKSPACE_QUERY_DEFAULTS,
   inScope,
   normalizeConfig,
   normalizeWorkspace,
   tildePath,
 } from "./config.js";
+import { inFlightWords } from "./in-flight.js";
 import { summaryWords } from "./search-terms.js";
 import { boardFields, discover, findClones, guessRoles, repoDetails, saveSettings } from "./settings-data.js";
 import { Chip, Note, TextButton, Toggle, statusColor, warningColor } from "./ui.js";
@@ -553,7 +555,8 @@ export class SettingsForm {
 
   /**
    * Every card's filter, as Card filters lists them: your three lists, then each workspace's
-   * Open bugs and Triage bugs (with a repository). Each row reads the draft.
+   * Open bugs and Triage bugs (with a repository) and Team in flight (with a board). Each row
+   * reads the draft.
    * @returns {{ id: string, key: string, workspace: string | null, group: string, groupKey: string,
    *   label: string, value: string, saved: string, fallback: string, path: (string | number)[] }[]}
    *   `workspace` is the workspace's name (null for your lists'), `saved` the file's value,
@@ -596,6 +599,23 @@ export class SettingsForm {
       });
       rows.push(row("bugs", "Open bugs", ws.bugs.query, before?.bugs?.query, ["bugs", "query"]));
       rows.push(row("triage", "Triage bugs", ws.queries.triage, before?.queries?.triage, ["queries", "triage"]));
+    });
+    // Team in flight, on every workspace with a board.
+    this.draft.workspaces.forEach((ws, index) => {
+      if (!ws.board) return;
+      const before = file.workspaces?.[index];
+      rows.push({
+        id: `stf-ws${index}-inFlight`,
+        key: "inFlight",
+        workspace: ws.name,
+        group: ws.name || "Unnamed",
+        groupKey: `ws${index}`,
+        label: "Team in flight",
+        value: ws.inFlight.filter ?? IN_FLIGHT_DEFAULT,
+        saved: before?.inFlight?.filter ?? IN_FLIGHT_DEFAULT,
+        fallback: IN_FLIGHT_DEFAULT,
+        path: ["workspaces", index, "inFlight", "filter"],
+      });
     });
     return rows;
   }
@@ -1493,6 +1513,8 @@ export class SettingsForm {
   filtersSection(t) {
     const rows = this.filterRows();
     const groups = [...new Set(rows.map((row) => row.groupKey))];
+    /** A row's filter in words; Team in flight's is in the Board's syntax. */
+    const wordsOf = (row) => (row.key === "inFlight" ? inFlightWords(row.value) : summaryWords(row.value));
     const line = (row) => {
       const unsaved = row.value !== row.saved;
       const color = unsaved ? warningColor(t) : row.value === row.fallback ? t.muted : t.accent;
@@ -1508,7 +1530,7 @@ export class SettingsForm {
             .truncate()
             .text_size(11.5)
             .text_color(color)
-            .child(unsaved ? `${summaryWords(row.value)} · not saved yet` : summaryWords(row.value)),
+            .child(unsaved ? `${wordsOf(row)} · not saved yet` : wordsOf(row)),
         )
         .child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(t.dim).child(row.value || "(empty)"))
         .child(
@@ -1531,8 +1553,8 @@ export class SettingsForm {
           return v_flex().gap(2).child(this.heading(t, members[0].group)).children(members.map(line));
         }),
       )
-      .when(!this.draft.workspaces.some((ws) => ws.repo), (el) =>
-        el.child(Note("A workspace with a repository adds its Open bugs and Triage bugs here.")),
+      .when(!this.draft.workspaces.some((ws) => ws.repo || ws.board), (el) =>
+        el.child(Note("A workspace with a repository adds its Open bugs and Triage bugs here; one with a board, its Team in flight.")),
       );
   }
 

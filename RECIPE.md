@@ -85,7 +85,7 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
     searches of your lists on the Overview (`queries.review`, `queries.mine`, `queries.myPrs`).
   - `workspaces`: each a `repo`, a project `board` (`owner`, `number`, `statusField`,
     `iterationField`, on a user or an organization), or both, with its own `statuses`,
-    `inFlight`, `mineHidden`, `queries.triage`, `bugs`,
+    `inFlight` (its `statuses`, `excludeTypes` and Team in flight's `filter`), `mineHidden`, `queries.triage`, `bugs`,
     `spotlight` (the Milestone card's issues), `customer`, `nightly` and `boardView`.
   - `files`: the Files editor's auto save (`autoSave`: `off`, `afterDelay` or `onFocusChange`;
     `autoSaveDelay` in ms, 200–60000, default 1000).
@@ -163,8 +163,8 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
       Next. The header ends in the GitHub mark (the milestone's page, or the open issues
       without a milestone). Then:
       - The progress band, two bars each with a small dim title over its left end. "Progress":
-        a usage-limits style bar of the share closed (`warning` when behind schedule), with
-        today's tick on the time from the start (the previous milestone's due date, else its
+        a usage-limits style bar of the share closed (its fill blends from `warning` at none
+        closed to `done` at all, by the share closed), with today's tick on the time from the start (the previous milestone's due date, else its
         creation) to the due date, and the due date and days left over its right end; its
         tooltip has the counts and dates. "By status": a strip of board-status segments with a
         chip per status (Open and Closed with no board).
@@ -176,8 +176,15 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
         are none or no board.
   - With a board, Team in flight (full width, between the Milestone row and your PRs and
     issues): the board's open issues in the configured statuses, grouped in
-    board order, the longest in their status first, 5 rows per group with "Show N more". Its own
-    milestone dropdown (All milestones, one milestone, or No milestone) is kept per workspace.
+    board order, the longest in their status first, 5 rows per group with "Show N more". Its
+    filter (`inFlight.filter`, the Board's syntax, default `milestone:@next`) narrows them on
+    what is loaded: `milestone:@next` (the open milestone due soonest; with none known, every
+    milestone), `milestone:v2.4,v2.5`, `no:milestone`, `assignee:lena-k,tobi-s`, `no:assignee`,
+    each negatable with "-"; other terms are kept and ignored. The header says it in words
+    ("next milestone · v2.4") and ends in the filter icon: the dialog's Milestone chips (Next
+    milestone, each open milestone, No milestone, Any milestone) and People chips (whoever has
+    an issue in flight, Unassigned). Settings › Card filters lists it for every workspace with
+    a board.
     Chips for assignee (or Unassigned), milestone, days in status and each linked PR's review
     state. An item from another repository than the workspace's names it in a chip.
   - **Board**: a workspace's board items that match its filter (`boardView.query`, the board's

@@ -210,8 +210,38 @@ function ListHeading(t, name, count, extras = []) {
 }
 
 /**
+ * A color's red, green and blue, from "#rgb", "#rrggbb" or "#rrggbbaa".
+ * @param {string} color The color.
+ * @returns {number[] | null} The three channels, 0–255, or null for a color it can't read.
+ */
+function channels(color) {
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.exec(color ?? "")?.[1];
+  if (!hex) return null;
+  const full = hex.length === 3 ? [...hex].map((digit) => digit + digit).join("") : hex.slice(0, 6);
+  return [0, 2, 4].map((at) => parseInt(full.slice(at, at + 2), 16));
+}
+
+/**
+ * The Progress bar's fill for a share closed: the theme's warning orange at none, blending to
+ * its green as more close, and the plain green at all of them. A theme color it can't read
+ * gives orange until all are closed.
+ * @param {object} t The theme.
+ * @param {number} fraction The share of issues closed, 0 to 1.
+ * @returns {string} The color.
+ */
+export function progressColor(t, fraction) {
+  if (fraction >= 1) return t.done;
+  const from = channels(warningColor(t));
+  const to = channels(t.done);
+  if (!from || !to) return warningColor(t);
+  const share = Math.max(0, fraction);
+  const mixed = from.map((value, index) => Math.round(value + (to[index] - value) * share));
+  return `#${mixed.map((value) => value.toString(16).padStart(2, "0")).join("")}`;
+}
+
+/**
  * The progress band: two bars, each with a small title over its left end. "Progress": the share
- * of issues closed (orange when behind schedule) with today's tick on the time from the start to
+ * of issues closed (its color from orange at none to green at all) with today's tick on the time from the start to
  * the due date, and the due date with the days left over its right end. "By status": the open and
  * closed issues by board status, with a chip per status under it. The numbers behind the first
  * bar are in its tooltip. "No milestone" has no due date or total: only its issues by status.
@@ -228,7 +258,7 @@ function ProgressBand(t, config, shown) {
   const behind = elapsed != null && fraction < elapsed && shown.closed < shown.total;
   // A milestone whose time starts later (after the one before it is due).
   const ahead = shown.start != null && shown.start > now;
-  const color = behind ? warningColor(t) : t.accent;
+  const color = progressColor(t, fraction);
   const due = shown.none ? null : dueWords(t, shown);
   const order = [
     ...config.statuses,
