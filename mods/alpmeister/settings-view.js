@@ -2,13 +2,14 @@
 // read from GitHub (your repositories, boards, a board's statuses and fields, a repository's
 // workflows) and from your disk (local clones). Edits stay in a draft until Save.
 //
-// A side list picks the page: You (GitHub, Local folders, Claude buttons, Card filters), then a
+// A side list picks the page: You (GitHub, Local folders, Claude buttons, Card filters, Files), then a
 // page per workspace. The save bar stays at the bottom, under the page, which scrolls.
 
 import { div } from "gpui-kit";
-import { h_flex, v_flex, Input, InputState } from "gpui-base";
+import { h_flex, v_flex, Input, InputState, NumberInput } from "gpui-base";
 import { pickFolder, theme } from "herdr";
 import {
+  AUTO_SAVE_DELAY_RANGE,
   DEFAULT_ISSUE_PROMPT,
   DEFAULT_PR_PROMPT,
   DEFAULT_QUERIES,
@@ -44,7 +45,8 @@ const NIGHTLY_EVENTS = ["schedule", "workflow_dispatch", "push"];
 
 /**
  * The text fields: which part of the settings each one edits. `account` fields edit the
- * account; `workspace` fields edit the workspace shown; `ui` fields are the form's own.
+ * account; `workspace` fields edit the workspace shown; `files` fields edit the Files section;
+ * `ui` fields are the form's own.
  */
 const FIELDS = {
   issuePrompt: {
@@ -119,6 +121,14 @@ const FIELDS = {
     get: (ws) => ws.nightly?.branch ?? "",
     set: (ws, value) => ws.nightly && (ws.nightly.branch = value),
   },
+  autoSaveDelay: {
+    scope: "files",
+    get: (files) => String(files.autoSaveDelay),
+    set: (files, value) => {
+      const delay = Number.parseInt(value, 10);
+      if (Number.isFinite(delay)) files.autoSaveDelay = delay;
+    },
+  },
   filter: { scope: "ui", placeholder: "Filter" },
 };
 
@@ -128,6 +138,14 @@ const ACCOUNT_PAGES = [
   { key: "folders", label: "Local folders" },
   { key: "claude", label: "Claude buttons" },
   { key: "filters", label: "Card filters" },
+  { key: "files", label: "Files" },
+];
+
+/** The Files editor's auto save choices, as the Files page offers them. */
+const AUTO_SAVE_CHOICES = [
+  { value: "off", label: "Off", tooltip: "Save with Ctrl+S or the Save button" },
+  { value: "afterDelay", label: "After a delay", tooltip: "Save a moment after you stop typing" },
+  { value: "onFocusChange", label: "When you leave the file", tooltip: "Save when you click away or switch files" },
 ];
 
 /** The chips a workspace card's filter offers in Card filters, by its search's key. */
@@ -196,6 +214,10 @@ export class SettingsForm {
       });
       this.inputs[key] = input;
     }
+    // The delay is a number field: it steps by 100 ms and clamps to the range on blur.
+    this.inputs.autoSaveDelay.set_step(100);
+    this.inputs.autoSaveDelay.set_min(AUTO_SAVE_DELAY_RANGE.min);
+    this.inputs.autoSaveDelay.set_max(AUTO_SAVE_DELAY_RANGE.max);
     // Card filters edits one card's search at a time, in this one field.
     this.filterInput = InputState.new({ placeholder: "A GitHub search, such as is:pr is:open" });
     this.filterInput.on("change", (_event, cx) => {
@@ -321,6 +343,7 @@ export class SettingsForm {
     for (const [key, field] of Object.entries(FIELDS)) {
       if (field.scope === "account") this.inputs[key].set_value(field.get(this.draft.account) ?? "");
       if (field.scope === "workspace") this.inputs[key].set_value(ws ? (field.get(ws) ?? "") : "");
+      if (field.scope === "files") this.inputs[key].set_value(field.get(this.draft.files) ?? "");
     }
   }
 
@@ -330,6 +353,7 @@ export class SettingsForm {
     if (!this.draft || field.scope === "ui") return;
     const value = this.inputs[key].value();
     if (field.scope === "account") field.set(this.draft.account, value);
+    if (field.scope === "files") field.set(this.draft.files, value);
     const ws = this.workspace();
     if (field.scope === "workspace" && ws) field.set(ws, value);
   }
@@ -773,7 +797,7 @@ export class SettingsForm {
   }
 
   /**
-   * The side list: You (GitHub, Local folders, Claude buttons, Card filters), then each workspace
+   * The side list: You (GitHub, Local folders, Claude buttons, Card filters, Files), then each workspace
    * and "+ Add workspace"; at its foot, Reload choices.
    * @param {object} t The theme.
    * @returns {object} The list.
@@ -829,6 +853,7 @@ export class SettingsForm {
     if (this.page === "folders") return [this.pageTitle(t, "Local folders"), this.foldersSection(t)];
     if (this.page === "claude") return [this.pageTitle(t, "Claude buttons"), this.claudeSection(t)];
     if (this.page === "filters") return [this.pageTitle(t, "Card filters"), this.filtersSection(t)];
+    if (this.page === "files") return [this.pageTitle(t, "Files"), this.filesSection(t)];
     return [
       this.pageTitle(t, "Your GitHub", [Chip(this.discovery ? `signed in as ${this.discovery.login}` : "gh", { color: t.dim })]),
       this.githubSection(t),
@@ -1470,6 +1495,71 @@ export class SettingsForm {
             this.inputs.prPrompt.set_value(DEFAULT_PR_PROMPT);
             cx.notify();
           }),
+        ),
+      );
+  }
+
+  /**
+   * The Files page: the Files editor's auto save (Off, After a delay, When you leave the file,
+   * as VS Code's auto save) and its delay. alp-files reads them when the settings are saved.
+   * @param {object} t The theme.
+   * @returns {object} The page's body.
+   */
+  filesSection(t) {
+    const files = this.draft.files;
+    /**
+     * A step button of the delay field.
+     * @param {string} glyph Its text.
+     * @returns {object} Its look, replayed onto the field's own button.
+     */
+    const step = (glyph) =>
+      div()
+        .w(24)
+        .h_full()
+        .flex()
+        .items_center()
+        .justify_center()
+        .text_size(13)
+        .text_color(t.muted)
+        .cursor_pointer()
+        .hover((style) => style.bg(t.hover).text_color(t.foreground))
+        .child(glyph);
+    const delay = h_flex()
+      .gap(8)
+      .items_center()
+      .child(
+        NumberInput.new(this.inputs.autoSaveDelay)
+          .w(140)
+          .h(28)
+          .rounded(6)
+          .border_1()
+          .border_color(t.input)
+          .bg(t.background)
+          .text_size(12)
+          .text_color(t.foreground)
+          .decrement_button(step("−"))
+          .increment_button(step("+")),
+      )
+      .child(div().text_size(12).text_color(t.muted).child("ms"));
+    return v_flex()
+      .gap(10)
+      .child(
+        this.field(
+          t,
+          "Auto save",
+          this.pills(t, "st-autosave", AUTO_SAVE_CHOICES, files.autoSave, (value, cx) => {
+            files.autoSave = value;
+            cx.notify();
+          }),
+          "Saves your edits in the Files editor. A file that changed on disk is never overwritten: you still choose.",
+        ),
+      )
+      .child(
+        this.field(
+          t,
+          "Delay",
+          delay,
+          `For After a delay: how long after your last edit, at least ${AUTO_SAVE_DELAY_RANGE.min} ms`,
         ),
       );
   }

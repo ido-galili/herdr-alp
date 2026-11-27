@@ -7,6 +7,8 @@
 //   workspaces  a repository, a project board, or both, each with its own settings, such as
 //               the searches behind its Open bugs, Triage bugs and Open PRs (`queries.prs`).
 //               The Overview shows one at a time, or all your repos.
+//   files       the Files editor's auto save (`autoSave`: "off", "afterDelay" or
+//               "onFocusChange", as VS Code names them; `autoSaveDelay` in ms). alp-files reads it.
 //
 // A file in the earlier one-repo shape (top-level `repo` and `project`) reads as one workspace.
 
@@ -65,6 +67,14 @@ const WORKSPACE_DEFAULTS = {
   boardView: { query: "iteration:@current", statuses: [] },
   nightly: null,
 };
+
+/** The Files editor's auto save choices, by the names VS Code's `files.autoSave` uses. */
+export const AUTO_SAVE_MODES = ["off", "afterDelay", "onFocusChange"];
+
+/** The shortest and longest auto save delay, in milliseconds. */
+export const AUTO_SAVE_DELAY_RANGE = { min: 200, max: 60000 };
+
+const FILES_DEFAULTS = { autoSave: "off", autoSaveDelay: 1000 };
 
 const BOARD_DEFAULTS = { statusField: "Status", iterationField: "Iteration" };
 
@@ -153,6 +163,24 @@ export function normalizeAccount(raw) {
 }
 
 /**
+ * The Files section with every key filled in from the defaults: an unknown auto save choice
+ * reads as off, and the delay is a whole number of milliseconds within AUTO_SAVE_DELAY_RANGE.
+ * @param {object} raw The files section as the file holds it.
+ * @returns {{ autoSave: string, autoSaveDelay: number }} The Files settings.
+ */
+export function normalizeFiles(raw) {
+  const given = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  const autoSave = AUTO_SAVE_MODES.includes(given.autoSave) ? given.autoSave : FILES_DEFAULTS.autoSave;
+  const delay = Math.round(Number(given.autoSaveDelay));
+  const { min, max } = AUTO_SAVE_DELAY_RANGE;
+  return {
+    ...given,
+    autoSave,
+    autoSaveDelay: Number.isFinite(delay) && delay > 0 ? Math.min(max, Math.max(min, delay)) : FILES_DEFAULTS.autoSaveDelay,
+  };
+}
+
+/**
  * Reads a file in the one-repo shape as the new one: its repository and board become one
  * workspace, `launch.folder` becomes that repository's folder, the @me searches move to the
  * account, and the triage and Open PRs searches stay with the workspace.
@@ -160,7 +188,7 @@ export function normalizeAccount(raw) {
  * @returns {object} `{ account, workspaces }` as the file would hold them.
  */
 function upgradeOneRepo(raw) {
-  const { repo, project, launch = {}, queries = {}, ...rest } = raw;
+  const { repo, project, launch = {}, queries = {}, files, ...rest } = raw;
   const { folder, ...prompts } = launch;
   const { triage, prs, review, mine, myPrs } = queries;
   const workspace = { ...rest, repo, queries: Object.fromEntries(Object.entries({ triage, prs }).filter(([, value]) => value)) };
@@ -179,7 +207,7 @@ function upgradeOneRepo(raw) {
 /**
  * The settings from parsed file contents, in the current shape with every default filled in.
  * @param {object} raw The parsed file, in either shape.
- * @returns {{ account: object, workspaces: object[] }} The settings.
+ * @returns {{ account: object, workspaces: object[], files: object }} The settings.
  */
 export function normalizeConfig(raw) {
   const shaped = raw.repo || raw.project ? upgradeOneRepo(raw) : raw;
@@ -192,7 +220,7 @@ export function normalizeConfig(raw) {
     workspace.name = name;
     seen.add(name);
   }
-  return { account: normalizeAccount(shaped.account ?? {}), workspaces };
+  return { account: normalizeAccount(shaped.account ?? {}), workspaces, files: normalizeFiles(raw.files) };
 }
 
 /**

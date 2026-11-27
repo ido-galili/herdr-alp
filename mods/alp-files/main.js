@@ -181,17 +181,19 @@ export default class Files extends View {
   }
 
   /**
-   * Alp: what the shown tab's editor pane has open, and every pane's unsaved files.
-   * @returns {{ current: string | null, unsaved: Set<string> }} absolute paths
+   * Alp: what the shown tab's editor pane has open, every pane's unsaved files, and those of
+   * them auto save will save (marked quietly).
+   * @returns {{ current: string | null, unsaved: Set<string>, quiet: Set<string> }} absolute paths
    */
   editing() {
-    const tab = focused()?.tab, unsaved = new Set();
+    const tab = focused()?.tab, unsaved = new Set(), quiet = new Set();
     let current = null;
     for (const e of EDITORS.values()) {
       for (const abs of e.unsaved) unsaved.add(abs);
+      for (const abs of e.quiet ?? []) quiet.add(abs);
       if (e.tab === tab) current = e.current;
     }
-    return { current, unsaved };
+    return { current, unsaved, quiet };
   }
 
   /**
@@ -204,13 +206,13 @@ export default class Files extends View {
 
   /**
    * The tree's rows under a folder, open folders expanded. A file's mark: an orange ● for
-   * unsaved edits in an editor pane, else its git status letter. The file the tab's editor
-   * shows is highlighted.
+   * unsaved edits in an editor pane (dim while auto save will save them), else its git status
+   * letter. The file the tab's editor shows is highlighted.
    * @param {string} prefix the folder, relative to the root ("" for the root)
    * @param {number} depth how deep the folder is, for the indent
    * @param {any[]} out rows so far; this appends to them
    * @param {any} t the theme
-   * @param {{ current: string | null, unsaved: Set<string> }} editing what the editor panes have open
+   * @param {{ current: string | null, unsaved: Set<string>, quiet: Set<string> }} editing what the editor panes have open
    * @returns {any[]} `out`
    */
   rows(prefix, depth, out, t, editing) {
@@ -225,7 +227,7 @@ export default class Files extends View {
         .child(entry.dir ? svg(`mods/alp-files/chevron-${open ? "down" : "right"}.svg`).size(12).flex_none().text_color(t.dim) : div().w(12).flex_none())
         .child(svg(`mods/alp-files/${entry.dir ? "folder" : "file"}.svg`).size(14).flex_none().text_color(t.muted))
         .child(div().flex_1().min_w(0).truncate().child(entry.name))
-        .when(Boolean(mark), el => el.child(div().text_size(11.5).text_color(mark === "●" ? warning(t) : mark === "A" ? t.ansi2 : mark === "D" || mark === "U" ? t.ansi1 : t.blocked).child(mark))));
+        .when(Boolean(mark), el => el.child(div().text_size(11.5).text_color(mark === "●" ? (editing.quiet.has(abs) ? t.dim : warning(t)) : mark === "A" ? t.ansi2 : mark === "D" || mark === "U" ? t.ansi1 : t.blocked).child(mark))));
       if (entry.dir && open) this.rows(path, depth + 1, out, t, editing);
     }
     return out;

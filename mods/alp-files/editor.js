@@ -2,15 +2,46 @@
 // props: {file, on, root, tab}}). The Files panel opens files here: the tab's editor pane
 // switches file, and a file with unsaved edits stays open as a chip until it's saved or dropped.
 // Local files are editable (ctrl-s saves); remote and oversized ones stay read-only.
+// Alp: auto save, as VS Code's `files.autoSave`, comes from Alp's Settings (the `files` section
+// of ~/.config/alp/alpmeister.json): off, a moment after the last edit, or on leaving the file.
 import { div, svg } from "gpui-kit";
 import { v_flex, h_flex, Editor, EditorState, Scrollbar, v_virtual_list } from "gpui-base";
-import { exec, readTextFile, writeTextFile, theme, settings, window, panes, run, shared, setShared } from "herdr";
+import { exec, home, readTextFile, writeTextFile, theme, settings, window, panes, run, shared, setShared } from "herdr";
 
 // Every editor pane in this VM (the mod copies share it), so the Files panel can mark open
-// and unsaved files: pane object → { tab, current, unsaved: Set<abs> }.
+// and unsaved files: pane object → { tab, current, unsaved: Set<abs>, quiet: Set<abs> }
+// (quiet: unsaved, but auto save will save them, so the mark isn't orange).
 export const EDITORS = globalThis[Symbol.for("alp-files.editors")] ??= new Map();
 // The shared key the Files panel writes to open a file in a tab's existing editor pane.
 export const OPEN_KEY = "alp-files.open";
+// Alp: the key Alp's Settings bumps after saving the settings file.
+const SETTINGS_STAMP_KEY = "alp.settingsStamp";
+// Alp: auto save as last read from the settings file, shared by every editor pane in this VM.
+// `stamp` is the settings stamp it was read at (undefined: not read yet).
+const AUTO = globalThis[Symbol.for("alp-files.autosave")] ??= { mode: "off", delay: 1000, stamp: undefined };
+const AUTO_MODES = ["off", "afterDelay", "onFocusChange"], AUTO_MIN = 200, AUTO_MAX = 60000;
+
+/**
+ * Alp: reads auto save from the settings file once, and again whenever Alp's Settings saves it
+ * (the settings stamp moves). The keys are optional: a missing or unreadable file means off.
+ * @param {any} cx the context to read in and re-render
+ * @returns {void}
+ */
+function followSettings(cx) {
+  const stamp = shared(SETTINGS_STAMP_KEY) ?? null;
+  if (stamp === AUTO.stamp) return;
+  AUTO.stamp = stamp;
+  cx.spawn(async cx => {
+    let files = {};
+    try { files = JSON.parse((await readTextFile(`${home()}/.config/alp/alpmeister.json`)) || "{}")?.files ?? {}; } catch {}
+    const delay = Math.round(Number(files.autoSaveDelay));
+    AUTO.mode = AUTO_MODES.includes(files.autoSave) ? files.autoSave : "off";
+    AUTO.delay = Number.isFinite(delay) && delay > 0 ? Math.min(AUTO_MAX, Math.max(AUTO_MIN, delay)) : 1000;
+    // The Files panel's marks depend on it: quiet while auto save is on.
+    for (const pane of EDITORS.keys()) pane.publish();
+    cx.notify();
+  });
+}
 
 // The editor highlights with syntect's default grammars, found by extension. Alp: these
 // map extensions it lacks to the closest one it has (no TypeScript, TOML, Vue or Dockerfile).
@@ -192,7 +223,7 @@ export class EditorPane {
     this.docs = []; this.doc = null; this.closing = null; this.note = null;
     // Open requests older than this pane were for someone else.
     this.seen = Date.now();
-    this.entry = { tab: this.tab, current: null, unsaved: new Set() };
+    this.entry = { tab: this.tab, current: null, unsaved: new Set(), quiet: new Set() };
     EDITORS.set(this, this.entry);
     this.open(props.file, cx);
     cx.timer.every(2000, cx => { if (window()?.active !== false) this.checkAll(cx); });
@@ -207,13 +238,22 @@ export class EditorPane {
   }
 
   /**
-   * Tells the Files panel which files are open and unsaved, so its tree marks them.
+   * Tells the Files panel which files are open and unsaved, so its tree marks them. Alp: and
+   * which of those auto save will save, so their mark is quiet.
    * @returns {void}
    */
   publish() {
     const unsaved = this.docs.filter(d => d.dirty).map(d => d.abs);
-    const changed = this.entry.current !== this.doc?.abs || unsaved.length !== this.entry.unsaved.size || unsaved.some(a => !this.entry.unsaved.has(a));
-    this.entry.current = this.doc?.abs ?? null; this.entry.unsaved = new Set(unsaved);
+    const quiet = this.docs.filter(d => d.dirty && !this.nagging(d)).map(d => d.abs);
+    /**
+     * Whether a list holds just the set's paths.
+     * @param {string[]} list the paths now
+     * @param {Set<string>} set the paths published before
+     * @returns {boolean} true when they match
+     */
+    const same = (list, set) => list.length === set.size && list.every(a => set.has(a));
+    const changed = this.entry.current !== this.doc?.abs || !same(unsaved, this.entry.unsaved) || !same(quiet, this.entry.quiet);
+    this.entry.current = this.doc?.abs ?? null; this.entry.unsaved = new Set(unsaved); this.entry.quiet = new Set(quiet);
     // A shared bump re-renders the Files panel (every mod re-renders on setShared).
     if (changed) setShared("alp-files.marks", Date.now());
   }
@@ -227,6 +267,7 @@ export class EditorPane {
    */
   open(abs, cx) {
     this.closing = null; this.note = null; this.failed = null;
+    if (this.doc && this.doc.abs !== abs) this.leave(this.doc, cx);
     const open = this.docs.find(d => d.abs === abs);
     if (open) { this.doc = open; this.publish(); return; }
     const before = this.doc;
@@ -249,11 +290,16 @@ export class EditorPane {
         // writeTextFile only reaches this machine, and a cut-off file would lose its end on save.
         const locked = this.on ? "Read-only · on another machine" : text.length > SHOW_LIMIT ? "Read-only · too long to edit" : null;
         const code = EditorState.new({ language: language(abs), readonly: Boolean(locked), value: shown(text), syntax: syntaxColors(theme()) });
-        const doc = { abs, name: abs.split("/").pop(), code, base: text, locked, dirty: false, saving: false, disk: undefined, error: null, compare: null, branch: null };
+        const doc = { abs, name: abs.split("/").pop(), code, base: text, locked, dirty: false, saving: false, disk: undefined, error: null, compare: null, branch: null, timer: null, saved: false };
         code.on("change", (_e, cx) => {
           const dirty = !doc.locked && code.value() !== doc.base;
           if (dirty !== doc.dirty) { doc.dirty = dirty; this.publish(); cx.notify(); }
+          // Alp: each edit restarts the auto save delay; an edit back to the file's text needs none.
+          if (dirty && AUTO.mode === "afterDelay") this.autoSaveLater(doc, cx);
+          else if (!dirty) this.cancelAutoSave(doc);
         });
+        // Alp: "When you leave the file": the editor losing the keyboard saves it.
+        code.on("blur", (_e, cx) => { if (AUTO.mode === "onFocusChange") this.autoSave(doc, cx); });
         // The document it replaces goes, unless it has edits to keep.
         if (before && !before.dirty && before.disk === undefined && this.docs.includes(before)) this.drop(before);
         this.docs.push(doc); this.doc = doc;
@@ -271,6 +317,7 @@ export class EditorPane {
    * @returns {void}
    */
   drop(doc) {
+    this.cancelAutoSave(doc);
     this.docs = this.docs.filter(d => d !== doc);
     doc.code.release();
     if (this.doc === doc) this.doc = this.docs[this.docs.length - 1] ?? null;
@@ -288,7 +335,7 @@ export class EditorPane {
     cx.spawn(async cx => {
       let changed = false;
       for (const doc of [...this.docs]) changed = (await this.checkDisk(doc)) || changed;
-      if (changed) cx.notify();
+      if (changed) { this.publish(); cx.notify(); }
     });
   }
 
@@ -326,11 +373,13 @@ export class EditorPane {
   async save(doc, cx) {
     if (!doc || doc.locked || !doc.dirty) return true;
     if (doc.saving || doc.disk !== undefined) return false;
+    // A save now stands in for an auto save that was due.
+    this.cancelAutoSave(doc);
     const text = doc.code.value();
     doc.saving = true; doc.error = null; cx.notify();
     try {
       await writeTextFile(doc.abs, text, doc.base);
-      doc.base = text; doc.disk = undefined; doc.compare = null;
+      doc.base = text; doc.disk = undefined; doc.compare = null; doc.saved = true;
       doc.dirty = doc.code.value() !== text;
       return true;
     } catch (e) {
@@ -339,6 +388,68 @@ export class EditorPane {
       else doc.error = `Not saved: ${e?.message ?? e}`;
       return false;
     } finally { doc.saving = false; this.publish(); cx.notify(); }
+  }
+
+  /**
+   * Alp: whether auto save is on, so the top line says "Saving…" or "Saved" instead of
+   * nagging with "● Unsaved".
+   * @returns {boolean} true unless auto save is off
+   */
+  autoSaving() {
+    return AUTO.mode !== "off";
+  }
+
+  /**
+   * Alp: (re)starts a document's auto save delay; the save runs when it ends.
+   * @param {any} doc the document
+   * @param {any} cx the context to run the timer from
+   * @param {number} [ms] how long to wait; the settings' delay by default
+   * @returns {void}
+   */
+  autoSaveLater(doc, cx, ms = AUTO.delay) {
+    this.cancelAutoSave(doc);
+    doc.timer = cx.timer.after(ms, cx => { doc.timer = null; this.autoSave(doc, cx); });
+  }
+
+  /**
+   * Alp: stops a document's pending auto save, if one is waiting.
+   * @param {any} doc the document
+   * @returns {void}
+   */
+  cancelAutoSave(doc) {
+    doc.timer?.cancel(); doc.timer = null;
+  }
+
+  /**
+   * Alp: an auto save. It goes through `save`, so a file that changed on disk is never
+   * overwritten: the changed-on-disk box shows and decides. A save still writing is waited
+   * for; edits made while it wrote are saved after it.
+   * @param {any} doc the document
+   * @param {any} cx the context to save in
+   * @returns {void}
+   */
+  autoSave(doc, cx) {
+    if (AUTO.mode === "off" || !this.docs.includes(doc) || doc.locked || !doc.dirty || doc.disk !== undefined) return;
+    if (doc.saving) { this.autoSaveLater(doc, cx, 300); return; }
+    cx.spawn(async cx => {
+      const ok = await this.save(doc, cx);
+      if (ok && doc.dirty && AUTO.mode === "afterDelay" && this.docs.includes(doc) && !doc.timer) this.autoSaveLater(doc, cx);
+      // Leaving the file to close it (✕) asked about edits this save just wrote: close as asked.
+      const asked = this.closing ? (this.closing.doc ? [this.closing.doc] : this.docs) : null;
+      if (ok && asked && !asked.some(d => d.dirty)) { this.finishClose(this.closing.doc); cx.notify(); }
+    });
+  }
+
+  /**
+   * Alp: the editor moves off a document (another file, or another chip): with auto save on
+   * leaving the file, it saves. The save runs from a timer, since a file switch can come
+   * while the pane draws (the Files panel's open request), where a save can't start.
+   * @param {any} doc the document left
+   * @param {any} cx the context to save from
+   * @returns {void}
+   */
+  leave(doc, cx) {
+    if (AUTO.mode === "onFocusChange" && doc.dirty) this.autoSaveLater(doc, cx, 1);
   }
 
   /**
@@ -363,6 +474,18 @@ export class EditorPane {
     if (!doc || doc.disk === undefined) return;
     doc.base = doc.disk; doc.disk = undefined; doc.error = null; doc.compare = null;
     doc.dirty = doc.code.value() !== doc.base; this.publish();
+  }
+
+  /**
+   * Alp: the changed-on-disk box's "Keep my edits", then, with auto save after a delay, the
+   * edits are saved over the disk's version as a Save would (you chose them).
+   * @param {any} doc the document
+   * @param {any} cx the context
+   * @returns {void}
+   */
+  keepAndSave(doc, cx) {
+    this.keep(doc);
+    if (doc.dirty && AUTO.mode === "afterDelay") this.autoSaveLater(doc, cx);
   }
 
   /**
@@ -433,7 +556,7 @@ export class EditorPane {
    * @returns {void}
    */
   dispose() {
-    for (const d of this.docs) d.code.release();
+    for (const d of this.docs) { this.cancelAutoSave(d); d.code.release(); }
     this.docs = []; this.doc = null;
     EDITORS.delete(this);
     setShared("alp-files.marks", Date.now());
@@ -468,18 +591,40 @@ export class EditorPane {
   }
 
   /**
+   * Alp: whether a document's unsaved edits are flagged in orange: always with auto save off,
+   * and with it on only when it can't save on its own (a failed save, or a file changed on disk).
+   * @param {any} doc the document
+   * @returns {boolean} true to show the orange ●
+   */
+  nagging(doc) {
+    return doc.dirty && (!this.autoSaving() || Boolean(doc.error) || doc.disk !== undefined);
+  }
+
+  /**
    * The quiet top line: the file's name, its folder · branch in dim, the state (an orange
-   * "● Unsaved", "Saving…", or why it's read-only), Save (Ctrl+S) and ✕.
+   * "● Unsaved", "Saving…", or why it's read-only), Save (Ctrl+S) and ✕. Alp: with auto save
+   * on, edits show a quiet "Saving…" (after a delay) or "Unsaved" (on leaving the file), and
+   * "Saved" once saved; a failed save or a disk change still shows "● Unsaved".
    * @param {any} t the theme
    * @returns {any} the line
    */
   topLine(t) {
     const doc = this.doc;
     const where = doc ? [folderOf(doc.abs, this.root), doc.branch].filter(Boolean).join(" · ") : "";
+    /**
+     * A state word.
+     * @param {string} text the word
+     * @param {string} color its colour
+     * @returns {any} the element
+     */
+    const word = (text, color) => div().id("files-state").flex_none().text_size(12).text_color(color).child(text);
+    const quiet = Boolean(doc) && this.autoSaving() && !this.nagging(doc);
     const state = !doc ? null
-      : doc.saving ? div().flex_none().text_size(12).text_color(t.muted).child("Saving…")
-      : doc.locked ? div().flex_none().text_size(12).text_color(t.dim).child(doc.locked)
-      : doc.dirty ? div().flex_none().text_size(12).text_color(warning(t)).child("● Unsaved") : null;
+      : doc.saving ? word("Saving…", t.muted)
+      : doc.locked ? word(doc.locked, t.dim)
+      : doc.dirty && !quiet ? word("● Unsaved", warning(t))
+      : doc.dirty ? word(AUTO.mode === "afterDelay" ? "Saving…" : "Unsaved", t.muted)
+      : quiet && doc.saved ? word("Saved", t.dim) : null;
     const canSave = Boolean(doc?.dirty && !doc.saving && doc.disk === undefined);
     return h_flex().h(40).flex_none().pl(12).pr(8).gap(8).items_center().border_b(1).border_color(t.border)
       .child(svg("mods/alp-files/file.svg").size(14).flex_none().text_color(t.muted))
@@ -503,9 +648,9 @@ export class EditorPane {
     return h_flex().id("files-chips").h(34).flex_none().px(8).gap(4).items_center().overflow_x_scroll().border_b(1).border_color(t.border)
       .children(this.docs.map((d, i) => h_flex().id(`files-chip-${i}`).h(26).pl(10).pr(3).gap(6).flex_none().items_center().rounded(6).cursor_pointer().text_size(12)
         .when(d === this.doc, e => e.bg(t.hover).text_color(t.foreground)).when(d !== this.doc, e => e.text_color(t.muted).hover(s => s.bg(t.hover)))
-        .on_click((_e, cx) => { this.doc = d; this.closing = null; this.failed = null; this.publish(); cx.notify(); })
+        .on_click((_e, cx) => { if (d !== this.doc && this.doc) this.leave(this.doc, cx); this.doc = d; this.closing = null; this.failed = null; this.publish(); cx.notify(); })
         .child(d.name)
-        .when(d.dirty, e => e.child(div().text_color(warning(t)).child("●")))
+        .when(d.dirty, e => e.child(div().text_color(this.nagging(d) ? warning(t) : t.dim).child("●")))
         .child(this.closeButton(t, `files-chip-x-${i}`, "Close", cx => this.requestClose(d, cx)))));
   }
 
@@ -554,9 +699,9 @@ export class EditorPane {
       const text = gone ? (doc.dirty ? `${doc.name} was deleted on disk while you were editing it.` : `${doc.name} was deleted on disk.`)
         : `${doc.name} changed on disk while you were editing it.`;
       const buttons = gone
-        ? [...(doc.dirty ? [boxButton("files-keep", "Keep my edits", "filled", t, notify(() => this.keep(doc)))] : []),
+        ? [...(doc.dirty ? [boxButton("files-keep", "Keep my edits", "filled", t, cx => { this.keepAndSave(doc, cx); cx.notify(); })] : []),
           boxButton("files-close", "Close it", doc.dirty ? "outlined" : "filled", t, notify(() => { doc.dirty = false; this.finishClose(doc); }))]
-        : [boxButton("files-keep", "Keep my edits", "filled", t, notify(() => this.keep(doc))),
+        : [boxButton("files-keep", "Keep my edits", "filled", t, cx => { this.keepAndSave(doc, cx); cx.notify(); }),
           boxButton("files-use-disk", "Use the file on disk", "outlined", t, notify(() => this.reload(doc))),
           boxButton("files-compare", "Compare", doc.compare ? "pressed" : "text", t, notify(() => this.toggleCompare(doc)))];
       return this.box(t, "files-disk-box", text, buttons);
@@ -607,6 +752,7 @@ export class EditorPane {
    * @returns {any} the pane
    */
   render(cx) {
+    followSettings(cx);
     this.takeRequest(cx);
     const t = theme(), doc = this.doc, font = settings();
     return v_flex().id("files-pane").size_full().min_h(0).overflow_hidden().bg(t.background).text_color(t.foreground).text_size(13)
