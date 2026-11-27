@@ -105,12 +105,13 @@ the Overview starts on all your repositories.
 - **Overview:** your GitHub as a whole, or one workspace, picked from a row of pills on top.
   - **All repos:** four tiles (review requests, your open PRs, your assigned issues, red
     checks), then every repository in scope with its open issues and PRs, the default branch's
-    checks, and when it was last pushed.
+    checks, and when it was last pushed. With open work hides the rest, and stays as you left it.
   - **A workspace** is a repository, a project board, or both. With a repository: four tiles
     (open bugs by priority, triage bugs, open customer issues, the last nightly run), the
     spotlight on the next two milestones, and the next milestone (X of Y closed, due date,
-    status strip, flags). With a board: the issues in flight, each flagged when it is outside
-    the current iteration. A repository with no board lists its open PRs instead.
+    status strip, flags). With a board: the issues in flight, by status, the longest in their
+    status first; All milestones switches to the next milestone's only, and each workspace keeps
+    its choice. A repository with no board lists its open PRs instead.
 - **Daypack:** Today (rows you Pin to Today and todos you type, carried over the next day),
   Waiting for your review with a Review button, Your open PRs, and Your issues with a Start
   button, from every repository in scope. Both buttons open a Claude Code tab running the prompt set in
@@ -118,7 +119,8 @@ the Overview starts on all your repositories.
 - **Board:** a workspace's board items, a column per status, with each card's assignee avatars.
   Its filter field takes the board's own syntax, such as `type:Bug iteration:@current`: Enter
   applies and saves it, Esc puts the saved one back. The avatars on top pick whose items show,
-  several at once. Settings holds an On Board tick per status that picks the columns. Drag a card
+  several at once. A card names its iteration, unless the filter already asks for that one.
+  Settings holds an On Board tick per status that picks the columns. Drag a card
   to another column to move it to that status; right-click it to change its iteration or
   milestone. Both write to GitHub at once, so `gh` needs the `project` scope.
 - **Herds:** your Claude Code sessions and their agents, and how they are linked. A session that messaged others

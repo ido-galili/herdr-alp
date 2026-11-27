@@ -122,11 +122,39 @@ function Avatar(t, person, id, avatarPath, size = AVATAR_SIZE) {
 }
 
 /**
- * One item's card: its number, type and buttons, its title, then its PRs, its iteration when
- * that is not the current one, and its assignees' avatars. A click opens it on GitHub.
+ * The one iteration a board filter asks for, read from its iteration term, such as
+ * `iteration:@current`, `iteration:"Sprint 24"` or `iteration:Sprint-24`. Careful: any filter it
+ * cannot be sure of gives null, so the cards keep their iteration chips: no term, a negated
+ * term (`-iteration:`), more than one term, more than one value (`iteration:@current,@previous`),
+ * a comparison or any other `@` value than `@current`.
+ * @param {string | null | undefined} filter The board filter.
+ * @param {string} field The board's Iteration field name, which names the term.
+ * @returns {string | null} "@current", or the iteration's name in lower case; null when unsure.
+ */
+function filterIteration(filter, field) {
+  const terms = (filter ?? "").match(/(?:[^\s"]+|"[^"]*")+/g) ?? [];
+  const key = `${field.toLowerCase()}:`;
+  const values = [];
+  for (const term of terms) {
+    const lower = term.toLowerCase();
+    if (lower.startsWith(`-${key}`)) return null;
+    if (lower.startsWith(key)) values.push(term.slice(key.length));
+  }
+  if (values.length !== 1) return null;
+  const quoted = values[0].match(/^"([^"]*)"$/);
+  const value = (quoted ? quoted[1] : values[0]).trim().toLowerCase();
+  if (!value || (!quoted && /[",<>=*]/.test(value))) return null;
+  if (value.startsWith("@")) return value === "@current" ? value : null;
+  return value;
+}
+
+/**
+ * One item's card: its number, type and buttons, its title, then its PRs, its iteration unless
+ * the filter already asks for that one, and its assignees' avatars. A click opens it on GitHub.
  * @param {object} t The theme.
  * @param {object} item The board item.
- * @param {object} options The Board options, with `repo` and `iteration`.
+ * @param {object} options The Board options, with `repo`, `iteration` (the current one's name)
+ *   and `filterIteration` (from `filterIteration()`).
  * @returns {object} The card.
  */
 function ItemCard(t, item, options) {
@@ -134,13 +162,15 @@ function ItemCard(t, item, options) {
   const linked = item.kind !== "draft" && item.number != null;
   const session = linked ? sessionTab(item) : null;
   const chips = (item.kind === "pr" ? [decisionChip(t, item, "bv")] : item.prs.map((pr) => prChip(t, item, pr, "bv"))).filter(Boolean);
-  if (item.iteration) {
-    const current = item.iteration === options.iteration;
+  const current = Boolean(item.iteration) && item.iteration === options.iteration;
+  const asked =
+    options.filterIteration === "@current" ? current : options.filterIteration === item.iteration?.toLowerCase();
+  if (item.iteration && !asked) {
     chips.push(
-      Chip(IconLabel(ICONS.iteration, current ? "Current iteration" : item.iteration), {
+      Chip(IconLabel(ICONS.iteration, item.iteration), {
         color: current ? t.accent : t.working,
         id: `${id}-it`,
-        tooltip: item.iteration,
+        tooltip: current ? "The current iteration" : "Iteration",
       }),
     );
   }
@@ -391,7 +421,12 @@ export function Board(ws, wsModel, options) {
           ? Note(`Nothing matches ${view.filter}.`)
           : null;
   if (notice) return Card("board-view", ws.board.title || ws.name, extras, body.child(notice));
-  const cardOptions = { ...options, repo: ws.repo, iteration: wsModel.iteration?.title ?? null };
+  const cardOptions = {
+    ...options,
+    repo: ws.repo,
+    iteration: wsModel.iteration?.title ?? null,
+    filterIteration: filterIteration(view.filter, ws.board.iterationField ?? "Iteration"),
+  };
   const columns = columnsOf(ws, view.items);
   const ghost = options.ghost;
   /** A column's shown cards, in board order, without the one being dragged. */

@@ -13,7 +13,6 @@ import {
   NeedsYou,
   Note,
   Row,
-  Toggle,
   ago,
   claudeTooltip,
   fillPrompt,
@@ -159,22 +158,16 @@ export function MyPrs(account, actions) {
 /**
  * Your open issues, grouped by board status in the workspaces' status order. An issue on a
  * workspace's board is hidden when its status is in that workspace's `mineHidden`; an issue on
- * no workspace's board shows under "No status". With `actions.iterationOnly`, an issue on a board
- * with a current iteration shows only when it is in it.
+ * no workspace's board shows under "No status".
  * @param {object} config The settings.
  * @param {object} account The account model.
- * @param {Record<string, { title: string } | null>} iterations Each workspace's current iteration, by name.
- * @param {object} actions `{ pinButton, launch, prompt, iterationOnly, onToggleIteration(cx) }`.
+ * @param {object} actions `{ pinButton, launch, prompt }`.
  * @returns {object} The card.
  */
-export function MyIssues(config, account, iterations, actions) {
+export function MyIssues(config, account, actions) {
   const t = theme();
   const settingsOf = (issue) => config.workspaces.find((ws) => ws.name === issue.workspace) ?? null;
-  const inIteration = (issue) => {
-    const current = issue.workspace ? iterations[issue.workspace] : null;
-    return !current || issue.iteration === current.title;
-  };
-  const mine = (account.mine ?? []).filter((issue) => !actions.iterationOnly || inIteration(issue));
+  const mine = account.mine ?? [];
   const order = [...new Set(config.workspaces.flatMap((ws) => (ws.board ? ws.statuses : [])))];
   const visible = mine.filter((issue) => !settingsOf(issue)?.mineHidden.includes(issue.status));
   const groups = [...order, null]
@@ -184,34 +177,18 @@ export function MyIssues(config, account, iterations, actions) {
     }))
     .filter((group) => group.items.length);
   const hidden = mine.length - visible.length;
-  const anyIteration = Object.values(iterations).some(Boolean);
   return Card(
     "mine",
     "Your issues",
     [
       Chip(hidden ? `${visible.length} shown · ${hidden} hidden by status` : `${visible.length}`, { color: t.dim }),
-      Toggle(
-        "mi-iteration-only",
-        "Current iteration",
-        actions.iterationOnly,
-        (cx) => actions.onToggleIteration(cx),
-        anyIteration ? "Show only issues in their board's current iteration" : "No board has a current iteration",
-      ),
       IconButton("mi-all", ICONS.github, () => openUrl(searchUrl(null, account.queries.mine)), {
         tooltip: "Open the list on GitHub",
       }),
     ],
     v_flex()
       .gap(2)
-      .when(!groups.length, (el) =>
-        el.child(
-          Note(
-            actions.iterationOnly
-              ? "None of your issues are in the current iteration."
-              : "No open issues assigned to you.",
-          ),
-        ),
-      )
+      .when(!groups.length, (el) => el.child(Note("No open issues assigned to you.")))
       .children(
         groups.flatMap((group) => [
           GroupHeading(group.status ?? "No status", group.items.length, statusColor(t, group.status)),

@@ -71,6 +71,10 @@ const OLD_SETTINGS_TAB_NAME = "Alpmeister settings";
 /** Set after the settings file is saved, so every other copy fetches with the new settings. */
 const SETTINGS_STAMP_KEY = "alp.settingsStamp";
 const WORKSPACE_KEY = "alpmeister.workspace";
+/** Team in flight's "Only <milestone>" switch, as a JSON object of workspace name to true. */
+const MILESTONE_ONLY_KEY = "alpmeister.milestoneOnly";
+/** The Repos card's "With open work" switch on All repos: "true" when it is on. */
+const REPOS_ACTIVE_ONLY_KEY = "alpmeister.reposActiveOnly";
 /** The Dashboard switch's value for your GitHub as a whole. */
 const ALL_REPOS = "";
 const FOCUS_STAMP_KEY = "alp.focusStamp";
@@ -111,6 +115,34 @@ function rememberedWorkspace() {
   }
 }
 
+/**
+ * The workspaces whose Team in flight shows only the next milestone, as remembered.
+ * @returns {Set<string>} The workspaces' names; empty when nothing is remembered.
+ */
+function rememberedMilestoneOnly() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(MILESTONE_ONLY_KEY) ?? "{}");
+    if (!saved || typeof saved !== "object") return new Set();
+    return new Set(Object.keys(saved).filter((name) => saved[name] === true));
+  } catch (error) {
+    console.log(`alpmeister: no remembered milestone switch: ${error}`);
+    return new Set();
+  }
+}
+
+/**
+ * Whether the Repos card showed only repositories with open work, as remembered.
+ * @returns {boolean} True when it did; false when nothing is remembered.
+ */
+function rememberedReposActiveOnly() {
+  try {
+    return localStorage.getItem(REPOS_ACTIVE_ONLY_KEY) === "true";
+  } catch (error) {
+    console.log(`alpmeister: no remembered repos switch: ${error}`);
+    return false;
+  }
+}
+
 export default class Alpmeister extends View {
   init(_props, cx) {
     this.config = null;
@@ -121,11 +153,10 @@ export default class Alpmeister extends View {
     this.configText = null;
     // `props.workspace` opens a copy on that workspace's Dashboard; "" is All repos.
     this.workspaceName = typeof props()?.workspace === "string" ? props().workspace : rememberedWorkspace();
-    this.reposActiveOnly = false;
+    this.reposActiveOnly = rememberedReposActiveOnly();
     this.failure = null;
-    this.milestoneOnly = false;
-    this.teamIterationOnly = false;
-    this.mineIterationOnly = true;
+    // The workspaces whose Team in flight shows only the next milestone.
+    this.milestoneOnly = rememberedMilestoneOnly();
     this.expandedGroups = new Set();
     this.avatars = new Avatars();
     this.boardState = new BoardState(this);
@@ -574,6 +605,40 @@ export default class Alpmeister extends View {
     cx.notify();
   }
 
+  /**
+   * Switches the Repos card between every repository and those with open work, and remembers it.
+   * @param {object} cx The context.
+   */
+  toggleReposActiveOnly(cx) {
+    this.reposActiveOnly = !this.reposActiveOnly;
+    if (this.demo) return cx.notify();
+    try {
+      localStorage.setItem(REPOS_ACTIVE_ONLY_KEY, String(this.reposActiveOnly));
+    } catch (error) {
+      console.log(`alpmeister: repos switch not remembered: ${error}`);
+    }
+    cx.notify();
+  }
+
+  /**
+   * Switches a workspace's Team in flight between every milestone and the next one, and
+   * remembers it for that workspace.
+   * @param {string} name The workspace's name.
+   * @param {object} cx The context.
+   */
+  toggleMilestoneOnly(name, cx) {
+    if (this.milestoneOnly.has(name)) this.milestoneOnly.delete(name);
+    else this.milestoneOnly.add(name);
+    if (this.demo) return cx.notify();
+    try {
+      const saved = Object.fromEntries([...this.milestoneOnly].map((only) => [only, true]));
+      localStorage.setItem(MILESTONE_ONLY_KEY, JSON.stringify(saved));
+    } catch (error) {
+      console.log(`alpmeister: milestone switch not remembered: ${error}`);
+    }
+    cx.notify();
+  }
+
   /** Shows one of the tabs and remembers it for this copy. */
   selectTab(tab, cx) {
     this.tab = tab;
@@ -755,10 +820,7 @@ export default class Alpmeister extends View {
           expanded: this.expandedGroups,
           onToggleGroup,
           activeOnly: this.reposActiveOnly,
-          onToggleActive: (cx) => {
-            this.reposActiveOnly = !this.reposActiveOnly;
-            cx.notify();
-          },
+          onToggleActive: (cx) => this.toggleReposActiveOnly(cx),
         }),
       );
     }
@@ -783,16 +845,8 @@ export default class Alpmeister extends View {
     if (ws.board) {
       content = content.child(
         InFlight(ws, wsModel, {
-          milestoneOnly: this.milestoneOnly,
-          onToggleMilestone: (cx) => {
-            this.milestoneOnly = !this.milestoneOnly;
-            cx.notify();
-          },
-          iterationOnly: this.teamIterationOnly,
-          onToggleIteration: (cx) => {
-            this.teamIterationOnly = !this.teamIterationOnly;
-            cx.notify();
-          },
+          milestoneOnly: this.milestoneOnly.has(ws.name),
+          onToggleMilestone: (cx) => this.toggleMilestoneOnly(ws.name, cx),
           expanded: this.expandedGroups,
           onToggleGroup,
           pinButton: this.pinFor("if"),
@@ -840,18 +894,7 @@ export default class Alpmeister extends View {
     }
     const actions = this.launchActions();
     const reviews = Reviews(account, { ...actions, pinButton: this.pinFor("rv") });
-    const iterations = Object.fromEntries(
-      config.workspaces.map((ws) => [ws.name, model.workspaces?.[ws.name]?.iteration ?? null]),
-    );
-    const mine = MyIssues(config, account, iterations, {
-      ...actions,
-      pinButton: this.pinFor("mi"),
-      iterationOnly: this.mineIterationOnly,
-      onToggleIteration: (cx) => {
-        this.mineIterationOnly = !this.mineIterationOnly;
-        cx.notify();
-      },
-    });
+    const mine = MyIssues(config, account, { ...actions, pinButton: this.pinFor("mi") });
     const myPrs = MyPrs(account, { ...actions, pinButton: this.pinFor("mp") });
     const lists = wide
       ? h_flex()

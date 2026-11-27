@@ -1,5 +1,5 @@
-// Team in flight: the board's open issues in the in-flight statuses, grouped in board order.
-// An issue outside the current iteration gets a flag naming the iteration it is in.
+// Team in flight: the board's open issues in the in-flight statuses, grouped in board order,
+// the longest in their status first.
 
 import { div } from "gpui-kit";
 import { v_flex } from "gpui-base";
@@ -13,9 +13,7 @@ import {
   Note,
   Row,
   TextButton,
-  Toggle,
   ago,
-  daysUntil,
   statusColor,
 } from "./ui.js";
 
@@ -39,41 +37,32 @@ export function prChip(t, item, pr, prefix = "if") {
 }
 
 /**
- * The in-flight card. `options`: `{ milestoneOnly, onToggleMilestone, iterationOnly,
- * onToggleIteration, expanded, onToggleGroup,
- * pinButton }`. `expanded` is the set of status groups that show every row; the rest show
+ * The in-flight card. `expanded` is the set of status groups that show every row; the rest show
  * the first five. `pinButton(item)` draws the row's pin control.
+ * @param {object} config The workspace's settings.
+ * @param {object} model The workspace's model.
+ * @param {object} options `{ milestoneOnly, onToggleMilestone(cx), expanded, onToggleGroup(key, cx), pinButton }`.
+ * @returns {object} The card.
  */
 export function InFlight(config, model, options) {
   const t = theme();
-  const iteration = model.iteration;
   const nextMilestone = model.milestone?.title;
-  const items = (model.inFlight ?? [])
-    .filter((item) => !options.milestoneOnly || item.milestone === nextMilestone)
-    .filter((item) => !options.iterationOnly || !iteration || item.iteration === iteration.title);
+  // A remembered "Only <milestone>" waits while the workspace has no next milestone.
+  const milestoneOnly = options.milestoneOnly && Boolean(nextMilestone);
+  const items = (model.inFlight ?? []).filter((item) => !milestoneOnly || item.milestone === nextMilestone);
   const warning = t.ansi3 ?? t.working;
-  const extras = [
-    iteration
-      ? Chip(`${iteration.title} · ${daysUntil(iteration.end)}d left`, { color: t.muted })
-      : Chip("No current iteration", { color: warning }),
-    TextButton(
-      "if-milestone-only",
-      options.milestoneOnly ? `Only ${nextMilestone}` : "All milestones",
-      (cx) => options.onToggleMilestone(cx),
-      { tooltip: "Switch between every in-flight issue and the next milestone's" },
-    ),
-    Toggle(
-      "if-iteration-only",
-      "Current iteration",
-      options.iterationOnly,
-      (cx) => options.onToggleIteration(cx),
-      "Show only issues in the current iteration",
-    ),
-  ];
-  const outsideIteration = (item) => !iteration || item.iteration !== iteration.title;
-  // Flagged rows first, then the longest in their status.
-  const order = (first, second) =>
-    Number(outsideIteration(second)) - Number(outsideIteration(first)) || (first.since ?? 0) - (second.since ?? 0);
+  const extras = nextMilestone
+    ? [
+        TextButton(
+          "if-milestone-only",
+          milestoneOnly ? `Only ${nextMilestone}` : "All milestones",
+          (cx) => options.onToggleMilestone(cx),
+          { tooltip: "Switch between every in-flight issue and the next milestone's" },
+        ),
+      ]
+    : [];
+  // The longest in their status first.
+  const order = (first, second) => (first.since ?? 0) - (second.since ?? 0);
   const statuses = [...config.inFlight.statuses, null];
   const groups = statuses
     .map((status) => ({
@@ -86,11 +75,6 @@ export function InFlight(config, model, options) {
   const now = Date.now();
   const body = v_flex()
     .gap(2)
-    .when(items.filter(outsideIteration).length > 0, (el) =>
-      el.child(
-        Note(`${items.filter(outsideIteration).length} of ${items.length} not in the current iteration`, warning),
-      ),
-    )
     .when(!groups.length, (el) => el.child(Note("Nothing in flight.")))
     .children(
       groups.flatMap((group) => {
@@ -101,21 +85,11 @@ export function InFlight(config, model, options) {
         return [
           GroupHeading(key, group.items.length, statusColor(t, group.status)),
           ...shown.map((item) => {
-            const chips = [];
-            if (outsideIteration(item)) {
-              chips.push(
-                Chip(item.iteration ?? "No iteration", {
-                  color: warning,
-                  id: `if-it-${itemKey(item)}`,
-                  tooltip: "Not in the current iteration",
-                }),
-              );
-            }
-            chips.push(
+            const chips = [
               Chip(item.assignees.length ? item.assignees.join(", ") : "Unassigned", {
                 color: item.assignees.length ? t.muted : warning,
               }),
-            );
+            ];
             if (item.milestone) chips.push(Chip(item.milestone, { color: t.dim }));
             if (item.since) chips.push(Chip(`${ago(now - item.since)} in status`, { color: t.dim }));
             for (const pr of item.prs) chips.push(prChip(t, item, pr));
