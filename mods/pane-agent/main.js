@@ -1,10 +1,13 @@
 // A pane's header, for layouts that frame their panes:
 //   { "tab": "active", "pane": { "header": { "content": { "mod": "pane-agent" } } } }
 // Shows the program's icon (the app's program table), the agent's name or
-// the terminal's title, the folder, and the agent's status; buttons split, zoom and close
-// this pane. Props from the app: { pane, terminal }. Click: focus the pane.
+// the terminal's title, its status, then one muted line: folder, branch and worktree.
+// Split, zoom and close show while the header is hovered or the pane is focused.
+// Props from the app: { pane, terminal }. Click: focus the pane.
 // For agents that report to ~/.local/state/herdr-agents/<terminal>.json (see the
-// alp Claude Code plugin) it adds model, effort and context chips.
+// alp Claude Code plugin) it adds a model chip ("Opus 5.5 · high") and the context bar.
+// An Alp page opened as a tab of its own (tab.new {mod: "alpmeister"}) gets no header:
+// the strip is drawn in the page's colour, so it looks like the pinned Alp view.
 
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
@@ -32,10 +35,25 @@ function modelName(id) {
  */
 const warning = (t) => t.warning ?? "#ffb86c";
 
+/**
+ * A folder as the user reads it: "~" for home, "~/…" under it, else the full path.
+ * @param {string | null} cwd The folder.
+ * @returns {string} The folder, shortened.
+ */
 function folder(cwd) {
   if (!cwd) return "";
   const h = home();
   return cwd === h ? "~" : cwd.startsWith(h + "/") ? "~" + cwd.slice(h.length) : cwd;
+}
+
+/**
+ * The folder's own name ("website" for ~/projects/website), "~" for home.
+ * @param {string | null} cwd The folder.
+ * @returns {string} Its last part.
+ */
+function folderName(cwd) {
+  const f = folder(cwd);
+  return f === "~" || f === "/" ? f : f.replace(/\/+$/, "").split("/").pop();
 }
 
 export default class Pane extends View {
@@ -85,7 +103,8 @@ export default class Pane extends View {
   }
 
   /**
-   * Context window usage: a small bar plus percentage, orange from 70% and red from 90%.
+   * Context window usage: the word "context", a small bar and the percentage; orange from 70%
+   * and red from 90%.
    * @param {Record<string, string>} t The theme.
    * @param {number} used Percent of the context window used.
    * @returns {object} The usage chip.
@@ -94,14 +113,53 @@ export default class Pane extends View {
     const v = Math.max(0, Math.min(100, used));
     const color = v >= 90 ? t.blocked : v >= 70 ? warning(t) : t.accent;
     return h_flex().flex_none().items_center().gap(6).h(18).px(6).rounded(5).bg(t.hover)
+      .child(div().text_size(11.5).text_color(t.muted).child("context"))
       .child(div().w(44).h(5).rounded(3).bg(t.border).overflow_hidden().child(div().h(5).w(`${v}%`).rounded(3).bg(color)))
       .child(div().text_size(11.5).text_color(color).child(`${Math.round(v)}%`));
   }
 
+  /**
+   * This header's pane.
+   * @returns {object | undefined} Its PaneInfo, or undefined while it's gone.
+   */
   me() {
     return panes().find((p) => p.pane === props()?.pane);
   }
 
+  /**
+   * Whether this pane is an Alp page that is its tab's only pane (a tab.new copy: a demo, an
+   * Overview). Those show no header (Q8), like the pinned Alp view.
+   * @param {object} p The pane.
+   * @returns {boolean} True for a lone Alp page.
+   */
+  alpPage(p) {
+    return !p.terminal && p.mod === "alpmeister" && !panes().some((o) => o.tab === p.tab && o.pane !== p.pane);
+  }
+
+  /**
+   * The agent's status, right after the name: "Needs you", a spinner with "working", or a check.
+   * @param {Record<string, string>} t The theme.
+   * @param {string | null} st The status.
+   * @returns {object | null} The status element, or null when idle or unknown.
+   */
+  status(t, st) {
+    if (st === "blocked") return div().flex_none().px(6).h(18).flex().items_center().rounded(5).bg(t.blocked + "26").text_size(11.5).font_semibold().text_color(t.blocked).child("Needs you");
+    if (st === "working") return h_flex().flex_none().gap(5).items_center().text_size(11.5).text_color(t.working)
+      .child(svg("mods/workspace-chrome/spinner.svg").size(12).flex_none().text_color(t.working).spin(900))
+      .child("working");
+    if (st === "done") return svg("mods/workspace-chrome/check.svg").size(13).flex_none().text_color(t.done);
+    return null;
+  }
+
+  /**
+   * One header button that runs a pane command.
+   * @param {Record<string, string>} t The theme.
+   * @param {string} id The element id.
+   * @param {string} icon The svg's name in this mod's folder.
+   * @param {string} command The pane command.
+   * @param {object} args Its arguments.
+   * @returns {object} The button.
+   */
   button(t, id, icon, command, args) {
     return div()
       .id(id)
@@ -116,21 +174,31 @@ export default class Pane extends View {
       .child(svg(`mods/pane-agent/${icon}.svg`).size(14));
   }
 
+  /**
+   * The header: icon, name, status, the muted folder · branch · worktree line, the model chip,
+   * the context bar, and (hovered or focused) split, zoom and close.
+   * @param {object} cx The view context.
+   * @returns {object} The header row.
+   */
   render(cx) {
     const t = theme();
     const p = this.me();
     if (!p) return div();
+    if (this.alpPage(p)) return div().size_full().bg(t.canvas);
     const name = ((p.program?.agent || p.program?.shell) && p.program.name) || p.title || p.program?.name || "shell";
     const pic = icon(p.program, 14, t.dim);
-    const st = p.status;
+    const state = this.status(t, p.status);
     const pane = p.pane;
     const key = p.program?.key;
     const reporting = REPORTING.has(key);
     // the status file belongs to whatever ran in this terminal last: only trust it for the same agent
     const info = reporting && this.info?.agent === key ? this.info : null;
+    const where = [folderName(p.cwd), p.branch, this.wt && `worktree ${this.wt}`].filter(Boolean).join(" \u00b7 ");
+    const model = [info?.model && modelName(info.model), info?.effort && String(info.effort).toLowerCase()].filter(Boolean).join(" \u00b7 ");
     return h_flex()
       .id(`pane-head-${pane}`)
       .size_full()
+      .overflow_hidden()
       .px(10)
       .gap(8)
       .items_center()
@@ -142,22 +210,16 @@ export default class Pane extends View {
       .on_click(() => run("pane.focus", { pane }))
       .when(Boolean(pic), (el) => el.child(pic))
       .child(div().flex_none().truncate().max_w(260).font_medium().text_color(t.foreground).child(name))
-      .child(div().flex_1().truncate().text_color(t.dim).child(folder(p.cwd)))
-      .when(Boolean(info?.model), el => el.child(this.chip(t, modelName(info.model), t.foreground)))
-      .when(Boolean(info?.effort), el => el.child(this.chip(t, String(info.effort).replace(/^./, c => c.toUpperCase()), t.accent)))
+      .when(Boolean(state), el => el.child(state))
+      .child(div().id(`ph-where-${pane}`).flex_1().min_w(0).truncate().text_color(t.dim).when(Boolean(p.cwd), el => el.tooltip(folder(p.cwd))).child(where))
+      .when(Boolean(model), el => el.child(this.chip(t, model, t.foreground)))
       .when(info?.context_pct != null, el => el.child(this.ctx(t, info.context_pct)))
-      .when(Boolean(this.wt), el => el.child(
-        h_flex().flex_none().gap(4).px(6).h(18).items_center().rounded(5).bg(t.hover).text_size(11.5).text_color(t.muted)
-          .child(svg("mods/pane-agent/worktree.svg").size(11).flex_none().text_color(t.muted))
-          .child(this.wt)))
-      .when(reporting && Boolean(p.branch), el => el.child(this.chip(t, "\u2387 " + p.branch, t.muted)))
-      .when(st === "working", el => el.child(svg("mods/workspace-chrome/spinner.svg").size(12).flex_none().text_color(t.working).spin(900)))
-      .when(st === "blocked", el => el.child(div().flex_none().px(6).h(18).flex().items_center().rounded(5).bg(t.blocked + "26").text_size(11.5).font_semibold().text_color(t.blocked).child("Needs you")))
-      .when(st === "done", el => el.child(div().size(7).flex_none().rounded(4).bg(t.done)))
-      .when(true, el => el
-        .child(this.button(t, `ph-r-${pane}`, "split-right", "pane.split", { direction: "right", pane }))
-        .child(this.button(t, `ph-d-${pane}`, "split-down", "pane.split", { direction: "down", pane }))
-        .child(this.button(t, `ph-z-${pane}`, p.zoomed ? "unzoom" : "zoom", "pane.zoom", { pane }))
-        .child(this.button(t, `ph-x-${pane}`, "close", "pane.close", { pane })));
+      .when(this.hovered || p.focused, el => el
+        .child(h_flex().flex_none().items_center().gap(2)
+          .child(this.button(t, `ph-r-${pane}`, "split-right", "pane.split", { direction: "right", pane }))
+          .child(this.button(t, `ph-d-${pane}`, "split-down", "pane.split", { direction: "down", pane }))
+          .child(this.button(t, `ph-z-${pane}`, p.zoomed ? "unzoom" : "zoom", "pane.zoom", { pane }))
+          .child(div().w(1).h(14).mx(2).bg(t.border))
+          .child(this.button(t, `ph-x-${pane}`, "close", "pane.close", { pane }))));
   }
 }
