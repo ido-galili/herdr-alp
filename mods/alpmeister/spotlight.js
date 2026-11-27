@@ -8,7 +8,6 @@ import { div } from "gpui-kit";
 import { h_flex, v_flex, Popup } from "gpui-base";
 import { theme } from "herdr";
 import { searchUrl } from "./data.js";
-import { priorityColor } from "./project.js";
 import {
   Bar,
   Chip,
@@ -159,9 +158,9 @@ export function MilestoneMenu(id, { open, label, tag, rows, picked, onToggle, on
 }
 
 /**
- * One issue: its type beside the number, then its priority or prioritizing label, an epic's
- * sub-issue progress, its board status (with a board), and who it is assigned to (orange when
- * nobody).
+ * One issue: its type beside the number, then an epic's sub-issue progress, its board status
+ * (with a board), and who it is assigned to (orange when nobody). No priority or label chip, so
+ * the title keeps its room on a half-width card.
  * @param {object} t The theme.
  * @param {object} config The workspace's config.
  * @param {string} prefix Keeps the row's id unique per list.
@@ -171,9 +170,6 @@ export function MilestoneMenu(id, { open, label, tag, rows, picked, onToggle, on
  */
 function issueRow(t, config, prefix, issue, options) {
   const chips = [];
-  const label = issue.labels.find((name) => config.spotlight.labels.includes(name));
-  if (issue.priority) chips.push(Chip(issue.priority, { color: priorityColor(t, config, issue.priority) }));
-  else if (label) chips.push(Chip(label, { color: t.accent }));
   if (issue.type === "Epic" && issue.subIssues.total) {
     chips.push(Chip(`${issue.subIssues.completed} of ${issue.subIssues.total}`, { color: t.muted }));
   }
@@ -250,8 +246,9 @@ function Flag(id, text, color, on, issues, onPress) {
 }
 
 /**
- * The progress band: closed of total (orange when behind schedule), the due date, the flags,
- * the time from the start to the due date with today's tick, and the board statuses.
+ * The progress band: closed of total (orange when behind schedule, without words for it), the
+ * due date, the flags, the time from the start to the due date with today's tick, and the board
+ * statuses.
  * "No milestone" has no due date or total: only its open issues, by status, and its flags.
  * @param {object} t The theme.
  * @param {object} config The workspace's config.
@@ -312,7 +309,6 @@ function ProgressBand(t, config, shown, options) {
         .gap(10)
         .child(div().text_size(18).font_semibold().text_color(shown.none ? t.foreground : color).child(headline))
         .when(Boolean(due), (el) => el.child(Chip(due.text, { color: due.color })))
-        .when(behind, (el) => el.child(div().text_size(11.5).text_color(warningColor(t)).child("behind schedule")))
         .child(div().flex_1())
         .children(flags),
     )

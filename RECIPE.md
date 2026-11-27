@@ -158,7 +158,7 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
       Next. The header also holds "On GitHub →" (the GitHub mark; the milestone's page, or the
       open issues without a milestone) and, with a board, "Open v2.4 on the Board →", which
       shows the Board with only that milestone's items. Then:
-      - The progress band: "1 of 12 closed" (`warning` when behind schedule), the due date
+      - The progress band: "1 of 12 closed" (`warning` when behind schedule, no words), the due date
         chip, a usage-limits style time bar from the start (the previous milestone's due date,
         else its creation) to the due date with today's tick, a strip of board-status segments
         with a chip per status (Open and Closed with no board), and the flags "1 unassigned"
@@ -166,8 +166,8 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
         days) as buttons that list their issues on the card.
       - "Issues": its open issues with a priority value, a `spotlight.labels` label or a
         `spotlight.featureTypes` type, most urgent first, then by feature type. Each row shows
-        its issue type beside the number, then its priority or label, an epic's "X of Y"
-        sub-issues, its status, and an Unassigned flag. 8 rows, then "Show N more".
+        its issue type beside the number, then an epic's "X of Y" sub-issues, its status, and
+        its assignee or an Unassigned flag (no priority or label chip). 8 rows, then "Show N more".
       - The issues in `spotlight.holdStatus`, under that status's name; left out when there
         are none or no board.
   - With a board, Team in flight (full width, between the Milestone row and your PRs and
