@@ -3,12 +3,12 @@
 #   1. checks gh: installed, signed in, with the read:project scope project boards need
 #   2. copies the layout and mods into Herdr (sync.sh install)
 #   3. installs the alp Claude Code plugin
-#   4. switches Herdr to the alp layout and opens Alpmeister's settings in a tab, where you
-#      pick your repositories, workspaces and Claude prompts
+#   4. switches Herdr to the alp layout, where Alp opens on the Overview of all your
+#      repositories, with a card that offers to add a workspace
 #
 #   ./setup.sh
 #
-# Alpmeister works before any settings: its Dashboard starts on all your repositories.
+# Alp works before any settings: its Settings button picks repositories, workspaces and prompts.
 set -euo pipefail
 repo="$(cd "$(dirname "$0")" && pwd)"
 for arg in "$@"; do
@@ -58,14 +58,10 @@ fi
 say "4. Herdr"
 if ! command -v herdr-app >/dev/null || ! herdr-app status >/dev/null 2>&1; then
   echo "Herdr is not open. Later: herdr-app do layout.switch '{\"name\":\"alp\"}'"
-elif confirm "Switch Herdr to the alp layout and open Alpmeister's Settings?"; then
+elif confirm "Switch Herdr to the alp layout?"; then
   herdr-app do layout.switch '{"name":"alp"}' >/dev/null
-  if herdr-app ls 2>/dev/null | grep -q '"name": "Alpmeister settings"'; then
-    echo "Alpmeister's settings are already open in a tab."
-  else
-    herdr-app do tab.new '{"mod":"alpmeister","name":"Alpmeister settings","props":{"tab":"settings"}}' >/dev/null
-  fi
+  echo "Alp opens on the Overview of all your repositories: click its pinned tab, first in the tab bar."
 fi
 
 say "Done."
-echo "Change your settings any time from the gear beside Alpmeister's Refresh button."
+echo "Add a workspace, or change any setting, from the Settings button in Alp's header."

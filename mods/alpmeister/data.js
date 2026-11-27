@@ -8,6 +8,7 @@ import { exec } from "herdr";
 import { inScope, workspaceOfBoard } from "./config.js";
 import {
   ACCOUNT,
+  ACCOUNT_SEARCHES,
   BOARD_VIEW_PAGE,
   BUGS_PAGE,
   CUSTOMER_LABELS,
@@ -81,7 +82,8 @@ export const searchUrl = (repo, query) =>
     : `https://github.com/search?type=issues&q=${encodeURIComponent(query)}`;
 
 /**
- * Every search a workspace runs, scoped to its repository.
+ * Every search a workspace runs, scoped to its repository. Open PRs (`queries.prs`) is sorted by
+ * the last update unless it names a sort of its own.
  * @param {object} ws The workspace.
  * @returns {Record<string, string>} The searches by name; repository searches are absent without a repository.
  */
@@ -94,7 +96,7 @@ export function workspaceQueries(ws) {
     inFlightFilter: inFlightParts.join(" "),
     triageQuery: `${repo} ${ws.queries.triage}`,
     bugsQuery: `${repo} ${ws.bugs.query}`,
-    prsQuery: `${repo} is:pr is:open sort:updated-desc`,
+    prsQuery: `${repo} ${ws.queries.prs}${/(^|\s)sort:/.test(ws.queries.prs) ? "" : " sort:updated-desc"}`,
   };
 }
 
@@ -530,27 +532,23 @@ export async function loadWorkspace(ws) {
 /** Whether a check state is a failure. */
 const failing = (state) => state === "FAILURE" || state === "ERROR";
 
+/** Where each Daypack card's rows and count sit in the account's model, by its search's key. */
+const CARD_LISTS = { review: "reviews", myPrs: "myPrs", mine: "mine" };
+
 /**
- * Loads the account: every repository in scope with its open counts and checks, your review
- * requests, your PRs and your issues. With picked repositories, the searches keep only theirs.
+ * A Daypack card's rows from its search's result. With picked repositories, only theirs; "All"
+ * keeps everything a search finds, such as a review on a repository you are not in.
  * @param {object} config The settings.
- * @returns {Promise<object>} The account's model, with a failure in `error`.
+ * @param {"review" | "myPrs" | "mine"} key The card's search.
+ * @param {{ nodes: object[] }} search The search's result.
+ * @param {Set<string>} scoped The repositories in scope.
+ * @returns {object[]} The rows.
  */
-export async function loadAccount(config) {
-  const { queries } = config.account;
-  const data = await graphql(
-    ACCOUNT,
-    { reviewQuery: queries.review, mineQuery: queries.mine, myPrsQuery: queries.myPrs },
-    { partial: true },
-  );
-  const repos = data.viewer.repositories.nodes.filter((repo) => inScope(config.account, repo));
-  const scoped = new Set(repos.map((repo) => repo.nameWithOwner));
-  // "All" keeps everything a search finds, such as a review on a repository you are not in.
+function cardRows(config, key, search, scoped) {
   const keep = (item) => !Array.isArray(config.account.repos) || scoped.has(item.repo);
-  const reviews = data.reviews.nodes.filter((pr) => pr.number).map(prRow).filter(keep);
-  const myPrs = data.myPrs.nodes.filter((pr) => pr.number).map(prRow).filter(keep);
-  const mine = data.mine.nodes
-    .filter((issue) => issue.number)
+  const nodes = (search?.nodes ?? []).filter((node) => node.number);
+  if (key !== "mine") return nodes.map(prRow).filter(keep);
+  return nodes
     .map((issue) => {
       const standing = standingOnBoards(config, issue);
       return {
@@ -567,6 +565,60 @@ export async function loadAccount(config) {
       };
     })
     .filter(keep);
+}
+
+/**
+ * A Daypack card's count: the rows kept with picked repositories, else GitHub's total.
+ * @param {object} config The settings.
+ * @param {object[]} rows The card's rows.
+ * @param {{ issueCount: number }} search The search's result.
+ * @returns {number}
+ */
+const cardCount = (config, rows, search) => (Array.isArray(config.account.repos) ? rows.length : search?.issueCount ?? rows.length);
+
+/**
+ * Fetches one Daypack card again with another search, for a filter edited on the card, and
+ * puts its rows into a copy of the account's model. The other cards stay as they were.
+ * @param {object} config The settings.
+ * @param {object} account The account's model, from `loadAccount`.
+ * @param {"review" | "myPrs" | "mine"} key The card's search.
+ * @param {string} query The search to run.
+ * @returns {Promise<object>} The account's model with that card's rows, count and search.
+ * @throws {Error} With GitHub's message when it refuses the search.
+ */
+export async function loadCardSearch(config, account, key, query) {
+  const data = await graphql(ACCOUNT_SEARCHES[key], { search: query });
+  const scoped = new Set(account.repos.map((repo) => repo.repo));
+  const rows = cardRows(config, key, data.search, scoped);
+  const list = CARD_LISTS[key];
+  const next = {
+    ...account,
+    [list]: rows,
+    counts: { ...account.counts, [list]: cardCount(config, rows, data.search) },
+    queries: { ...account.queries, [key]: query },
+  };
+  if (key === "myPrs") next.redPrs = rows.filter((pr) => failing(pr.checks)).length;
+  return next;
+}
+
+/**
+ * Loads the account: every repository in scope with its open counts and checks, your review
+ * requests, your PRs and your issues. With picked repositories, the searches keep only theirs.
+ * @param {object} config The settings.
+ * @returns {Promise<object>} The account's model, with a failure in `error`.
+ */
+export async function loadAccount(config) {
+  const { queries } = config.account;
+  const data = await graphql(
+    ACCOUNT,
+    { reviewQuery: queries.review, mineQuery: queries.mine, myPrsQuery: queries.myPrs },
+    { partial: true },
+  );
+  const repos = data.viewer.repositories.nodes.filter((repo) => inScope(config.account, repo));
+  const scoped = new Set(repos.map((repo) => repo.nameWithOwner));
+  const reviews = cardRows(config, "review", data.reviews, scoped);
+  const myPrs = cardRows(config, "myPrs", data.myPrs, scoped);
+  const mine = cardRows(config, "mine", data.mine, scoped);
   return {
     viewer: data.viewer.login,
     reposTotal: data.viewer.repositories.totalCount,
@@ -585,9 +637,9 @@ export async function loadAccount(config) {
     myPrs,
     mine,
     counts: {
-      reviews: Array.isArray(config.account.repos) ? reviews.length : data.reviews.issueCount,
-      myPrs: Array.isArray(config.account.repos) ? myPrs.length : data.myPrs.issueCount,
-      mine: Array.isArray(config.account.repos) ? mine.length : data.mine.issueCount,
+      reviews: cardCount(config, reviews, data.reviews),
+      myPrs: cardCount(config, myPrs, data.myPrs),
+      mine: cardCount(config, mine, data.mine),
     },
     redRepos: repos.filter((repo) => failing(repo.defaultBranchRef?.target?.statusCheckRollup?.state)).length,
     redPrs: myPrs.filter((pr) => failing(pr.checks)).length,

@@ -1,6 +1,6 @@
 // The Run tab's overlays: the dialog that asks for a run's `${input:...}` values before it
 // starts, the form that adds or edits a run in one of Alp's config files, and a run's
-// right-click menu. The import dialog is in import-view.js.
+// menu (its ⋯ or a right-click). The import dialog is in import-view.js.
 
 import { div } from "gpui-kit";
 import { h_flex, v_flex, Input, InputState } from "gpui-base";
@@ -340,16 +340,21 @@ export class MenuPart {
     });
   }
 
+  /**
+   * The menu: Edit…, Hide for me (or Show again), and Delete from the file the run is in, in red.
+   * @returns {object}
+   */
   render() {
     const t = theme();
     const { key, name, origin, root, repo, hidden, overlay } = props();
-    const item = (id, label, action) =>
+    const item = (id, label, action, color = t.foreground) =>
       div()
         .id(id)
         .px(12)
         .py(7)
         .rounded(6)
         .text_size(12.5)
+        .text_color(color)
         .truncate()
         .cursor_pointer()
         .hover((style) => style.bg(t.hover))
@@ -360,11 +365,11 @@ export class MenuPart {
         openSaveForm(root, { name, layer: origin });
         closeOverlay(overlay);
       }),
-      item("menu-delete", `Delete from ${LAYER_FILE[origin].split("/").pop()}`, (_event, cx) => this.remove(cx)),
-      item(hidden ? "menu-show" : "menu-hide", hidden ? "Show again" : "Hide", () => {
+      item(hidden ? "menu-show" : "menu-hide", hidden ? "Show again" : "Hide for me", () => {
         ListPart.setVisibility(repo, key, !hidden);
         closeOverlay(overlay);
       }),
+      item("menu-delete", `Delete from ${LAYER_FILE[origin]}`, (_event, cx) => this.remove(cx), t.blocked),
     ];
     return v_flex().id("alp-runs-menu").size_full().p(4).bg(t.popover).text_color(t.foreground).children(items);
   }

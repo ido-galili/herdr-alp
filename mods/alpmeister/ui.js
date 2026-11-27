@@ -2,7 +2,7 @@
 // the usage-limits bar with its time tick, and the agents list's status colors.
 
 import { div, image, svg } from "gpui-kit";
-import { h_flex, v_flex } from "gpui-base";
+import { h_flex, v_flex, Input } from "gpui-base";
 import { exec, notify, run, spaces, theme } from "herdr";
 
 const DAY = 86400000;
@@ -11,6 +11,14 @@ const SESSION_STATUS_LABELS = { working: "working", blocked: "needs you", done: 
 /** The Claude button's tooltip for a filled prompt. */
 export const claudeTooltip = (prompt) =>
   `Open a Claude tab running ${prompt}. Middle-click opens it in the background.`;
+
+/**
+ * The tooltip of a Claude button whose prompt is not set.
+ * @param {string} kind "pr" or "issue".
+ * @returns {string}
+ */
+export const noPromptTooltip = (kind) =>
+  `No Claude prompt for ${kind === "pr" ? "PRs" : "issues"} yet. Click to set it in Settings, under Claude buttons.`;
 
 /** Opens a URL in the default browser. */
 export const openUrl = (url) => exec("open", [url]).catch((error) => console.log(`alpmeister: open failed: ${error}`));
@@ -262,13 +270,47 @@ export const ICONS = {
 };
 
 /**
- * A 22px icon button with a tooltip. `color` tints a one-color icon; `picture` draws a
- * full-color icon as it is, such as a program's. `onMiddleClick`, when given, runs on a
- * middle-button release over the button.
+ * Roughly how wide a short label is drawn at 11.5px, for a button that grows to show it. A
+ * little over, so the label is never clipped.
+ * @param {string} text The label.
+ * @returns {number} The width in pixels.
  */
-export function IconButton(id, icon, onClick, { tooltip, color, picture = false, onMiddleClick } = {}) {
+const labelWidth = (text) => Math.ceil(text.length * 6.8) + 2;
+
+/**
+ * The mark Claude buttons show while their prompt is not set: the Claude mark's place, drawn as a
+ * dashed outline.
+ * @param {object} t The theme.
+ * @returns {object} The mark.
+ */
+export function DashedMark(t) {
+  return div().flex_none().w(13).h(11).rounded(3).border_1().border_dashed().border_color(t.dim);
+}
+
+/**
+ * A 22px icon button with a tooltip. `color` tints a one-color icon; `picture` draws a
+ * full-color icon as it is, such as a program's, a little faded until hovered or focused; `mark`
+ * draws an element in place of the icon. `onMiddleClick`, when given, runs on a middle-button
+ * release over the button.
+ *
+ * With a `label`, the button is a Tab stop (Enter or Space presses it) and, while hovered or
+ * focused, grows leftwards over its neighbours to show the label before the icon. It still takes
+ * 22px in the row, so nothing else moves.
+ * @param {string} id A unique element id.
+ * @param {string | null} icon The icon's path, or null with `mark`.
+ * @param {(cx: object) => void} onClick Called with the window context.
+ * @param {{ tooltip?: string, color?: string, picture?: boolean, mark?: object, label?: string,
+ *   onMiddleClick?: (cx: object) => void }} [options]
+ * @returns {object} The button.
+ */
+export function IconButton(id, icon, onClick, { tooltip, color, picture = false, mark, label, onMiddleClick } = {}) {
   const t = theme();
-  return h_flex()
+  const glyph = mark ?? (picture ? image(icon).w(13).h(13) : svg(icon).size(13));
+  const press = (cx) => {
+    cx.stop_propagation();
+    onClick(cx);
+  };
+  const button = h_flex()
     .id(id)
     .flex_none()
     .size(22)
@@ -277,19 +319,66 @@ export function IconButton(id, icon, onClick, { tooltip, color, picture = false,
     .rounded(5)
     .text_color(color ?? t.dim)
     .cursor_pointer()
-    .hover((style) => style.bg(t.hover).text_color(color ?? t.foreground))
-    .on_click((_event, cx) => {
-      cx.stop_propagation();
-      onClick(cx);
-    })
+    .on_click((_event, cx) => press(cx))
     .when(Boolean(onMiddleClick), (el) =>
       el.on_mouse_up("middle", (_event, cx) => {
         cx.stop_propagation();
         onMiddleClick(cx);
       }),
     )
-    .when(Boolean(tooltip), (el) => el.tooltip(tooltip))
-    .child(picture ? image(icon).w(13).h(13) : svg(icon).size(13));
+    .when(Boolean(tooltip), (el) => el.tooltip(tooltip));
+  if (!label) {
+    return button.hover((style) => style.bg(t.hover).text_color(color ?? t.foreground)).child(glyph);
+  }
+  // The label sits left of the icon, clipped until the button widens: the icon stays put.
+  const open = (style) =>
+    style
+      .w(22 + 6 + labelWidth(label))
+      .bg(t.border)
+      .text_color(t.foreground)
+      .opacity(1);
+  return div()
+    .relative()
+    .flex_none()
+    .size(22)
+    .child(
+      button
+        .absolute()
+        .top(0)
+        .right(0)
+        .justify_end()
+        .overflow_hidden()
+        .when(picture && !color, (el) => el.opacity(0.65))
+        .tab_index(0)
+        .hover(open)
+        .focus(open)
+        .on_key_down((event, cx) => {
+          if (event.key === "enter" || event.key === "space") press(cx);
+        })
+        .child(
+          div()
+            .absolute()
+            .top(0)
+            .right(22)
+            .h(22)
+            .pl(6)
+            .flex()
+            .items_center()
+            .whitespace_nowrap()
+            .text_size(11.5)
+            .font_medium()
+            .child(label),
+        )
+        .child(
+          h_flex()
+            .flex_none()
+            .size(22)
+            .items_center()
+            .justify_center()
+            .when(Boolean(color) && !picture && !mark, (el) => el.text_color(color))
+            .child(glyph),
+        ),
+    );
 }
 
 /** The name a Claude tab opened on an issue or PR carries: `repo#12`, or `PR repo#12`. */
@@ -516,4 +605,225 @@ export function GroupHeading(name, count, color) {
     .child(div().size(7).rounded(4).bg(color))
     .child(div().font_medium().text_color(t.foreground).child(name))
     .child(div().text_color(t.dim).child(String(count)));
+}
+
+/**
+ * Presses a focusable element's action on Enter or Space.
+ * @param {(cx: object) => void} press The action.
+ * @returns {(event: object, cx: object) => void} A key-down handler.
+ */
+const pressOnKey = (press) => (event, cx) => {
+  if (event.key !== "enter" && event.key !== "space") return;
+  cx.stop_propagation();
+  press(cx);
+};
+
+/**
+ * The colour a filter's summary is drawn in: quiet at the default, the warning orange while an
+ * edit is not saved, the accent purple once saved.
+ * @param {object} t The theme.
+ * @param {"default" | "edited" | "saved"} look The filter's state.
+ * @returns {string}
+ */
+export function filterColor(t, look) {
+  if (look === "edited") return warningColor(t);
+  if (look === "saved") return t.accent;
+  return t.muted;
+}
+
+/**
+ * The filter on a card: a summary in words for the card's header ("▾ Filter: mine · not draft")
+ * and, while open, its editor for under the header: chips that turn terms on and off, the raw
+ * search (Enter or Apply applies it), and a status line with Reset and Save. The Daypack cards
+ * use it; any card with a search can.
+ *
+ * The summary is a Tab stop: Enter or Space opens and closes the editor, and Esc anywhere in it
+ * closes it. Chips and buttons are Tab stops too.
+ * @param {string} id A unique element id.
+ * @param {{
+ *   summary: string,
+ *   look: "default" | "edited" | "saved",
+ *   open: boolean,
+ *   onToggle(cx: object): void,
+ *   chips: { id: string, label: string, on: boolean, add?: boolean, tooltip?: string, onPress(cx: object): void }[],
+ *   groups?: { label: string, chips: object[], note?: string }[],
+ *   input: object,
+ *   inputLabel?: string,
+ *   onApply(cx: object): void,
+ *   onSave: ((cx: object) => void) | null,
+ *   onReset: ((cx: object) => void) | null,
+ *   onEscape?(cx: object): boolean,
+ *   saveLabel?: string,
+ *   resetLabel?: string,
+ *   resetTooltip?: string,
+ *   busy?: boolean,
+ *   message?: { text: string, error?: boolean } | null,
+ *   lookWords?: { default?: string, edited?: string, saved?: string },
+ * }} options `input` is the raw search's InputState; `lookWords` names the three states in the
+ *   status line. `groups`, in place of `chips`, draws the chips in labelled rows, each with an
+ *   optional dim note. A null `onSave` or `onReset` leaves that button out. `onEscape` runs
+ *   first on Esc; when it answers true, the editor stays open.
+ * @returns {{ summary: object, panel: object | null }} The header's summary, and the editor (null when shut).
+ */
+export function FilterControl(id, options) {
+  const t = theme();
+  const color = filterColor(t, options.look);
+  const toggle = (cx) => options.onToggle(cx);
+  const close = (event, cx) => {
+    if (event.key !== "escape") return;
+    cx.stop_propagation();
+    if (options.onEscape?.(cx)) return;
+    if (options.open) options.onToggle(cx);
+  };
+  const summary = h_flex()
+    .id(`${id}-summary`)
+    .min_w(0)
+    .max_w(360)
+    .h(22)
+    .px(8)
+    .gap(6)
+    .items_center()
+    .rounded(6)
+    .border_1()
+    .border_color(options.look === "default" ? (options.open ? t.input : t.border) : color)
+    .text_size(11.5)
+    .text_color(color)
+    .cursor_pointer()
+    .tab_index(0)
+    .hover((style) => style.bg(t.hover))
+    .focus((style) => style.bg(t.hover).border_color(t.accent))
+    .tooltip(options.open ? "Close the filter (Esc)" : "Change what this card shows")
+    .on_click((_event, cx) => {
+      cx.stop_propagation();
+      toggle(cx);
+    })
+    .on_key_down((event, cx) => {
+      pressOnKey(toggle)(event, cx);
+      close(event, cx);
+    })
+    .child(div().flex_none().child(options.open ? "▴" : "▾"))
+    .child(div().min_w(0).truncate().child(`Filter: ${options.summary}`))
+    .when(options.look === "edited", (el) => el.child(div().flex_none().child("●")));
+  if (!options.open) return { summary, panel: null };
+  const words = { default: "The default", edited: "Edited, not saved", saved: "Saved for this card", ...options.lookWords };
+  const chip = (entry) => {
+    const press = (cx) => entry.onPress(cx);
+    return h_flex()
+      .id(entry.id)
+      .flex_none()
+      .h(24)
+      .px(10)
+      .gap(5)
+      .items_center()
+      .rounded(12)
+      .border_1()
+      .when(Boolean(entry.add), (el) => el.border_dashed())
+      .border_color(entry.on ? t.accent : t.border)
+      .bg(entry.on ? t.selected : t.background)
+      .text_size(11.5)
+      .text_color(entry.on ? t.foreground : entry.add ? t.dim : t.muted)
+      .cursor_pointer()
+      .tab_index(0)
+      .hover((style) => style.border_color(entry.on ? t.accent : t.input).text_color(t.foreground))
+      .focus((style) => style.border_color(t.accent).text_color(t.foreground))
+      .when(Boolean(entry.tooltip), (el) => el.tooltip(entry.tooltip))
+      .on_click((_event, cx) => {
+        cx.stop_propagation();
+        press(cx);
+      })
+      .on_key_down(pressOnKey(press))
+      .child(entry.on ? `✓ ${entry.label}` : entry.label);
+  };
+  const button = (name, label, press, primary, tooltip) =>
+    h_flex()
+      .id(`${id}-${name}`)
+      .flex_none()
+      .h(26)
+      .px(primary ? 12 : 8)
+      .items_center()
+      .rounded(6)
+      .text_size(11.5)
+      .when(primary, (el) => el.font_semibold().bg(t.accent).text_color(t.accent_foreground ?? t.background))
+      .when(!primary, (el) => el.text_color(t.muted).hover((style) => style.bg(t.hover).text_color(t.foreground)))
+      .cursor_pointer()
+      .tab_index(0)
+      .focus((style) => (primary ? style.opacity(0.85) : style.bg(t.hover).text_color(t.foreground)))
+      .when(Boolean(options.busy), (el) => el.opacity(0.6))
+      .when(Boolean(tooltip), (el) => el.tooltip(tooltip))
+      .on_click((_event, cx) => {
+        cx.stop_propagation();
+        if (!options.busy) press(cx);
+      })
+      .on_key_down(pressOnKey((cx) => !options.busy && press(cx)))
+      .child(label);
+  const panel = v_flex()
+    .id(`${id}-panel`)
+    .p(10)
+    .gap(9)
+    .rounded(8)
+    .border_1()
+    .border_color(t.input)
+    .bg(t.canvas)
+    .on_key_down(close)
+    .when(!options.groups, (el) => el.child(h_flex().flex_wrap().gap(6).children(options.chips.map(chip))))
+    .when(Boolean(options.groups), (el) =>
+      el.children(
+        options.groups.map((group) =>
+          h_flex()
+            .gap(8)
+            .items_start()
+            .child(div().flex_none().w(64).h(24).flex().items_center().text_size(11.5).text_color(t.dim).child(group.label))
+            .child(
+              h_flex()
+                .flex_1()
+                .min_w(0)
+                .flex_wrap()
+                .gap(6)
+                .items_center()
+                .children(group.chips.map(chip))
+                .when(Boolean(group.note), (row) => row.child(div().h(24).flex().items_center().text_size(11.5).text_color(t.dim).child(group.note))),
+            ),
+        ),
+      ),
+    )
+    .child(
+      h_flex()
+        .gap(8)
+        .items_center()
+        .child(div().flex_none().text_size(11.5).text_color(t.dim).child(options.inputLabel ?? "GitHub search"))
+        .child(
+          div()
+            .flex_1()
+            .min_w(0)
+            .child(
+              Input.new(options.input)
+                .h(28)
+                .px(9)
+                .rounded(6)
+                .border_1()
+                .border_color(options.message?.error ? t.blocked : t.border)
+                .bg(t.background)
+                .text_size(12)
+                .text_color(t.foreground),
+            ),
+        )
+        .child(button("apply", "Apply", options.onApply, false)),
+    )
+    .when(Boolean(options.message), (el) =>
+      el.child(Note(options.message.text, options.message.error ? t.blocked : t.dim)),
+    )
+    .child(
+      h_flex()
+        .gap(10)
+        .items_center()
+        .text_size(11.5)
+        .child(div().flex_none().size(7).rounded(4).bg(options.look === "default" ? t.dim : color))
+        .child(div().text_color(options.look === "default" ? t.dim : color).child(options.busy ? "Fetching…" : words[options.look]))
+        .child(div().flex_1())
+        .when(Boolean(options.onReset), (row) =>
+          row.child(button("reset", options.resetLabel ?? "Reset to default", options.onReset, false, options.resetTooltip)),
+        )
+        .when(Boolean(options.onSave), (row) => row.child(button("save", options.saveLabel ?? "Save for this card", options.onSave, true))),
+    );
+  return { summary, panel };
 }

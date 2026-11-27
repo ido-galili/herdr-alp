@@ -5,6 +5,7 @@ import { div } from "gpui-kit";
 import { h_flex, v_flex, Input } from "gpui-base";
 import { theme } from "herdr";
 import { daysSinceAdded } from "./focus.js";
+import { ClaudeButton } from "./my-day.js";
 import {
   Card,
   Chip,
@@ -13,8 +14,6 @@ import {
   NeedsYou,
   Note,
   SessionButton,
-  claudeTooltip,
-  fillPrompt,
   openUrl,
   sessionTab,
   shortRepo,
@@ -119,14 +118,17 @@ function TodoEditor(t, edit) {
 
 /**
  * One focus item: checkbox, text, an issue's status or a PR's review decision, days since it was
- * added, a Claude button for a GitHub item, an edit button for a todo, and a remove button. A
- * GitHub item opens on click. A todo's text opens for editing on a double-click or the edit button.
+ * added; then, for a GitHub item, its lit pin ("Unpin") and its Claude button, as the lists below
+ * draw them; for a todo, an edit and a remove button. A GitHub item opens on click. A todo's text
+ * opens for editing on a double-click or the edit button.
+ * @param {object} item The focus item.
+ * @param {object} actions The focus card's actions, as `FocusList` takes them.
+ * @returns {object} The row.
  */
 function FocusItem(item, actions) {
   const t = theme();
   const label = item.kind === "todo" ? item.text : item.title;
   const days = daysSinceAdded(item);
-  const command = item.kind === "todo" ? "" : actions.command(item.kind);
   const isTodo = item.kind === "todo";
   const editing = isTodo && actions.edit.id === item.id;
   const session = isTodo ? null : sessionTab(item);
@@ -181,26 +183,43 @@ function FocusItem(item, actions) {
       ),
     )
     .when(Boolean(session), (el) => el.child(SessionButton(`fc-session-${item.id}`, session)))
-    .when(Boolean(command), (el) =>
-      el.child(
-        IconButton(`fc-go-${item.id}`, ICONS.claude, () => actions.launch(item), {
-          picture: true,
-          tooltip: claudeTooltip(fillPrompt(command, item)),
-          onMiddleClick: (cx) => actions.launch(item, { background: true, cx }),
-        }),
-      ),
+    .when(!isTodo, (el) =>
+      el
+        .child(
+          IconButton(`fc-remove-${item.id}`, ICONS.pin, (cx) => actions.remove(item.id, cx), {
+            tooltip: "Unpin from Today",
+            color: t.accent,
+            label: "Unpin",
+          }),
+        )
+        .when(item.number != null, (el) =>
+          el.child(
+            ClaudeButton("fc", item, {
+              launch: actions.launch,
+              prompt: actions.prompt,
+              openSettings: actions.openSettings,
+            }),
+          ),
+        ),
     )
     .when(isTodo && !editing, (el) =>
       el.child(IconButton(`fc-edit-${item.id}`, ICONS.edit, (cx) => actions.edit.start(item, cx), { tooltip: "Edit" })),
     )
-    .child(IconButton(`fc-remove-${item.id}`, ICONS.close, (cx) => actions.remove(item.id, cx), { tooltip: "Remove" }));
+    .when(isTodo, (el) =>
+      el.child(IconButton(`fc-remove-${item.id}`, ICONS.close, (cx) => actions.remove(item.id, cx), { tooltip: "Remove" })),
+    );
 }
 
 /**
- * The focus card. `actions`: `{ toggle(id, cx), remove(id, cx), launch(item, options?), command(kind), edit }`,
- * where `command` is the configured Claude command for that kind, or "" when none is set, and
- * `edit` is `{ id, input, start(item, cx), cancel(cx) }` for the todo being edited.
- * `input` is the todo field's InputState.
+ * The focus card.
+ * @param {object[]} items The focus items.
+ * @param {object} input The todo field's InputState.
+ * @param {{ toggle(id, cx), remove(id, cx), launch(item, options?), prompt(kind): string,
+ *   openSettings(cx), edit: object, extras?: object[] }} actions `prompt` is the configured Claude
+ *   prompt for that kind, or "" when none is set; `openSettings` shows Settings, for a Claude
+ *   button without a prompt; `edit` is `{ id, input, start(item, cx), cancel(cx) }` for the todo
+ *   being edited; `extras` go on the card's title row, after the count.
+ * @returns {object} The card.
  */
 export function FocusList(items, input, actions) {
   const t = theme();
@@ -208,7 +227,7 @@ export function FocusList(items, input, actions) {
   return Card(
     "focus",
     "Today",
-    [Chip(`${open} open · ${items.length - open} done`, { color: t.dim })],
+    [Chip(`${open} open · ${items.length - open} done`, { color: t.dim }), ...(actions.extras ?? [])],
     v_flex()
       .gap(6)
       .child(
