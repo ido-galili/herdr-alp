@@ -1,17 +1,19 @@
-// Alpmeister: the team lead's start-of-day view, in four views, and its settings, which the
+// Alpmeister: the team lead's start-of-day view, in three views, and its settings, which the
 // Settings button shows in place of the view (Back returns to it).
 //   Dashboard  one workspace at a time (tiles for open bugs by priority, triage bugs, customer
-//              issues and the nightly run, the Milestone card and the team in flight), or
-//              All repos: your GitHub as a whole.
+//              issues and the nightly run, your review requests, PRs and issues there, the
+//              Milestone card and the team in flight), or All repos: your GitHub as a whole
+//              (Red checks, your review requests, PRs and issues, and the repositories).
 //   Board      a workspace's board items that match its Board tab filter, a column per status.
 //   Herds      your Claude Code sessions and how they are linked.
-//   Daypack    today's focus, then review requests, your PRs and your issues across your repos.
+// The Today list (pins and todos) is Basecamp's Today tab (the `daypack` mod); the pins here
+// add to it, in ~/.local/state/alp/focus.json.
 //   Settings   everything in ~/.config/alp/alpmeister.json, as a form: a copy opened with
 //              props.tab "settings" shows only this.
 // It fetches when it opens, when it is shown with data over 2 hours old, and from Refresh.
 
 import { View, div, svg } from "gpui-kit";
-import { h_flex, v_flex, InputState, Popup, ScrollHandle } from "gpui-base";
+import { h_flex, v_flex, Popup, ScrollHandle } from "gpui-base";
 import {
   checking,
   exec,
@@ -29,7 +31,7 @@ import {
   window,
   writeTextFile,
 } from "herdr";
-import { AccountTiles, OpenPrs, Repos } from "./account.js";
+import { OpenPrs, RedChecks, Repos } from "./account.js";
 import { Avatars } from "./avatars.js";
 import { BoardState } from "./board-state.js";
 import { Board, NoBoard } from "./board-view.js";
@@ -48,7 +50,6 @@ import {
 } from "./config.js";
 import { MODEL_VERSION, loadAll, loadCardSearch, loadNoMilestone, loadPickStates, loadWorkspaceCard } from "./data.js";
 import { FocusStore, pickId } from "./focus.js";
-import { FocusList } from "./focus-list.js";
 import { FilterDialog, openFilterDialog } from "./filter-dialog.js";
 import { loadDemoHerds } from "./demo-herds.js";
 import {
@@ -64,7 +65,7 @@ import { loadHerds, saveTabLink, sessionsDir } from "./herds-data.js";
 import { Herds } from "./herds-view.js";
 import { HerdsCanvas } from "./herds-canvas.js";
 import { InFlight } from "./in-flight.js";
-import { DaypackKey, MyIssues, MyPrs, Reviews, filterChips } from "./my-day.js";
+import { MyIssues, MyPrs, Reviews, filterChips, narrowAccount } from "./my-day.js";
 import { summaryWords, toggleTerm } from "./search-terms.js";
 import { saveSettings } from "./settings-data.js";
 import { MilestoneCard } from "./spotlight.js";
@@ -91,9 +92,15 @@ const STALE_AFTER = 2 * 3600000;
 /** The pause after an agents folder changes before it is watched again: agents write often. */
 const AGENT_WATCH_PAUSE = 3000;
 const WIDE = 1000;
-const TABS = { dashboard: "dashboard", board: "board", today: "today", herds: "herds", settings: "settings" };
-/** Other names `props.tab` takes for a tab: the Dashboard is shown as Overview. */
-const TAB_ALIASES = new Map([["overview", TABS.dashboard]]);
+const TABS = { dashboard: "dashboard", board: "board", herds: "herds", settings: "settings" };
+/**
+ * Other names `props.tab` (and a remembered tab) takes for a tab: the Dashboard is shown as
+ * Overview, and the old Today view, whose lists are on the Overview now, opens the Overview.
+ */
+const TAB_ALIASES = new Map([
+  ["overview", TABS.dashboard],
+  ["today", TABS.dashboard],
+]);
 const TAB_KEY = "alpmeister.tab";
 /** Set after the settings file is saved, so every other copy fetches with the new settings. */
 const SETTINGS_STAMP_KEY = "alp.settingsStamp";
@@ -113,19 +120,17 @@ const ALL_REPOS = "";
 const FOCUS_STAMP_KEY = "alp.focusStamp";
 /** The first run's "Add a workspace" card on All repos: "true" once "Not now" hid it. */
 const ADD_WORKSPACE_DISMISSED_KEY = "alpmeister.addWorkspaceDismissed";
-/** The Daypack key's "Hide key": "true" once hidden. */
-const DAYPACK_KEY_HIDDEN_KEY = "alpmeister.daypackKeyHidden";
-/** Set by Basecamp's Daypack to ask the pinned Alp to show Settings in place. */
+/** Set by Basecamp's Today tab to ask the pinned Alp to show Settings in place. */
 const OPEN_SETTINGS_KEY = "alp.openSettings";
 /** The views' names, as the header's tabs and Settings' "Back to <view>" show them. */
-const VIEW_NAMES = { [TABS.dashboard]: "Overview", [TABS.board]: "Board", [TABS.herds]: "Herds", [TABS.today]: "Today" };
+const VIEW_NAMES = { [TABS.dashboard]: "Overview", [TABS.board]: "Board", [TABS.herds]: "Herds" };
 /** The Alp layout's stack that shows the terminals or, pinned in their place, Alpmeister. */
 const WORK_STACK = "work-stack";
 const WORK_BODY = "work-body";
 const ALPMEISTER_VIEW = "alpmeister-view";
 /** Bumped after a filter dialog saved, so the copy that opened it redraws. */
 const FILTER_STAMP_KEY = "alpmeister.filterStamp";
-/** Where each Daypack card's count sits in the account's `counts`, by its search's key. */
+/** Where each of your lists' count sits in the account's `counts`, by its search's key. */
 const CARD_LISTS = { review: "reviews", myPrs: "myPrs", mine: "mine" };
 /** Each filtered card's name, as its title and the filter dialog's title say it. */
 const CARD_NAMES = {
@@ -281,19 +286,6 @@ function rememberedInFlightMilestones() {
 }
 
 /**
- * Whether the Daypack's key was hidden, as remembered.
- * @returns {boolean} True when it was; false when nothing is remembered.
- */
-function rememberedKeyHidden() {
-  try {
-    return localStorage.getItem(DAYPACK_KEY_HIDDEN_KEY) === "true";
-  } catch (error) {
-    console.log(`alpmeister: no remembered Daypack key: ${error}`);
-    return false;
-  }
-}
-
-/**
  * Whether a switch stored as "true" in this copy's storage is on.
  * @param {string} key The storage key.
  * @returns {boolean} True when it is; false when nothing is remembered.
@@ -334,7 +326,6 @@ export default class Alpmeister extends View {
     // `props.workspace` opens a copy on that workspace's Dashboard; "" is All repos.
     this.workspaceName = typeof props()?.workspace === "string" ? props().workspace : rememberedWorkspace();
     this.reposActiveOnly = rememberedReposActiveOnly();
-    this.keyHidden = rememberedKeyHidden();
     this.addWorkspaceDismissed = rememberedFlag(ADD_WORKSPACE_DISMISSED_KEY);
     this.failure = null;
     // Per workspace: the Milestone card's pick (absent: Next) and Team in flight's own milestone
@@ -377,12 +368,6 @@ export default class Alpmeister extends View {
     this.herdsCanvas = new HerdsCanvas({ view: props()?.herdsView, full: props()?.herdsFull === true });
     this.focus = new FocusStore(this.demo ? demoFocus() : null);
     this.focusStamp = shared(FOCUS_STAMP_KEY) ?? null;
-    this.input = InputState.new({ placeholder: "Add a todo and press Enter" });
-    this.input.on("submit", (_event, cx) => this.addTodo(cx));
-    this.editingTodo = null;
-    this.todoEdit = InputState.new({ placeholder: "The todo" });
-    this.todoEdit.on("submit", (_event, cx) => this.saveTodoEdit(cx));
-    this.todoEdit.on("blur", (_event, cx) => this.saveTodoEdit(cx));
     // What a filter dialog (another copy) left for this copy's own context: see `runQueued`.
     this.queued = [];
     this.settings = new SettingsForm((cx) => this.announceSettings(cx));
@@ -578,8 +563,8 @@ export default class Alpmeister extends View {
   }
 
   /**
-   * Shows Settings in place when Basecamp's Daypack asked for it (a dashed Claude button there),
-   * in the pinned Alp only. Called from `render`.
+   * Shows Settings in place when Basecamp's Today tab asked for it (a dashed Claude button or the
+   * key's "set it in Settings" there), in the pinned Alp only. Called from `render`.
    * @param {object} cx The render's context.
    * @returns {void}
    */
@@ -588,22 +573,6 @@ export default class Alpmeister extends View {
     if (stamp === this.openSettingsStamp) return;
     this.openSettingsStamp = stamp;
     if (!props()?.pane && this.tab !== TABS.settings && !this.inSettings) this.openSettings({}, cx);
-  }
-
-  /**
-   * Hides or shows the Daypack's key, and remembers it for every copy.
-   * @param {boolean} hidden Whether to hide it.
-   * @param {object} cx The context, to redraw.
-   * @returns {void}
-   */
-  setKeyHidden(hidden, cx) {
-    this.keyHidden = hidden;
-    try {
-      localStorage.setItem(DAYPACK_KEY_HIDDEN_KEY, String(hidden));
-    } catch (error) {
-      console.log(`alpmeister: Daypack key not remembered: ${error}`);
-    }
-    cx.notify();
   }
 
   /**
@@ -725,11 +694,11 @@ export default class Alpmeister extends View {
   }
 
   /**
-   * What a card's filter edits: a Daypack search (`account.queries`, which All repos' tiles show
-   * too), or one of a workspace's Overview cards (`ws:<workspace>:<key>`).
+   * What a card's filter edits: one of your lists' searches (`account.queries`, the same on All
+   * repos and on a workspace), or one of a workspace's Overview cards (`ws:<workspace>:<key>`).
    * @param {string} id The filter's id: "review", "myPrs", "mine", or `wsFilterId(name, key)`.
    * @returns {{ ws: object | null, key: string, saved: string, fallback: string }} The workspace
-   *   (null for a Daypack search), the card's key, the search the settings hold, and the default.
+   *   (null for one of your lists), the card's key, the search the settings hold, and the default.
    */
   filterTarget(id) {
     if (!id.startsWith("ws:")) {
@@ -1022,14 +991,14 @@ export default class Alpmeister extends View {
     }
   }
 
-  /** Tells the Daypack sidebar that the focus list changed on disk. */
+  /** Tells Basecamp's Today tab (and its count) that the focus list changed on disk. */
   announceFocus() {
     if (this.demo) return;
     this.focusStamp = Date.now();
     setShared(FOCUS_STAMP_KEY, this.focusStamp);
   }
 
-  /** Reloads the focus list when the Daypack sidebar changed it. */
+  /** Reloads the focus list when Basecamp's Today tab changed it, so the pins show lit. */
   syncFocus(cx) {
     if (this.demo) return;
     const stamp = shared(FOCUS_STAMP_KEY) ?? null;
@@ -1041,39 +1010,11 @@ export default class Alpmeister extends View {
     });
   }
 
-  /** Saves the focus list, then redraws. */
-  /** Opens a todo's text for editing, all of it selected. */
-  startTodoEdit(item, cx) {
-    this.editingTodo = item.id;
-    this.todoEdit.set_value(item.text ?? "");
-    this.todoEdit.set_selected_range({ start: 0, end: (item.text ?? "").length });
-    this.todoEdit.focus();
-    // The field mounts on the next frame; focus it again once it is there.
-    cx.timer.after(100, () => this.todoEdit.focus());
-    cx.notify();
-  }
-
-  /** Saves the edited todo's text. An empty text keeps the old one. */
-  saveTodoEdit(cx) {
-    const id = this.editingTodo;
-    if (!id) return;
-    this.editingTodo = null;
-    const text = this.todoEdit.value().trim();
-    const item = this.focus.items().find((candidate) => candidate.id === id);
-    if (!item || !text || text === item.text) {
-      cx.notify();
-      return;
-    }
-    this.focus.update(id, { text });
-    this.persist(cx);
-  }
-
-  /** Closes the todo editor without saving. */
-  cancelTodoEdit(cx) {
-    this.editingTodo = null;
-    cx.notify();
-  }
-
+  /**
+   * Saves the focus list, tells Basecamp's Today tab, then redraws.
+   * @param {object} cx The context.
+   * @returns {void}
+   */
   persist(cx) {
     cx.spawn(async (cx) => {
       await this.focus.save();
@@ -1083,17 +1024,9 @@ export default class Alpmeister extends View {
     cx.notify();
   }
 
-  addTodo(cx) {
-    const text = this.input.value().trim();
-    if (!text) return;
-    this.focus.add({ kind: "todo", text });
-    this.input.set_value("");
-    this.persist(cx);
-  }
-
   /**
-   * A pin control for a row: "Pin" on hover or focus, or, lit in the accent color, "Unpin" for an
-   * item already on Today.
+   * A pin control for a row: "Pin to Today" (the list in Basecamp's Today tab), or, lit in the
+   * accent color, "Unpin from Today" for an item already on it.
    * @param {string} prefix Keeps ids unique when an item shows in two widgets.
    * @returns {(item: object) => object} Draws the pin for an item.
    */
@@ -1365,13 +1298,12 @@ export default class Alpmeister extends View {
   }
 
   /**
-   * The views as underlined tabs: Overview, Board, Herds and Daypack with its open count.
+   * The views as underlined tabs: Overview, Board and Herds.
    * @param {object} t The theme.
    * @returns {object} The row of tabs.
    */
   tabs(t) {
-    const open = this.focus.items().filter((item) => !item.done).length;
-    const tab = (name, count) => {
+    const tab = (name) => {
       const on = this.tab === name;
       return h_flex()
         .id(`tab-${name}`)
@@ -1387,18 +1319,14 @@ export default class Alpmeister extends View {
         .text_color(on ? t.foreground : t.muted)
         .hover((style) => style.text_color(t.foreground))
         .on_click((_event, cx) => this.selectTab(name, cx))
-        .child(VIEW_NAMES[name])
-        .when(Boolean(count), (el) =>
-          el.child(div().px(5).rounded(4).bg(t.hover).text_size(11.5).text_color(t.muted).child(String(count))),
-        );
+        .child(VIEW_NAMES[name]);
     };
     return h_flex()
       .gap(14)
       .items_center()
       .child(tab(TABS.dashboard))
       .child(tab(TABS.board))
-      .child(tab(TABS.herds))
-      .child(tab(TABS.today, open));
+      .child(tab(TABS.herds));
   }
 
   /**
@@ -1800,9 +1728,10 @@ export default class Alpmeister extends View {
   }
 
   /**
-   * The Dashboard tab: All repos (four tiles and every repository in scope), or one workspace
-   * (its tiles, the Milestone card, and the team in flight or the open PRs). A workspace
-   * with only a board says what adding a repository would show.
+   * The Dashboard tab: All repos (Red checks, your review requests, PRs and issues, and every
+   * repository in scope), or one workspace (its tiles, your lists narrowed to its repositories,
+   * the Milestone card, and the team in flight or the open PRs). A workspace with only a board
+   * says what adding a repository would show.
    * @param {object} config The settings.
    * @param {object} model The fetched model.
    * @param {boolean} wide Whether the tab is wide enough for four tiles across.
@@ -1824,14 +1753,16 @@ export default class Alpmeister extends View {
       const firstRun = this.firstRunCard(t);
       if (firstRun) content = content.child(firstRun);
       if (!account) return content.child(Note(this.loading ? "Loading from GitHub…" : "No data yet."));
-      return content.child(AccountTiles(account, { wide, filter: (key) => this.cardFilter(key) })).child(
-        Repos(config, account, {
-          expanded: this.expandedGroups,
-          onToggleGroup,
-          activeOnly: this.reposActiveOnly,
-          onToggleActive: (cx) => this.toggleReposActiveOnly(cx),
-        }),
-      );
+      return content
+        .child(this.myLists(config, account, wide, RedChecks(account)))
+        .child(
+          Repos(config, account, {
+            expanded: this.expandedGroups,
+            onToggleGroup,
+            activeOnly: this.reposActiveOnly,
+            onToggleActive: (cx) => this.toggleReposActiveOnly(cx),
+          }),
+        );
     }
     const wsModel = model.workspaces?.[ws.name];
     if (!wsModel) return content.child(Note(this.loading ? "Loading from GitHub…" : "Refresh to load this workspace."));
@@ -1840,30 +1771,33 @@ export default class Alpmeister extends View {
     }
     const choices = this.milestoneChoices(ws, wsModel);
     if (ws.repo) {
-      content = content
-        .child(
-          Tiles(ws, wsModel, {
-            wide,
-            onSettings: (cx) => this.openSettings({ workspace: ws.name }, cx),
-            filter: (key) => this.cardFilter(wsFilterId(ws.name, key)),
-          }),
-        )
-        .child(
-          MilestoneCard(ws, wsModel, {
-            expanded: this.expandedGroups,
-            onToggleGroup,
-            pinButton: this.pinFor("sp"),
-            pick: choices.pick,
-            menuOpen: this.pickerOpen === "ms-card",
-            onToggleMenu: (cx) => this.toggleMenu("ms-card", cx),
-            onCloseMenu: (cx) => this.closeMenu("ms-card", cx),
-            onPick: (pick, cx) => this.pickMilestone(ws, pick, cx),
-            noMilestone: choices.pick === "" && wsModel.milestones ? this.noMilestoneFor(ws, wsModel, cx) : null,
-            flag: this.milestoneFlag[ws.name] ?? null,
-            onFlag: (flag, cx) => this.toggleMilestoneFlag(ws.name, flag, cx),
-            onBoard: ws.board ? (title, cx) => this.openMilestoneOnBoard(ws, title, cx) : null,
-          }),
-        );
+      content = content.child(
+        Tiles(ws, wsModel, {
+          wide,
+          onSettings: (cx) => this.openSettings({ workspace: ws.name }, cx),
+          filter: (key) => this.cardFilter(wsFilterId(ws.name, key)),
+        }),
+      );
+    }
+    // Your lists, narrowed to the workspace: after its tiles, before the team's cards.
+    if (model.account) content = content.child(this.myLists(config, narrowAccount(model.account, ws, wsModel), wide));
+    if (ws.repo) {
+      content = content.child(
+        MilestoneCard(ws, wsModel, {
+          expanded: this.expandedGroups,
+          onToggleGroup,
+          pinButton: this.pinFor("sp"),
+          pick: choices.pick,
+          menuOpen: this.pickerOpen === "ms-card",
+          onToggleMenu: (cx) => this.toggleMenu("ms-card", cx),
+          onCloseMenu: (cx) => this.closeMenu("ms-card", cx),
+          onPick: (pick, cx) => this.pickMilestone(ws, pick, cx),
+          noMilestone: choices.pick === "" && wsModel.milestones ? this.noMilestoneFor(ws, wsModel, cx) : null,
+          flag: this.milestoneFlag[ws.name] ?? null,
+          onFlag: (flag, cx) => this.toggleMilestoneFlag(ws.name, flag, cx),
+          onBoard: ws.board ? (title, cx) => this.openMilestoneOnBoard(ws, title, cx) : null,
+        }),
+      );
     }
     if (ws.board) {
       content = content.child(
@@ -1898,70 +1832,28 @@ export default class Alpmeister extends View {
   }
 
   /**
-   * The Today view: the key to its icons (until hidden), today's focus across the top, then
-   * review requests and your PRs in one column and your issues in the other, from every
-   * repository in scope.
+   * Your three lists, as the Today view showed them: review requests and your PRs in one column
+   * and your issues in the other when wide, else one under the other. Each has its pins, Claude
+   * buttons and filter icon.
    * @param {object} config The settings.
-   * @param {object} model The fetched data.
+   * @param {object} account The account model, or one narrowed to a workspace (`narrowAccount`).
    * @param {boolean} wide Whether the lists go side by side.
-   * @returns {object} The tab's content.
+   * @param {object | null} [aside] A tile over your issues when wide (All repos' Red checks), else
+   *   over every list.
+   * @returns {object} The lists.
    */
-  today(config, model, wide) {
-    const t = theme();
-    const items = this.focus.items();
-    const key = this.keyHidden
-      ? null
-      : DaypackKey({
-          missingPrompt: !this.prompt("pr") || !this.prompt("issue"),
-          openSettings: (cx) => this.openSettings({}, cx),
-          hide: (cx) => this.setKeyHidden(true, cx),
-        });
-    const focus = FocusList(items, this.input, {
-      extras: this.keyHidden
-        ? [TextButton("daypack-key-show", "Key", (cx) => this.setKeyHidden(false, cx), { tooltip: "Show the key" })]
-        : [],
-      prompt: (kind) => this.prompt(kind),
-      openSettings: (cx) => this.openSettings({}, cx),
-      toggle: (id, cx) => {
-        this.focus.update(id, { done: !items.find((item) => item.id === id)?.done });
-        this.persist(cx);
-      },
-      remove: (id, cx) => {
-        this.focus.remove(id);
-        this.persist(cx);
-      },
-      launch: (item, options) => this.launch(item, options),
-      edit: {
-        id: this.editingTodo,
-        input: this.todoEdit,
-        start: (item, cx) => this.startTodoEdit(item, cx),
-        cancel: (cx) => this.cancelTodoEdit(cx),
-      },
-    });
-    const account = model.account;
-    if (!account) {
-      return v_flex()
-        .gap(14)
-        .when(Boolean(key), (el) => el.child(key))
-        .child(focus)
-        .when(Boolean(model.errors?.account), (el) => el.child(Note(`GitHub: ${model.errors.account}`, t.blocked)));
-    }
+  myLists(config, account, wide, aside = null) {
     const actions = { ...this.launchActions(), filter: (key) => this.cardFilter(key) };
     const reviews = Reviews(account, { ...actions, pinButton: this.pinFor("rv") });
     const mine = MyIssues(config, account, { ...actions, pinButton: this.pinFor("mi") });
     const myPrs = MyPrs(account, { ...actions, pinButton: this.pinFor("mp") });
-    const lists = wide
+    return wide
       ? h_flex()
           .gap(14)
           .items_start()
           .child(v_flex().flex_1().min_w(0).gap(14).child(reviews).child(myPrs))
-          .child(div().flex_1().min_w(0).child(mine))
-      : v_flex().gap(14).child(reviews).child(myPrs).child(mine);
-    return v_flex()
-      .gap(14)
-      .when(Boolean(key), (el) => el.child(key))
-      .child(focus)
-      .child(lists);
+          .child(v_flex().flex_1().min_w(0).gap(14).when(Boolean(aside), (el) => el.child(h_flex().child(aside))).child(mine))
+      : v_flex().gap(14).when(Boolean(aside), (el) => el.child(h_flex().child(aside))).child(reviews).child(myPrs).child(mine);
   }
 
   /** Starts the Settings form over from the file, dropping unsaved edits. */
@@ -2112,11 +2004,7 @@ export default class Alpmeister extends View {
         if (!this.configError) content = content.child(Note(this.loading ? "Loading from GitHub…" : "No data yet."));
       } else {
         content = content.child(
-          this.tab === TABS.today
-            ? this.today(config, model, wide)
-            : this.tab === TABS.board
-              ? this.board(model, cx)
-              : this.dashboard(config, model, wide, cx),
+          this.tab === TABS.board ? this.board(model, cx) : this.dashboard(config, model, wide, cx),
         );
       }
     }

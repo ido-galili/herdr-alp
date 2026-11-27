@@ -547,12 +547,12 @@ export class SettingsForm {
   // --- card filters ----------------------------------------------------------------------------
 
   /**
-   * Every card's filter, as Card filters lists them: the Daypack's three, then each workspace's
+   * Every card's filter, as Card filters lists them: your three lists, then each workspace's
    * Open bugs and Triage bugs (with a repository) and Open PRs (with a repository and no board,
    * where the Overview lists them). Each row reads the draft.
    * @returns {{ id: string, key: string, workspace: string | null, group: string, groupKey: string,
    *   label: string, value: string, saved: string, fallback: string, path: (string | number)[] }[]}
-   *   `workspace` is the workspace's name (null for the Daypack's), `saved` the file's value,
+   *   `workspace` is the workspace's name (null for your lists'), `saved` the file's value,
    *   `fallback` the default and `path` where the settings keep it.
    */
   filterRows() {
@@ -567,7 +567,7 @@ export class SettingsForm {
       id: `stf-${key}`,
       key,
       workspace: null,
-      group: "Today",
+      group: "Your GitHub",
       groupKey: "daypack",
       label,
       value: account.queries[key] ?? DEFAULT_QUERIES[key],
@@ -1380,7 +1380,7 @@ export class SettingsForm {
                 .child(Chip(`${scopedCount} in scope`, { color: t.muted })),
             )
             .child(this.scopeChips(t)),
-          "The Overview's All repos view and the Today view's lists cover these.",
+          "The Overview's All repos view and your lists on it cover these.",
         ),
       );
   }
@@ -1520,7 +1520,7 @@ export class SettingsForm {
       .gap(14)
       .child(
         Note(
-          "What each card lists, as a GitHub search. The Today and Overview cards open the same filter from their corner. " +
+          "What each card lists, as a GitHub search. The Overview's cards open the same filter from their corner. " +
             "Its Save writes that filter at once. The workspace cards add their repository; Open PRs adds a sort when it has none.",
         ),
       )

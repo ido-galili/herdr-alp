@@ -288,14 +288,6 @@ export const ICONS = {
 };
 
 /**
- * Roughly how wide a short label is drawn at 11.5px, for a button that grows to show it. A
- * little over, so the label is never clipped.
- * @param {string} text The label.
- * @returns {number} The width in pixels.
- */
-const labelWidth = (text) => Math.ceil(text.length * 6.8) + 2;
-
-/**
  * The mark Claude buttons show while their prompt is not set: the Claude mark's place, drawn as a
  * dashed outline.
  * @param {object} t The theme.
@@ -311,9 +303,9 @@ export function DashedMark(t) {
  * draws an element in place of the icon. `onMiddleClick`, when given, runs on a middle-button
  * release over the button.
  *
- * With a `label`, the button is a Tab stop (Enter or Space presses it) and, while hovered or
- * focused, grows leftwards over its neighbours to show the label before the icon. It still takes
- * 22px in the row, so nothing else moves.
+ * With a `label`, the button is a Tab stop (Enter or Space presses it). It stays an icon on hover
+ * and focus: the label goes into the tooltip ("Review: Open a Claude tab…"), unless the tooltip
+ * already starts with it ("Pin to Today").
  * @param {string} id A unique element id.
  * @param {string | null} icon The icon's path, or null with `mark`.
  * @param {(cx: object) => void} onClick Called with the window context.
@@ -328,7 +320,9 @@ export function IconButton(id, icon, onClick, { tooltip, color, picture = false,
     cx.stop_propagation();
     onClick(cx);
   };
-  const button = h_flex()
+  const tip = label && !(tooltip ?? "").startsWith(label) ? (tooltip ? `${label}: ${tooltip}` : label) : tooltip;
+  const lit = (style) => style.bg(t.hover).text_color(color ?? t.foreground).opacity(1);
+  return h_flex()
     .id(id)
     .flex_none()
     .size(22)
@@ -344,59 +338,18 @@ export function IconButton(id, icon, onClick, { tooltip, color, picture = false,
         onMiddleClick(cx);
       }),
     )
-    .when(Boolean(tooltip), (el) => el.tooltip(tooltip));
-  if (!label) {
-    return button.hover((style) => style.bg(t.hover).text_color(color ?? t.foreground)).child(glyph);
-  }
-  // The label sits left of the icon, clipped until the button widens: the icon stays put.
-  const open = (style) =>
-    style
-      .w(22 + 6 + labelWidth(label))
-      .bg(t.border)
-      .text_color(t.foreground)
-      .opacity(1);
-  return div()
-    .relative()
-    .flex_none()
-    .size(22)
-    .child(
-      button
-        .absolute()
-        .top(0)
-        .right(0)
-        .justify_end()
-        .overflow_hidden()
+    .when(Boolean(tip), (el) => el.tooltip(tip))
+    .when(Boolean(label), (el) =>
+      el
         .when(picture && !color, (el) => el.opacity(0.65))
         .tab_index(0)
-        .hover(open)
-        .focus(open)
+        .focus(lit)
         .on_key_down((event, cx) => {
           if (event.key === "enter" || event.key === "space") press(cx);
-        })
-        .child(
-          div()
-            .absolute()
-            .top(0)
-            .right(22)
-            .h(22)
-            .pl(6)
-            .flex()
-            .items_center()
-            .whitespace_nowrap()
-            .text_size(11.5)
-            .font_medium()
-            .child(label),
-        )
-        .child(
-          h_flex()
-            .flex_none()
-            .size(22)
-            .items_center()
-            .justify_center()
-            .when(Boolean(color) && !picture && !mark, (el) => el.text_color(color))
-            .child(glyph),
-        ),
-    );
+        }),
+    )
+    .hover(lit)
+    .child(glyph);
 }
 
 /** The name a Claude tab opened on an issue or PR carries: `repo#12`, or `PR repo#12`. */

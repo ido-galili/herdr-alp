@@ -23,9 +23,9 @@ What's inside:
 | `mods/alp-chrome/` | sidebar brand row and footer: Herdr's `workspace-chrome`, with a 60px rail whose unfold button sits at the top |
 | `mods/alp-spaces/` | sidebar spaces list: Herdr's `spaces`, with each space's avatar on the folded rail |
 | `mods/alp-agents/` | sidebar agents list: grouped or priority views, sub-agents under their parent, each Space shown by its avatar |
-| `mods/alpmeister/` | Alp, a team lead's start-of-day tab: an Overview of all your repos or one workspace (bugs by priority, triage, customer issues, nightly, priorities, milestone, team in flight), a Board, Herds (sessions and their agents), Today (the Today list, Waiting for your review, Your open PRs, Your issues) and Settings |
+| `mods/alpmeister/` | Alp, a team lead's start-of-day tab: an Overview of all your repos or one workspace (bugs by priority, triage, customer issues, nightly, Waiting for your review, Your open PRs, Your issues, milestone, team in flight), a Board, Herds (sessions and their agents) and Settings |
 | `mods/basecamp/` | Basecamp (Files, Changes, Today and Run): the one dock on the right, beside the terminals; its tab strip. Shown or hidden from its button at the end of the tab bar, and remembered per space |
-| `mods/daypack/` | Today: Basecamp's tab with the Today list, the same one as in Alp's Today view |
+| `mods/daypack/` | Today: Basecamp's tab with the Today list (the issues and PRs you Pin to Today in Alp, and the todos you type there), grouped or filtered by repo |
 | `mods/alp-runs/` | Runs: Basecamp's Run tab (the runs in Alp's config, `.herdr/alp.json` and your own, each with a play button, and an import from VS Code) and the bottom panel with each run's output and the Runs list |
 | `mods/alp-status/` | the status bar: Herdr's, with a Runs button that shows or hides the bottom panel |
 | `mods/alp-tabs/` | the tab bar: an Alp tab pinned before the space's tabs, then the tabs, +, and the Basecamp button |
@@ -99,7 +99,7 @@ switch spaces to get the terminals back. It can also open as a tab of its own in
 herdr-app do tab.new '{"mod":"alpmeister","name":"Alp"}'
 ```
 
-It has four views: Overview, Board, Herds and Today, as tabs after its name, and a Settings
+It has three views: Overview, Board and Herds, as tabs after its name, and a Settings
 button that shows its settings in place of the view. It works before you set anything:
 the Overview starts on all your repositories, with a card that offers to add a workspace
 ("Not now" hides it for good).
@@ -108,18 +108,26 @@ the Overview starts on all your repositories, with a card that offers to add a w
   top, with what the workspace covers beside it. Each tile ends in what a click opens ("See all
   7 →", with the GitHub mark); a missing nightly or customer label opens Settings on that
   workspace instead ("Set up in Settings →", with the gear). Every tile and card that lists a
-  GitHub search (open bugs, triage bugs, customer issues, open PRs, and All repos' review
-  requests, PRs and issues) has a small filter icon in its top-right corner, as the Today cards
-  do, with a dot when its saved filter isn't the default; hovering says the filter in words. The
+  GitHub search (open bugs, triage bugs, customer issues, open PRs, Waiting for your review, Your
+  open PRs and Your issues) has a small filter icon in its top-right corner, with a dot when its
+  saved filter isn't the default; hovering says the filter in words. The
   icon opens the filter dialog: chips, the GitHub search, a live "Shows 3 issues · now 0" count,
   and Reset to default, Cancel and "Save for this card", which writes the setting Settings › Card
   filters edits. Cancel, Esc or a click outside drops the edit; the card only ever shows the
   saved filter.
-  - **All repos:** four tiles (review requests, your open PRs, your assigned issues, red
-    checks), then every repository in scope with its open issues and PRs, the default branch's
-    checks, and when it was last pushed. With open work hides the rest, and stays as you left it.
+  - **Your lists:** Waiting for your review (with a Review button), Your open PRs, and Your
+    issues (with a Start button), each row with its pin ("Pin to Today", which adds it to
+    Basecamp's Today tab). Both buttons open a Claude Code tab running the prompt set in
+    Settings, in that repository's local clone; a dashed mark means the prompt isn't set yet and
+    opens Settings. The icons say what they do in their tooltips.
+  - **All repos:** your lists from every repository in scope, with the Red checks tile (default
+    branches and your PRs whose checks fail) over Your issues, then every repository in scope
+    with its open issues and PRs, the default branch's checks, and when it was last pushed. With
+    open work hides the rest, and stays as you left it.
   - **A workspace** is a repository, a project board, or both. With a repository: four tiles
-    (open bugs by priority, triage bugs, open customer issues, the last nightly run), then the
+    (open bugs by priority, triage bugs, open customer issues, the last nightly run), then your
+    lists narrowed to the workspace (its repository; for a workspace with only a board, the
+    repositories its board's items are in, and your issues on its board), then the
     Milestone card: one milestone, picked in its header ("v2.4 · next ▾": Next, which moves on
     by itself, any open milestone by due date with overdue ones in red, or No milestone). It
     shows X of Y closed (orange when behind schedule), the due date, the time from the start to
@@ -133,10 +141,6 @@ the Overview starts on all your repositories, with a card that offers to add a w
     longest in their status first, with their own milestone dropdown (All milestones, one
     milestone, or No milestone), which each workspace keeps too. A repository with no board
     lists its open PRs instead.
-- **Today:** the Today list (rows you Pin to Today and todos you type, carried over the next day),
-  Waiting for your review with a Review button, Your open PRs, and Your issues with a Start
-  button, from every repository in scope. Both buttons open a Claude Code tab running the prompt set in
-  Settings, in that repository's local clone, and show only when the prompt is set.
 - **Board:** a workspace's board items, a column per status, with each card's assignee avatars.
   The filter in words on the header ("Filter: current iteration · 5 columns") opens the same
   filter dialog: chips for Type, Columns and People, and the board filter in the board's own
@@ -167,19 +171,26 @@ the Overview starts on all your repositories, with a card that offers to add a w
   save bar stays at the bottom: "2 unsaved changes · Revert · Save". Edits you haven't saved stay
   while Alp is open, and the button says so: "Settings · 2 unsaved". After a save, Back fetches
   again, and every other Alp tab fetches too.
-- **Refresh:** Overview and Today fetch when the tab opens, when it shows data over 2 hours
+- **Refresh:** Alp fetches when the tab opens, when it shows data over 2 hours
   old, and from "Updated 3h ago · Refresh", which turns orange after 2 hours.
 - **Pinned:** shown in place of the terminals (the Alp layout's pinned tab), the header ends in
   "Back to terminals".
-- **Today** shows each pinned issue's board status and each pinned PR's review
-  decision, as of the last refresh.
+- **Today** lives in Basecamp's Today tab (the `daypack` mod), its open count on the tab: the
+  rows you Pin to Today here and the todos you type there ("Add a todo and press Enter"),
+  carried over the next day. A key says what the Claude mark and the pin do ("set it in
+  Settings" opens Alp's Settings while a prompt is missing; "Hide key" is remembered). Each row
+  has its checkbox; a pin unpins, a todo has Edit (or a double-click) and Remove. "All repos ▾"
+  narrows the list to one repository (or the todos without one), and "Group by repo" gives each
+  repository its own heading, the todos without one under "Todos"; both are remembered. A todo
+  typed while the list shows one repository belongs to it. A refresh here keeps each pin's
+  board status and PR review decision up to date there.
 - **Open on a tab or workspace:** `props.tab` (`dashboard` or `overview` for the Overview,
-  `board`, `herds`, `today`, `settings`) and
+  `board`, `herds`, `settings`; the old `today` opens the Overview) and
   `props.workspace` (a workspace's name, `""` for All repos):
   `herdr-app do tab.new '{"mod":"alpmeister","props":{"tab":"dashboard","workspace":"Team"}}'`.
 - **Demo:** `props.demo` fills every tab with made-up data, for demos and screenshots: an
   org with three workspaces (a repository and a board, a repository only, a board only), every
-  bug priority, a failing nightly, cards in every status, PRs in every review state, a Today list
+  bug priority, a failing nightly, cards in every status, PRs in every review state, pins
   and a herd on Herds. It calls no GitHub and writes nothing: not the settings, the cache or the
   Today list, and Board moves only change what it shows. Its Settings button shows demo settings whose Save
   writes nothing:
@@ -204,7 +215,7 @@ a page per workspace and "+ Add workspace".
 | GitHub | the repos in scope: all your repositories (new ones join on their own; archived ones optional), or only the ones you pick |
 | Local folders | each repository's clone, where its Claude buttons open; clones found under `~/projects`, `~/code` and the like are offered |
 | Claude buttons | what they type into the new Claude tab. `{repo}` and `{number}` are filled in; a `/command` works too |
-| Card filters | every card's filter in one list, each with an Edit button that opens the same filter dialog the Today and Overview cards open (its Save writes that one filter at once, not through the Save bar): Waiting for your review, Your open PRs and Your issues, then each workspace's Open bugs, Triage bugs and Open PRs (`queries.prs`, `is:pr is:open` by default; the repository and a sort are added). "Save for this card" on a Today or Overview card writes the same setting |
+| Card filters | every card's filter in one list, each with an Edit button that opens the same filter dialog the Overview's cards open (its Save writes that one filter at once, not through the Save bar): Waiting for your review, Your open PRs and Your issues, then each workspace's Open bugs, Triage bugs and Open PRs (`queries.prs`, `is:pr is:open` by default; the repository and a sort are added). "Save for this card" on an Overview card writes the same setting |
 | Workspace: *name* | its name, repository and project board, then sections that fold, each with a line saying what it is set to: Board columns (per status: what it means and whether the Board shows it; "More per-status options" adds hidden from Your issues and on hold; the status and iteration fields), Nightly (the workflow, its branch and the runs that count), Bugs and triage, Milestone issues (what the Milestone card lists under Issues) and Customer issues |
 
 Nightly checks (one row per job or step) are edited in the file: see

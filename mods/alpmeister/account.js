@@ -1,79 +1,34 @@
-// Your GitHub as a whole, for the Dashboard's "All repos" view: four tiles (review requests,
-// your PRs, your issues, red checks), then every repository in scope with its open work and the
-// state of its default branch. Also the open PRs card a workspace without a board shows in place
+// Your GitHub as a whole, for the Dashboard's "All repos" view: the Red checks tile (your lists
+// follow it, from my-day.js), then every repository in scope with its open work and the state of
+// its default branch. Also the open PRs card a workspace without a board shows in place
 // of the team in flight.
 
 import { div } from "gpui-kit";
-import { h_flex, v_flex } from "gpui-base";
+import { v_flex } from "gpui-base";
 import { theme } from "herdr";
-import { searchUrl } from "./data.js";
 import { ClaudeButton, checksChip, decisionChip } from "./my-day.js";
-import { Tile, TileRows, seeAll } from "./project.js";
-import { Card, Chip, ICONS, NeedsYou, Note, Row, TextButton, Toggle, ago, itemKey } from "./ui.js";
+import { Tile } from "./project.js";
+import { Card, Chip, NeedsYou, Note, Row, TextButton, Toggle, ago, itemKey } from "./ui.js";
 
 const REPO_LIMIT = 12;
 const PR_LIMIT = 10;
 
 /**
- * The account's four tiles, four across when `wide`, else two by two. Each list ends in "See all
- * N →" with the GitHub mark, and has its filter icon in the corner when `filter` gives one (the
- * Daypack card's filter: the same search).
+ * The Red checks tile: default branches and your PRs whose checks fail.
  * @param {object} account The account model.
- * @param {{ wide: boolean, filter?(key: "review" | "myPrs" | "mine"): object | null }} options
- * @returns {object} The row of tiles.
+ * @returns {object} The tile.
  */
-export function AccountTiles(account, { wide, filter }) {
+export function RedChecks(account) {
   const t = theme();
-  const counts = account.counts;
-  const approved = account.myPrs.filter((pr) => pr.reviewDecision === "APPROVED").length;
-  const changes = account.myPrs.filter((pr) => pr.reviewDecision === "CHANGES_REQUESTED").length;
   const red = account.redRepos + account.redPrs;
-  const prLines = [
-    approved ? `${approved} approved` : null,
-    changes ? `${changes} with changes requested` : null,
-  ].filter(Boolean);
-  const filters = Object.fromEntries(["review", "myPrs", "mine"].map((key) => [key, filter?.(key) ?? null]));
-  const tiles = [
-    Tile(
-      "tile-reviews",
-      "Waiting for your review",
-      String(counts.reviews),
-      "review requests",
-      counts.reviews ? t.blocked : t.foreground,
-      searchUrl(null, account.queries.review),
-      undefined,
-      { link: seeAll(counts.reviews), linkIcon: ICONS.github, filter: filters.review },
-    ),
-    Tile(
-      "tile-my-prs",
-      "Your open PRs",
-      String(counts.myPrs),
-      prLines.length ? prLines : "no review decisions yet",
-      t.foreground,
-      searchUrl(null, account.queries.myPrs),
-      undefined,
-      { link: seeAll(counts.myPrs), linkIcon: ICONS.github, filter: filters.myPrs },
-    ),
-    Tile(
-      "tile-mine",
-      "Your issues",
-      String(counts.mine),
-      "open, assigned to you",
-      t.foreground,
-      searchUrl(null, account.queries.mine),
-      undefined,
-      { link: seeAll(counts.mine), linkIcon: ICONS.github, filter: filters.mine },
-    ),
-    Tile(
-      "tile-red",
-      "Red checks",
-      String(red),
-      [`${account.redRepos} default branches failing`, `${account.redPrs} of your PRs failing`],
-      red ? t.blocked : t.done,
-      null,
-    ),
-  ];
-  return TileRows(tiles, wide);
+  return Tile(
+    "tile-red",
+    "Red checks",
+    String(red),
+    [`${account.redRepos} default branches failing`, `${account.redPrs} of your PRs failing`],
+    red ? t.blocked : t.done,
+    null,
+  );
 }
 
 /**

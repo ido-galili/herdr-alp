@@ -1,9 +1,8 @@
-// Your day, across every repository in scope: review requests, your own PRs and your own
-// issues. Each row has a pin and a button that opens a Claude tab on it, and the key over the
-// lists says what the two icons do.
+// Your lists, on the Overview: review requests, your own PRs and your own issues, across every
+// repository in scope on All repos, or narrowed to a workspace's repositories. Each row has a pin
+// (Pin to Today, the list in Basecamp's Today tab) and a button that opens a Claude tab on it.
 
-import { div, image, svg } from "gpui-kit";
-import { h_flex, v_flex } from "gpui-base";
+import { v_flex } from "gpui-base";
 import { theme } from "herdr";
 import { searchUrl } from "./data.js";
 import { hasTerm, termOf, valuesOf } from "./search-terms.js";
@@ -14,11 +13,9 @@ import {
   GroupHeading,
   ICONS,
   IconButton,
-  LinkLabel,
   NeedsYou,
   Note,
   Row,
-  TextButton,
   ago,
   claudeTooltip,
   fillPrompt,
@@ -95,8 +92,8 @@ export function checksChip(t, pr, prefix) {
 }
 
 /**
- * The Claude button for an issue or PR. With its prompt set, it shows the Claude mark and grows
- * "Review" (a PR) or "Start" (an issue) on hover or focus; a click opens a Claude tab on the item
+ * The Claude button for an issue or PR. With its prompt set, it shows the Claude mark, and its
+ * tooltip starts "Review" (a PR) or "Start" (an issue); a click opens a Claude tab on the item
  * and a middle click opens it in the background. Without one, the mark is dashed and a click
  * opens Settings, where the prompt is set.
  * @param {string} prefix Keeps the button's id unique per list.
@@ -124,52 +121,63 @@ export function ClaudeButton(prefix, item, actions) {
 }
 
 /**
- * The key over the Daypack's lists: what the Claude mark and the pin do, and, while a prompt is
- * missing, what the dashed mark means, with a link that opens Settings. "Hide key" on the right.
- * @param {{ missingPrompt: boolean, openSettings(cx: object): void, hide(cx: object): void }} actions
- * @returns {object} The key row.
+ * The repositories a workspace's lists are narrowed to: its repository, or for a workspace with
+ * only a board, the repositories its board's items are in.
+ * @param {object} ws The workspace.
+ * @param {object | undefined} wsModel The workspace's model, for its board's items.
+ * @returns {string[]} `owner/name` of each.
  */
-export function DaypackKey({ missingPrompt, openSettings, hide }) {
-  const t = theme();
-  const entry = (mark, ...words) => h_flex().flex_none().gap(6).items_center().child(mark).children(words);
-  return h_flex()
-    .id("daypack-key")
-    .flex_wrap()
-    .items_center()
-    .gap_x(18)
-    .gap_y(6)
-    .px(12)
-    .py(6)
-    .rounded(8)
-    .bg(t.background)
-    .border_1()
-    .border_color(t.border)
-    .text_size(11.5)
-    .text_color(t.muted)
-    .child(div().font_semibold().text_color(t.dim).child("Key"))
-    .child(entry(image(ICONS.claude).w(13).h(13).flex_none(), "Review a PR or Start an issue in Claude"))
-    .child(entry(svg(ICONS.pin).size(13).flex_none().text_color(t.muted), "Pin to Today"))
-    .when(missingPrompt, (el) =>
-      el.child(
-        entry(
-          DashedMark(t),
-          "no prompt yet ·",
-          div()
-            .id("daypack-key-settings")
-            .text_color(t.accent)
-            .cursor_pointer()
-            .hover((style) => style.text_color(t.foreground))
-            .on_click((_event, cx) => {
-              cx.stop_propagation();
-              openSettings(cx);
-            })
-            .child(LinkLabel(ICONS.settings, "set it in Settings")),
-        ),
-      ),
-    )
-    .child(div().flex_1())
-    .child(TextButton("daypack-key-hide", "Hide key", (cx) => hide(cx)));
+export function workspaceRepos(ws, wsModel) {
+  if (ws.repo) return [ws.repo];
+  const items = [...(wsModel?.boardView?.items ?? []), ...(wsModel?.inFlight ?? [])];
+  return [...new Set(items.map((item) => item.repo).filter(Boolean))].sort();
 }
+
+/**
+ * The account's three lists narrowed to a workspace: review requests and your PRs in its
+ * repositories, your issues in them or on its board. Counts are the narrowed lists' lengths, and
+ * each list's GitHub link searches only those repositories.
+ * @param {object} account The account model.
+ * @param {object} ws The workspace.
+ * @param {object | undefined} wsModel The workspace's model.
+ * @returns {object} A copy of the account model with `reviews`, `myPrs`, `mine`, `counts`,
+ *   `scope` (the `repo:` terms the GitHub links add) and `only` (the workspace's one repository,
+ *   whose rows leave out its name; null when it has none) narrowed.
+ */
+export function narrowAccount(account, ws, wsModel) {
+  const repos = new Set(workspaceRepos(ws, wsModel));
+  const inRepos = (item) => repos.has(item.repo);
+  const reviews = (account.reviews ?? []).filter(inRepos);
+  const myPrs = (account.myPrs ?? []).filter(inRepos);
+  const mine = (account.mine ?? []).filter((issue) => inRepos(issue) || issue.workspace === ws.name);
+  return {
+    ...account,
+    reviews,
+    myPrs,
+    mine,
+    counts: { ...account.counts, reviews: reviews.length, myPrs: myPrs.length, mine: mine.length },
+    scope: [...repos].map((repo) => `repo:${repo}`).join(" "),
+    only: repos.size === 1 ? [...repos][0] : null,
+  };
+}
+
+/**
+ * The repository a row names before its title: none for the workspace's one repository.
+ * @param {object} account The account model, narrowed or not.
+ * @param {{ repo: string }} item The issue or PR.
+ * @returns {string | null}
+ */
+const shownRepo = (account, item) => (account.only && item.repo === account.only ? null : item.repo);
+
+/**
+ * A list's search for its GitHub link: the card's search, narrowed to the workspace's
+ * repositories when the account model is (`narrowAccount`).
+ * @param {object} account The account model.
+ * @param {"review" | "myPrs" | "mine"} key The card's search.
+ * @returns {string} The URL.
+ */
+const listUrl = (account, key) =>
+  searchUrl(null, account.scope ? `${account.queries[key]} ${account.scope}` : account.queries[key]);
 
 /**
  * Review requests.
@@ -186,7 +194,7 @@ export function Reviews(account, actions) {
   const rows = reviews.map((pr) =>
     Row(`rv-${itemKey(pr)}`, {
       number: pr.number,
-      repo: pr.repo,
+      repo: shownRepo(account, pr),
       title: pr.title,
       url: pr.url,
       chips: [
@@ -204,7 +212,7 @@ export function Reviews(account, actions) {
     "Waiting for your review",
     [
       Chip(String(account.counts?.reviews ?? reviews.length), { color: reviews.length ? t.blocked : t.dim }),
-      IconButton("rv-all", ICONS.github, () => openUrl(searchUrl(null, account.queries.review)), {
+      IconButton("rv-all", ICONS.github, () => openUrl(listUrl(account, "review")), {
         tooltip: "Open the list on GitHub",
       }),
       ...(filter ? [filter] : []),
@@ -246,7 +254,7 @@ export function MyPrs(account, actions) {
   const rows = prs.map((pr) =>
     Row(`mp-${itemKey(pr)}`, {
       number: pr.number,
-      repo: pr.repo,
+      repo: shownRepo(account, pr),
       title: pr.title,
       url: pr.url,
       chips: [
@@ -263,7 +271,7 @@ export function MyPrs(account, actions) {
     "Your open PRs",
     [
       Chip(String(account.counts?.myPrs ?? prs.length), { color: t.muted }),
-      IconButton("mp-all", ICONS.github, () => openUrl(searchUrl(null, account.queries.myPrs)), {
+      IconButton("mp-all", ICONS.github, () => openUrl(listUrl(account, "myPrs")), {
         tooltip: "Open the list on GitHub",
       }),
       ...(filter ? [filter] : []),
@@ -303,7 +311,7 @@ export function MyIssues(config, account, actions) {
     "Your issues",
     [
       Chip(hidden ? `${visible.length} shown · ${hidden} hidden by status` : `${visible.length}`, { color: t.dim }),
-      IconButton("mi-all", ICONS.github, () => openUrl(searchUrl(null, account.queries.mine)), {
+      IconButton("mi-all", ICONS.github, () => openUrl(listUrl(account, "mine")), {
         tooltip: "Open the list on GitHub",
       }),
       ...(filter ? [filter] : []),
@@ -317,7 +325,7 @@ export function MyIssues(config, account, actions) {
           ...group.items.map((issue) =>
             Row(`mi-${itemKey(issue)}`, {
               number: issue.number,
-              repo: issue.repo,
+              repo: shownRepo(account, issue),
               title: issue.title,
               url: issue.url,
               chips: issue.milestone ? [Chip(issue.milestone, { color: t.dim })] : [],

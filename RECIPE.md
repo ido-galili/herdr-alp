@@ -82,7 +82,7 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
     collaborate on or reach through an organization, archived ones only with `archived`, less
     `exclude`) or a list of `owner/name`. Also the Claude prompts (`launch.issue`, `launch.pr`,
     with `{repo}` and `{number}`), each repository's local clone (`folders`), and the @me
-    searches the Today view lists (`queries.review`, `queries.mine`, `queries.myPrs`).
+    searches of your lists on the Overview (`queries.review`, `queries.mine`, `queries.myPrs`).
   - `workspaces`: each a `repo`, a project `board` (`owner`, `number`, `statusField`,
     `iterationField`, on a user or an organization), or both, with its own `statuses`,
     `notStarted`, `inFlight`, `mineHidden`, `queries.triage`, `queries.prs`, `bugs`,
@@ -96,8 +96,8 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
 - **What you see**, top to bottom on the `canvas` background, 18px padding, cards with 10px
   radius and a 1px `border`:
   - A header over a 1px `border` line: "Alp" (18px semibold), then the views as underlined
-    tabs (12.5px, an `accent` underline on the shown one): Overview, Board, Herds and "Today · N"
-    (N open Today items, in a small `hover` badge). On the right, "Updated 3h ago · Refresh" as
+    tabs (12.5px, an `accent` underline on the shown one): Overview, Board and Herds (the open
+    Today count is on Basecamp's Today tab). On the right, "Updated 3h ago · Refresh" as
     one button (`warning` once the data is over 2 hours old), a "Settings" button ("Settings · 2
     unsaved" in `warning` while Settings holds unsaved edits; tooltip "Alp settings"), and "Back
     to terminals" while Alp is pinned in their place. On Herds, Refresh reads the sessions again.
@@ -108,7 +108,8 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
     choices. Each other copy remembers its view and workspace in localStorage; `props.tab` and
     `props.workspace` open a copy on a given one
     (`tab.new {mod: "alpmeister", props: {tab: "dashboard", workspace: "Team"}}`, `"overview"`
-    works too, `""` for All repos). `props.demo: true` fills every view with made-up data
+    works too, `""` for All repos; the old `"today"`, and a copy that last showed the Today
+    view, opens the Overview). `props.demo: true` fills every view with made-up data
     (`props.firstRun` too: a first run; `props.herdsView` and `props.herdsFull` open Herds on a
     view), for demos and screenshots.
   - **Overview**: on top, "Workspace: <name> ▾", a dropdown of All repos (first) and every
@@ -116,15 +117,16 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
     Each tile ends in what a click opens ("See all 7 →", "See both →", "Open the run →", with
     the GitHub mark); a missing nightly or customer label opens Settings on that workspace
     instead ("Set up in Settings →", with the gear). Every tile and card that lists a GitHub
-    search (open bugs, triage bugs, customer issues, a workspace's Open PRs, All repos' three list
-    tiles) has a filter icon in its top-right corner, with a dot when its saved filter isn't the
+    search (open bugs, triage bugs, customer issues, a workspace's Open PRs, and your three lists)
+    has a filter icon in its top-right corner, with a dot when its saved filter isn't the
     default and the filter in words as its tooltip; it opens the filter dialog (below).
   - **All repos**, top to bottom:
     - While there is no workspace, a card: "This is every repo you can reach.", "Add a
       workspace" (opens Settings) and "Not now", which hides it for good on this computer.
-    - Four tiles: review requests, your open PRs (with how many are approved or have changes
-      requested), your assigned issues, and red checks (default branches failing, your PRs
-      failing).
+    - Your lists (below), across every repository in scope (with `"all"`, everything the
+      searches find), in two columns when the tab is at least 1000px wide: Waiting for your
+      review and Your open PRs on the left; on the right the Red checks tile (default branches
+      failing, your PRs failing) over Your issues. Narrower, one column, the tile first.
     - The Repos card: every repository in scope, most recently pushed first, 12 rows then
       "Show N more", with a "With open work" toggle (remembered). A row: `owner/name` (dim without open
       work), then chips for private, archived, "local" (a folder is set), open issues, open PRs,
@@ -136,6 +138,11 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
       priority (total, a strip and a chip per priority, counted from the priority issue field),
       triage bugs, open customer issues (any label whose name contains `customer.labelMatch`,
       named under the count), and the last nightly run (a failed one outlines its tile in `blocked`).
+    - Your lists (below), narrowed to the workspace: review requests and your PRs in its
+      repository, your issues in it or on its board. A workspace with only a board narrows to the
+      repositories its board's items are in (and your issues on its board). Their counts are the
+      narrowed rows, their GitHub links add `repo:` terms, and a row leaves out the repository's
+      name when the workspace has one. With no repository they come first.
     - The nightly tile: "Success", "Failure" or "Running" for the last run, its local start date
       and time ("Tue 17 Nov, 06:05"), then one line per
       `nightly.checks` entry (deploy, unit, API and E2E tests) with an outcome chip. A check
@@ -208,19 +215,8 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
       back. A refused write puts the card back and shows the error over the columns. The
       board's ids come with its load, so a Board drawn from an older cache asks for a Refresh
       first.
-  - **Today**, across every repository in scope (with `"all"`, everything the searches find).
-    A key line on top: the Claude mark ("Review a PR or Start an issue in Claude"), the pin ("Pin
-    to Today") and, while a prompt is missing, the dashed mark with "set it in Settings";
-    "Hide key" is remembered and a "Key" button on the Today card brings it back. Then the Today
-    card ("2 open · 1 done"): a todo input, then Todos, PRs and Issues, each
-    under a heading with its open count (empty: "Pin an issue or PR from the lists below, or
-    type a todo."). A row: checkbox, `repo#number`, title, the issue's board
-    status or the PR's review decision (Approved, Changes Requested, In Review, or Merged or
-    Closed), days since it was added (from the next day), the session icon, then for a GitHub
-    item its lit pin ("Unpin") and the Claude button, for a todo Edit and Remove. Items stay
-    until unpinned or removed. The session icon, a terminal, shows while a tab named for the
-    item is open (`repo#12`, or `PR repo#12`, the name a Claude button gives it). Its color is that
-    tab's agent status, and a click shows the tab. Below it, two columns:
+  - **Your lists**, on the Overview (above), the same three cards on All repos and narrowed on a
+    workspace:
     - Waiting for your review (author, review decision, age, checks, Pin, Review), then Your
       open PRs: your open, non-draft PRs (`queries.myPrs`) with the review decision, checks and
       age (Pin, Review).
@@ -229,12 +225,13 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
       workspace's status field; the groups follow the workspaces' status order, and an issue is
       hidden when its status is in its workspace's `mineHidden`. Issues on no workspace's board
       go under "No status".
-    - Every row in these lists names its repository in a chip after the number. Each card has a
-      filter icon, as on the Overview.
-    - Icon buttons with a label grow leftwards over their neighbours on hover or Tab focus to
-      show it ("Review", "Start", "Pin", "Unpin"), still taking 22px so the row never moves; the
-      Claude mark is faded at rest. With no prompt set the Claude mark is a dashed outline whose
-      click opens Settings in place.
+    - Every row names its repository in a chip after the number. Each card has a GitHub mark
+      ("Open the list on GitHub") and a filter icon.
+    - The pin is "Pin to Today" (lit in `accent`, "Unpin from Today", once the item is on the
+      Today list in Basecamp's Today tab). The Claude button is the Claude mark, faded at rest;
+      with no prompt set it is a dashed outline whose click opens Settings in place. Icon
+      buttons stay 22px icons on hover and Tab focus; a button's word ("Review", "Start",
+      "Pin", "Unpin", "Set prompt") leads its tooltip ("Review: Open a Claude tab running …").
   - **The filter dialog**: one editor for every card's filter, a Herdr dialog over the dimmed
     window (a copy of the mod opened with `props.part: "filter"`): "Filter: <card>", chip groups,
     the GitHub search, a live "Shows 3 issues · now 0" count, and Reset to default, Cancel and
@@ -256,7 +253,8 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
       the like, 4 levels deep) are offered with "Use ~/path", or all at once.
     - Claude buttons: the issue and PR prompts.
     - Card filters: every card's filter in one list (Waiting for your review, Your open PRs and
-      Your issues, then each workspace's Open bugs, Triage bugs and Open PRs), each with Edit,
+      Your issues under "Your GitHub", then each workspace's Open bugs, Triage bugs and Open
+      PRs), each with Edit,
       which opens the filter dialog; its Save writes at once and the save bar stays in step.
     - Files: auto save, Off, After a delay (with the delay) or When you leave the file.
     - A workspace: Name, Repository and Project board (dropdowns: your repositories; the boards
@@ -268,7 +266,8 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
       that count; its checks read only, edited in the file), Bugs and triage, Milestone issues
       and Customer issues. Picking a board takes its statuses and guesses their roles from their
       names. "Remove workspace" asks for a second click.
-- **How it behaves:** a click on a row opens it on GitHub. Pin adds the row to Today. A
+- **How it behaves:** a click on a row opens it on GitHub. Pin adds the row to the Today list
+  (Basecamp's Today tab). A
   pinned issue or PR checks itself once it closes or merges; each refresh reads every pick's
   state, board status and review decision, checked or not, and keeps them on the item. A pick is
   keyed by `kind-owner/name#number`; one pinned before workspaces gets its repository from its
@@ -276,7 +275,7 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
   the prompt, in the space you are in. The tab starts in the live folder of that space's first
   tab (its first pane's `cwd`) when it is the repository's folder or inside it, such as a
   worktree, else in that folder, else in the space's own.
-  The Today view's Claude buttons do the same. It fetches when the tab opens, when it shows data
+  Basecamp's Today tab's Claude buttons do the same. It fetches when the tab opens, when it shows data
   over 2 hours old, and on Refresh.
   - **Herds**: the Claude Code sessions on this machine and the links between them, one view at
     a time behind a Map | Cards switch (Cards in a tab, the Map in full tab, each choice
@@ -324,12 +323,12 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
   each workspace load apart, each failing on its own; the cache carries `version: 3`),
   `focus.js` (the focus file, written with `writeTextFile` over the last read version),
   `account.js` (All repos), `project.js` (a workspace's tiles), `spotlight.js` (the Milestone
-  card and its dropdown), `in-flight.js`, `my-day.js` (the Today view's lists), `focus-list.js`
-  (the Today card), `search-terms.js` (a GitHub search read as terms, for the card filters),
+  card and its dropdown), `in-flight.js`, `my-day.js` (your three lists, and their narrowing to a
+  workspace), `search-terms.js` (a GitHub search read as terms, for the card filters),
   `filter-dialog.js` (the filter dialog), `board-view.js`, `board-state.js`, `board-menu.js`,
   `board-actions.js` (the Board's writes) and `board-terms.js` (the board filter read as terms),
   `avatars.js`, `settings-data.js` (discovery, clones, save), `settings-view.js` (the form),
-  `demo-data.js` (the demo's settings, GitHub data and Today list), `ui.js`, and `main.js`.
+  `demo-data.js` (the demo's settings, GitHub data and pins), `ui.js`, and `main.js`.
   Herds:
   `herds-data.js` reads Claude Code's files (it never writes them): `~/.claude/sessions/*.json`
   (live sessions, kept when `ps` finds their pid), `~/.claude/jobs/<id>/state.json` (a
@@ -394,28 +393,47 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
 ## Today
 
 - **What:** the `daypack` mod, Basecamp's Today tab (the one the dock opens on first). It holds
-  the Today list, the same one as in Alp's Today view.
-- **How it looks:**
-  - A "Today" group (empty: "Nothing pinned for today." and "Pin an issue or PR from Alp.")
-    with the items in sections by kind (Todos, PRs, Issues), each headed by its open count.
-    A row holds the item's checkbox, title and number. A click on a title opens it on GitHub.
-    A PR row also shows where it stands: Merged or Closed, else its review decision (Approved,
-    Changes, In Review), as of Alp's last refresh.
-  - An issue or PR row ends with the Claude button: it opens a Claude tab running the prompt from
-    Alp's settings (`account.launch`, or `launch` in the one-repo shape) in the item's
-    repository folder (`account.folders`), as Alp's Start and Review buttons do. It grows on
-    hover or focus to show "Review" or "Start". With no prompt set it shows a dashed mark and
-    "Set prompt": a click shows the pinned Alp and asks it to open Settings in place
-    (`shared("alp.openSettings")`). The number shows as `repo#12`.
+  the Today list, and is the only place it shows: the issues and PRs pinned in Alp ("Pin to
+  Today") and the todos typed here. Alp has no Today view any more.
+- **How it looks**, top to bottom on `chrome`:
+  - "Today" and "5 open · 2 done" (11.5px, `dim`); "Key" on the right while the key is hidden.
+  - The key, in a bordered box: the Claude mark ("Review a PR or Start an issue in Claude"), the
+    lit pin ("Pinned from Alp: click to unpin") and, while a prompt is missing, the dashed mark
+    with "no prompt yet · set it in Settings" (the gear), which shows the pinned Alp and asks it
+    to open Settings in place (`shared("alp.openSettings")`). "Hide key" at its end; remembered.
+  - "Add a todo and press Enter": Enter adds a todo, dated today. While the list shows one
+    repository, the todo gets that `repo`, so it stays in view.
+  - "All repos ▾", a dropdown of All repos, each repository on the list (short name, `owner/name`
+    under it) and Todos ("without a repo"), each with its open count; and "Group by repo", a
+    dot toggle. Both remembered in the tab's localStorage (`daypack.repoFilter`,
+    `daypack.groupByRepo`).
+  - The items: in sections by kind (Todos, PRs, Issues), or, grouped, the todos without a
+    repository under "Todos", then a heading per repository (its short name, `owner/name` as the
+    tooltip), each headed by its open count. Empty: "Nothing for today yet." and "Type a todo
+    above, or pin an issue or PR in Alp."; a filter with nothing: "Nothing for website yet.".
+  - A row: the checkbox (✓ when done, the title struck through), the title (a click opens an
+    issue or PR on GitHub; a double-click edits a todo: Enter or a click away saves, Esc
+    cancels), the number (`repo#12`, or `#12` while grouped or filtered), a PR's standing
+    (Merged or Closed, else Approved, Changes, In Review, as of Alp's last refresh), days since
+    it was added (from the next day), the session icon; then for an issue or PR the lit pin
+    ("Unpin from Today") and the Claude button, for a todo Edit and Remove.
+  - The Claude button opens a Claude tab running the prompt from Alp's settings
+    (`account.launch`, or `launch` in the one-repo shape) in the item's repository folder
+    (`account.folders`), as Alp's Start and Review buttons do. Icon buttons stay 22px icons on
+    hover and focus; the word ("Review", "Start", "Set prompt") leads the tooltip. With no prompt
+    set it shows a dashed mark, and a click opens Alp's Settings as the key's link does.
   - A middle click on any Claude button opens the tab in the background (`tab.new` with
     `focus: false`), and a Herdr notification names it; a click on the notification shows the
     tab. A left click opens it and shows it.
-  - Before the Claude button, the session icon shows while the item's Claude tab is open, as in
-    Alp's Today view. A click shows that tab.
+  - Before the pin, the session icon shows while the item's Claude tab is open. A click shows
+    that tab.
 - **State:**
   - It reads and writes `~/.local/state/alp/focus.json`, the file Alp keeps. Mods cannot
-    import across folders, so `focus-file.js` is its own reader of that format.
-  - Each side sets `shared("alp.focusStamp")` after a write, and the other reloads the file.
+    import across folders, so `focus-file.js` is its own reader and writer of that format. A
+    write goes over the version it read; if the file changed meanwhile, it reloads and makes the
+    change again.
+  - Each side sets `shared("alp.focusStamp")` after a write, and the other reloads the file;
+    Basecamp's Today count and the tab bar's Basecamp button count it again.
 
 ## Runs
 
