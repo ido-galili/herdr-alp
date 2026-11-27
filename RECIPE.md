@@ -202,7 +202,7 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
       board the filter empties says "Nothing matches." with Clear filters.
     - The columns are the ticked statuses, each shown even when empty; with none ticked, the
       statuses that hold an item.
-    - A card holds the number, the issue type, the session icon, Pin, the Claude button, the
+    - A card holds the number, the issue type, the session icon, Pin, the ⋯ (always shown), the
       title, the linked PRs' review state (a PR's own decision), its iteration ("Sprint 24",
       left out when the filter already asks for that iteration), the milestone, and the
       assignees' avatars. The iteration and milestone chips and menu rows carry GitHub's
@@ -217,9 +217,11 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
       card's Status when the column differs, then its place on the board, just after the card
       above the slot (`updateProjectV2ItemPosition`), or at the top. A drop where it started does
       nothing.
-    - A ⋯ on each card (shown on hover or focus), or a right click, opens the card's menu: Move
-      to (the columns), Iteration and Milestone, each with the card's current value and a
-      chevron. Pointing at one or clicking it opens its menu beside it, level with its row.
+    - The ⋯ on each card, or a right click, opens the card's menu with its top-left where it was
+      pressed (kept inside the window; from the keyboard, at the card's top-left): Move to (the
+      columns), Iteration and Milestone, each with the card's current value and a chevron, then
+      "Start with Claude" (an issue) or "Review with Claude" (a PR), the card's only Claude
+      action ("Set the Claude prompt" opens Settings while the prompt is unset). Pointing at one or clicking it opens its menu beside it, level with its row.
       Iteration lists No iteration, the last three completed iterations and every open one (the
       current one noted). Milestone lists No milestone and the repository's open milestones,
       soonest due first (read on the first open). The card's own are ticked. The menu works from

@@ -108,8 +108,12 @@ export class BoardState {
     this.closePending = false;
     /** The focus handles of the menu's first row, its submenu's first row and the ⋯ it opened from; made on first use. */
     this.focus = null;
-    /** The card under the pointer, by board item id, so its ⋯ shows. */
-    this.hoverCard = null;
+    /**
+     * Where the pointer last was on a card, `{ itemId, x, y }` inside it, so a ⋯ press opens the
+     * menu there; and where the open menu sits on its card, `{ x, y }`, or null for its top-left.
+     */
+    this.pointer = null;
+    this.menuAt = null;
     /** The toast after a move: `{ seq, text, status, tail, undo }`, or null. */
     this.toast = null;
     this.toastSeq = 0;
@@ -163,10 +167,10 @@ export class BoardState {
       writing: this.writing,
       writeError: this.writeError,
       menuFor: this.menuFor,
-      hoverCard: this.hoverCard,
+      menuAt: this.menuAt,
       focus: this.focus,
       dotsFor: this.menuFor ?? this.lastMenuFor,
-      onCardHover: (itemId, hovered, cx) => this.hover(itemId, hovered, cx),
+      onCardPointer: (itemId, point) => (this.pointer = { itemId, ...point }),
       isClick: () => this.isClick(),
       onCardDown: (item, event) => this.dragStart(item, event),
       onDragMove: (event, column, cardWidth, columnItems, cx) => this.dragMove(event, column, cardWidth, columnItems, cx),
@@ -177,7 +181,7 @@ export class BoardState {
       ghost: this.ghost(),
       onDrop: (cx) => this.drop(ws, cx),
       onDragEnd: (cx) => this.dragEnd(cx),
-      onCardMenu: (item, cx, keyboard) => this.toggleMenu(item, cx, keyboard),
+      onCardMenu: (item, cx, keyboard, at) => this.toggleMenu(item, cx, keyboard, at),
       cardMenu: (item, flip, columns) =>
         CardMenu(item, {
           flip,
@@ -193,7 +197,37 @@ export class BoardState {
           onClose: (cx, keyboard) => this.closeMenu(cx, keyboard),
           onOutside: (cx) => this.pressOutsideMenu(cx),
           onInside: () => this.pressInsideMenu(),
+          claude: this.claudeAction(item),
         }),
+    };
+  }
+
+  /**
+   * The card menu's Claude row, the Board card's only way to Claude: "Start with Claude" for an
+   * issue, "Review with Claude" for a PR, running the prompt set in Settings; with no prompt set,
+   * "Set the Claude prompt" opens Settings. None for a draft.
+   * @param {object} item The board item.
+   * @returns {{ label: string, note?: string, onPress(cx: object): void } | null}
+   */
+  claudeAction(item) {
+    if (item.kind === "draft" || item.number == null) return null;
+    const actions = this.view.launchActions();
+    if (!actions.prompt(item.kind)) {
+      return {
+        label: "Set the Claude prompt",
+        note: "Settings",
+        onPress: (cx) => {
+          this.closeMenu(cx);
+          actions.openSettings(cx);
+        },
+      };
+    }
+    return {
+      label: item.kind === "pr" ? "Review with Claude" : "Start with Claude",
+      onPress: (cx) => {
+        this.closeMenu(cx);
+        actions.launch(item);
+      },
     };
   }
 
@@ -660,20 +694,6 @@ export class BoardState {
   }
 
   /**
-   * Keeps which card is under the pointer, so its ⋯ shows.
-   * @param {string | null} itemId The card's board item id.
-   * @param {boolean} hovered Whether the pointer came onto it or left it.
-   * @param {object} cx The context.
-   * @returns {void}
-   */
-  hover(itemId, hovered, cx) {
-    const next = hovered ? itemId : this.hoverCard === itemId ? null : this.hoverCard;
-    if (next === this.hoverCard) return;
-    this.hoverCard = next;
-    cx.notify();
-  }
-
-  /**
    * A change to some of an item's fields, and its way back.
    * @param {object} item The board item, as the model holds it.
    * @param {object} fields The fields and their new values.
@@ -851,14 +871,19 @@ export class BoardState {
   }
 
   /**
-   * The ⋯ on a card, or a right click: opens its menu, or closes it when it is the open one.
+   * The ⋯ on a card, or a right click: opens its menu at the point pressed, or closes it when
+   * it is the open one. A press with no point (the keyboard) opens it at the card's top-left.
    * @param {object} item The board item.
    * @param {object} cx The context.
    * @param {boolean} [keyboard] Opened from the keyboard: the keyboard moves into the menu.
+   * @param {{ x: number, y: number } | null} [at] Where on the card it was pressed; for the ⋯,
+   *   left out, the pointer's last place on that card.
    * @returns {void}
    */
-  toggleMenu(item, cx, keyboard = false) {
+  toggleMenu(item, cx, keyboard = false, at) {
     if (this.menuFor !== null && this.menuFor === item.itemId) return this.closeMenu(cx, keyboard);
+    const point = at ?? (!keyboard && this.pointer?.itemId === item.itemId ? this.pointer : null);
+    this.menuAt = point ? { x: point.x, y: point.y } : null;
     this.openMenu(item, cx, keyboard);
   }
 

@@ -2,7 +2,7 @@
 // GitHub's board shows them. Each card carries its assignees' avatars. The filter's summary sits
 // on the header and opens the filter dialog. Dragging a card to another column moves it to that status,
 // and a toast floating at the bottom left of Alp's view (drawn by main.js) offers Undo; the avatar row above the board picks
-// people, as the dialog's People chips do; the ⋯ on a card (shown on hover or focus), or a right click, opens its
+// people, as the dialog's People chips do; the ⋯ on a card (always shown), or a right click, opens its
 // menu to move it or set its iteration and milestone.
 
 import { div, image, svg } from "gpui-kit";
@@ -10,7 +10,7 @@ import { h_flex, v_flex, Popup } from "gpui-base";
 import { theme } from "herdr";
 import { boardFilter, boardStatuses } from "./data.js";
 import { prChip } from "./in-flight.js";
-import { ClaudeButton, decisionChip } from "./my-day.js";
+import { decisionChip } from "./my-day.js";
 import {
   Card,
   Chip,
@@ -197,11 +197,13 @@ function ItemCard(t, item, options) {
     .border_color(options.ghost || options.menuFor === item.itemId ? t.accent : t.border)
     .hover((style) => style.border_color(t.accent))
     .when(options.writing.has(item.itemId), (el) => el.opacity(0.6))
-    .when(!options.ghost, (el) => el.on_hover((hovered, cx) => options.onCardHover(item.itemId, hovered, cx)))
+    .when(!options.ghost, (el) =>
+      el.on_mouse_move((event) => options.onCardPointer(item.itemId, event.local_position)),
+    )
     .on_mouse_down("left", (event) => options.onCardDown(item, event))
-    .on_mouse_down("right", (_event, cx) => {
+    .on_mouse_down("right", (event, cx) => {
       cx.stop_propagation();
-      options.onCardMenu(item, cx);
+      options.onCardMenu(item, cx, false, event.local_position ?? null);
     })
     .when(Boolean(item.url), (el) =>
       el.cursor_pointer().on_click(() => {
@@ -241,9 +243,8 @@ function ItemCard(t, item, options) {
             .flex_none()
             .items_center()
             .when(Boolean(session), (el) => el.child(SessionButton(`${id}-session`, session)))
-            .when(linked, (el) =>
-              el.children([options.pinFor("bv")(item), ClaudeButton("bv", item, options)].filter(Boolean)),
-            )
+            // No Claude button here: the ⋯ menu has "Start with Claude" / "Review with Claude".
+            .when(linked, (el) => el.children([options.pinFor("bv")(item)].filter(Boolean)))
             .when(Boolean(item.itemId) && !options.ghost, (el) => el.child(MoreButton(t, item, id, options))),
         ),
     )
@@ -277,13 +278,27 @@ function ItemCard(t, item, options) {
       ),
     );
   if (options.menuFor !== item.itemId) return card;
-  return Popup.new(`${id}-popup`, card).w_full().anchor("top_left").content(options.cardMenu(item, options.flipMenu, options.columns));
+  const menu = options.cardMenu(item, options.flipMenu, options.columns);
+  if (!options.menuAt) return Popup.new(`${id}-popup`, card).w_full().anchor("top_left").content(menu);
+  // Opened by a press: the menu's top-left at that point (the popup keeps it inside the window).
+  // The point is a sibling of the card, so a press in the menu doesn't reach the card.
+  return div()
+    .relative()
+    .w_full()
+    .child(card)
+    .child(
+      div()
+        .absolute()
+        .left(options.menuAt.x)
+        .top(options.menuAt.y)
+        .child(Popup.new(`${id}-popup`, div().size(0)).anchor("top_left").content(menu)),
+    );
 }
 
 /**
- * The ⋯ on a card: it opens the card menu. It shows while the pointer is on the card, while
- * its menu is open, and while it has the keyboard; it is a Tab stop, and Enter or Space opens the
- * menu with the keyboard in it.
+ * The ⋯ on a card: it opens the card menu where it was pressed. It always shows, muted until the
+ * pointer is on it or its menu is open; it is a Tab stop, and Enter or Space opens the menu (at
+ * the card's top-left) with the keyboard in it.
  * @param {object} t The theme.
  * @param {object} item The board item.
  * @param {string} id The card's element id.
@@ -292,7 +307,6 @@ function ItemCard(t, item, options) {
  */
 function MoreButton(t, item, id, options) {
   const open = options.menuFor === item.itemId;
-  const shown = open || options.hoverCard === item.itemId;
   return div()
     .id(`${id}-more`)
     .flex_none()
@@ -305,12 +319,11 @@ function MoreButton(t, item, id, options) {
     .text_size(14)
     .text_color(open ? t.foreground : t.muted)
     .when(open, (el) => el.bg(t.hover))
-    .when(!shown, (el) => el.opacity(0))
     .cursor_pointer()
     .tab_index(0)
     .when(Boolean(options.focus) && options.dotsFor === item.itemId, (el) => el.track_focus(options.focus.dots))
     .hover((style) => style.bg(t.hover).text_color(t.foreground))
-    .focus((style) => style.opacity(1).bg(t.hover).text_color(t.foreground))
+    .focus((style) => style.bg(t.hover).text_color(t.foreground))
     .tooltip("Move, iteration, milestone")
     .on_mouse_down("left", (_event, cx) => cx.stop_propagation())
     .on_click((_event, cx) => {

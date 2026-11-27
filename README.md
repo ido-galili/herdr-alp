@@ -156,8 +156,9 @@ the Overview starts on all your repositories, with a card that offers to add a w
   keeps the saved filter until "Save for this board", which writes the filter and the columns
   (the Show on board ticks in Settings); a filter GitHub refuses shows its error in the dialog and
   isn't saved. People are remembered on this computer only; an avatar row above the board picks them in one click too. A card names its iteration, unless the filter already asks for that one. Drag a card to
-  another column to move it to that status; its ⋯ (or a right click) moves it, or changes its
-  iteration or milestone. These write to GitHub at once, so `gh` needs the `project` scope; after
+  another column to move it to that status; its ⋯ (always shown; or a right click) opens a menu
+  where you pressed that moves it, changes its iteration or milestone, or starts Claude on it
+  ("Start with Claude", "Review with Claude"; cards have no Claude button of their own). These write to GitHub at once, so `gh` needs the `project` scope; after
   a move, a toast at the board's bottom left offers Undo.
 - **Herds:** your Claude Code sessions and their agents, and how they are linked. A session that messaged others
   (`SendMessage`) or made their worktrees is a herdsman, marked with a crook: drawn on top, with a line down to each
