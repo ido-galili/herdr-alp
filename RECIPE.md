@@ -49,7 +49,7 @@ An Alp page that is its tab's only pane (a `tab.new` copy) gets no header: the s
 - **Shipped mods used**: `changes`. Cloned with Alp's changes: `alp-chrome` from `workspace-chrome` (brand, and footer with `props: { footer: true }`), `alp-spaces` from `spaces`, `alp-agents` from `agents`. Art borrowed from `workspace-chrome`: `clock.svg`, `spinner.svg`, `check.svg`, `branch.svg`.
 - **`mods/alp-tabs`**, cloned from the shipped `tabs` (0.1.16) with `mod.clone`, which rewrote its own art paths. Added, marked at the top of `main.js`:
   - First, before the tabs: a pinned Alp tab, drawn like a tab (`dashboard.svg` at 14px, then "Alp"), raised while `work-stack` shows `alpmeister-view`, then a 1px line. A click runs `layout.select {stack: "work-stack", child: "alpmeister-view"}`, or `work-body` when it already shows (tooltip "Show Alp" or "Back to the terminals"). While it shows, the space's tabs are greyed. Clicking a tab selects `work-body` on that tab, and so does any change of the active space or tab (a key, + or a tab Alp opens), so that tab shows.
-  - The space's tabs shrink evenly to a minimum width (48px of name, at most 170), then "+N" lists the rest (a red "!" on it when one needs you). A tab that needs you shows a red "!", a done one a green check, a zoomed one an expand icon (tooltip "Zoomed: one pane fills this tab. Click to show all panes."; a click unzooms). The active tab has a ⋯, the same menu as a right-click: Rename, Show all panes (when zoomed), Move left, Move right, New tab, Close; arrow keys, Enter and Esc work in it.
+  - The space's tabs shrink evenly to a minimum width (48px of name, at most 170), then "+N" lists the rest (a red "!" on it when one needs you). A tab that needs you shows a red "!", a done one a green check, a zoomed one an expand icon (tooltip "Zoomed: one pane fills this tab. Click to show all panes."; a click unzooms). The active tab has a ⋯, the same menu as a right-click: Rename, Show all panes (when zoomed), Move left, Move right, New tab, then Put away (`tab.settle`, its tooltip saying what that does) and Close; the pointer and the arrow keys move one highlight, Enter and Esc work in it.
   - After + and a 1px × 16px `border` line (5px each side), icon buttons, each a 26px square with a 15px Lucide icon (copied into `mods/alp-tabs/`): `muted` on `chrome` while off, `foreground` on `selected` while on, `foreground` on `hover` under the pointer. The shipped labelled Files and Changes pills are gone: Files and Changes are tabs of the dock.
   - Alp (`dashboard.svg`, layout-dashboard), only when the layout has no `work-stack` with `alpmeister-view`, in place of the pinned tab: a click goes to the tab of the space's Alp pane (`panes()` with `mod: "alpmeister"`) or runs `tab.new {mod: "alpmeister", name: "Alp"}`. On while that tab shows. Tooltip "Open Alp" or "Go to Alp". The Alp tab itself shows the same icon at 14px before its name (`foreground` while active, `muted` otherwise).
   - Basecamp (`panel-right.svg`), last, only when the layout has a `basecamp` node: on while the dock shows; it shows the dock on the tab it last showed, or hides it. Its tooltip names the dock's tabs with their counts: "Show Basecamp: Files, Changes (2 changed), Today (1 open) and Run (1 running)", counting changed files (the read-only `git status` the Changes tab runs, at most every 10 s, also shared as `alp.changedFiles` for the dock's strip and drawn as an `accent` badge on the icon), open Today items (from `~/.local/state/alp/focus.json`, again whenever `shared("alp.focusStamp")` changes) and running runs (a live terminal with an `alp.run` label and no `alp.run.exit`).
@@ -177,7 +177,8 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
       count of the cards it shows. "Save for this board" writes `boardView.query` and
       `boardView.statuses`; a filter GitHub refuses shows its error in the dialog, unsaved, and
       the last good board stays. People (each assignee's avatar with their item count, then
-      Unassigned) are kept in localStorage only. "Choose columns ▾" opens the same dialog; a
+      Unassigned) are kept in localStorage only; the same people show as an avatar row above
+      the columns, where a click picks or unpicks one (and "Everyone" clears them). "Choose columns ▾" opens the same dialog; a
       board the filter empties says "Nothing matches." with Clear filters.
     - The columns are the ticked statuses, each shown even when empty; with none ticked, the
       statuses that hold an item.
@@ -204,7 +205,7 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
       soonest due first (read on the first open). The card's own are ticked. The menu works from
       the keyboard (Tab, Enter, Space or →, ←, Esc back to the ⋯).
     - A move shows at once and the card dims while GitHub writes it; then a toast "Moved #61 to
-      In Review on GitHub · Undo", whose Undo writes the old status (and place, after a drag)
+      In Review on GitHub · Undo", floating at the board's bottom left for 10 s, whose Undo writes the old status (and place, after a drag)
       back. A refused write puts the card back and shows the error over the columns. The
       board's ids come with its load, so a Board drawn from an older cache asks for a Refresh
       first.
