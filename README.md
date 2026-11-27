@@ -127,8 +127,9 @@ the Overview starts on all your repositories, with a card that offers to add a w
     "3 not started", which list their issues on the card. Under it, Issues (the open issues
     with a priority, a prioritizing label or a feature type) and those on hold. A milestone
     picked by hand outlines the card and offers "Back to next"; each workspace keeps its pick,
-    and one that closes goes back to Next. With a board, "Open v2.4 on the Board →" shows the
-    Board with only that milestone's items. With a board: the issues in flight, by status, the
+    and one that closes goes back to Next. "On GitHub →" opens the milestone (or the open issues
+    without one) on GitHub; with a board, "Open v2.4 on the Board →" shows the Board with only
+    that milestone's items. With a board: the issues in flight, by status, the
     longest in their status first, with their own milestone dropdown (All milestones, one
     milestone, or No milestone), which each workspace keeps too. A repository with no board
     lists its open PRs instead.

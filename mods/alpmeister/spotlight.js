@@ -7,17 +7,21 @@
 import { div } from "gpui-kit";
 import { h_flex, v_flex, Popup } from "gpui-base";
 import { theme } from "herdr";
+import { searchUrl } from "./data.js";
 import { priorityColor } from "./project.js";
 import {
   Bar,
   Chip,
   GroupHeading,
+  ICONS,
+  LinkLabel,
   Note,
   Row,
   TextButton,
   daysUntil,
   formatDate,
   itemKey,
+  openUrl,
   statusColor,
   typeColor,
   warningColor,
@@ -429,9 +433,35 @@ export function milestoneRows(t, data, right = (milestone) => `${milestone.openC
 }
 
 /**
+ * A link in the Milestone card's header, in the accent: its words, with the icon on their left
+ * when given (the GitHub mark on one that opens GitHub; none for one that stays in Alp).
+ * @param {object} t The theme.
+ * @param {string} id The element id.
+ * @param {string | null} icon The icon's path, or null for none.
+ * @param {string} text The words.
+ * @param {string} tooltip The tooltip.
+ * @param {(cx: object) => void} onPress Called on a click.
+ * @returns {object} The link.
+ */
+function HeaderLink(t, id, icon, text, tooltip, onPress) {
+  return div()
+    .id(id)
+    .flex_none()
+    .text_size(11.5)
+    .font_medium()
+    .text_color(t.accent)
+    .cursor_pointer()
+    .hover((style) => style.text_color(t.foreground))
+    .tooltip(tooltip)
+    .on_click((_event, cx) => onPress(cx))
+    .child(LinkLabel(icon, text));
+}
+
+/**
  * The Milestone card. The header holds the dropdown ("v2.4 · next ▾"), "Back to next (v2.4)"
- * while a milestone is picked by hand (the card is then outlined in the accent), and "Open v2.4
- * on the Board →" when the workspace has a board. Then the progress band, "Issues" (the open
+ * while a milestone is picked by hand (the card is then outlined in the accent), "On GitHub →"
+ * (the milestone, or the open issues without one, on GitHub; the GitHub mark on its left), and
+ * "Open v2.4 on the Board →" when the workspace has a board. Then the progress band, "Issues" (the open
  * issues with a priority, a prioritizing label or a feature type) and the issues on hold (left
  * out when none). A pressed flag lists its issues in place of the Issues.
  * @param {object} config The workspace's settings.
@@ -492,7 +522,11 @@ export function MilestoneCard(config, model, options) {
     onPick: (key, cx) => options.onPick(keyPick(key), cx),
   });
   const boardTitle = shown?.none ? "No milestone" : shown?.title;
+  const githubUrl = shown?.none
+    ? config.repo && searchUrl(config.repo, "is:issue is:open no:milestone")
+    : (shown?.url ?? null);
   const header = h_flex()
+    .flex_wrap()
     .items_center()
     .gap(8)
     .child(title)
@@ -505,20 +539,35 @@ export function MilestoneCard(config, model, options) {
       ),
     )
     .child(div().flex_1())
-    .when(Boolean(options.onBoard && boardTitle), (el) =>
-      el.child(
-        div()
-          .id("ms-board")
-          .flex_none()
-          .text_size(11.5)
-          .font_medium()
-          .text_color(t.accent)
-          .cursor_pointer()
-          .hover((style) => style.text_color(t.foreground))
-          .tooltip(`The Board with only ${shown?.none ? "the items without a milestone" : `the items in ${boardTitle}`}`)
-          .on_click((_event, cx) => options.onBoard(shown.none ? null : shown.title, cx))
-          .child(shown?.none ? "Open on the Board →" : `Open ${boardTitle} on the Board →`),
-      ),
+    .child(
+      h_flex()
+        .flex_none()
+        .gap(14)
+        .items_center()
+        .when(Boolean(githubUrl), (el) =>
+          el.child(
+            HeaderLink(
+              t,
+              "ms-github",
+              ICONS.github,
+              "On GitHub →",
+              shown?.none ? "The open issues without a milestone, on GitHub" : `Open ${boardTitle} on GitHub`,
+              () => openUrl(githubUrl),
+            ),
+          ),
+        )
+        .when(Boolean(options.onBoard && boardTitle), (el) =>
+          el.child(
+            HeaderLink(
+              t,
+              "ms-board",
+              null,
+              shown?.none ? "Open on the Board →" : `Open ${boardTitle} on the Board →`,
+              `The Board with only ${shown?.none ? "the items without a milestone" : `the items in ${boardTitle}`}`,
+              (cx) => options.onBoard(shown.none ? null : shown.title, cx),
+            ),
+          ),
+        ),
     );
   if (!shown) {
     const words = data.list.length ? "No open milestone with a due date ahead." : "No open milestones.";
