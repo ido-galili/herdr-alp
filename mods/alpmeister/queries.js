@@ -328,22 +328,6 @@ mutation($pr: ID!) {
   updatePullRequest(input: { pullRequestId: $pr, milestoneId: null }) { pullRequest { id } }
 }`;
 
-/** A repository's open PRs, for a workspace with no board. Variables: prsQuery. */
-export const OPEN_PRS = `
-query($prsQuery: String!) {
-  search(type: ISSUE, query: $prsQuery, first: 50) {
-    issueCount
-    nodes {
-      ... on PullRequest {
-        number title url updatedAt isDraft reviewDecision
-        repository { nameWithOwner }
-        author { login }
-        ${CHECKS}
-      }
-    }
-  }
-}`;
-
 /**
  * One page of open bugs with their issue fields, for the count by priority. Issue search
  * cannot filter on an issue field, so the priorities are counted from the nodes.

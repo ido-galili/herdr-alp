@@ -5,7 +5,7 @@
 //   account     your GitHub as a whole: the repos in scope, the Claude prompts, your local
 //               clones, and the @me searches the Daypack lists
 //   workspaces  a repository, a project board, or both, each with its own settings, such as
-//               the searches behind its Open bugs, Triage bugs and Open PRs (`queries.prs`).
+//               the searches behind its Open bugs and Triage bugs.
 //               The Overview shows one at a time, or all your repos.
 //   files       the Files editor's auto save (`autoSave`: "off", "afterDelay" or
 //               "onFocusChange", as VS Code names them; `autoSaveDelay` in ms). alp-files reads it.
@@ -25,13 +25,12 @@ export const DEFAULT_QUERIES = {
 };
 
 /**
- * A workspace's default searches: its open bugs, its triage bugs and its open PRs. The
- * repository is added to each when it runs, and a sort to Open PRs when it has none.
+ * A workspace's default searches: its open bugs and its triage bugs. The repository is added to
+ * each when it runs. (A `queries.prs` an older file holds is kept as it is and not used.)
  */
 export const WORKSPACE_QUERY_DEFAULTS = {
   bugs: "is:issue is:open type:Bug",
   triage: "is:issue is:open label:triage",
-  prs: "is:pr is:open",
 };
 
 const ACCOUNT_DEFAULTS = {
@@ -51,7 +50,7 @@ const WORKSPACE_DEFAULTS = {
   notStarted: ["New", "Todo"],
   inFlight: { statuses: ["In Progress", "In Review"], excludeTypes: [] },
   mineHidden: ["New", "Done"],
-  queries: { triage: WORKSPACE_QUERY_DEFAULTS.triage, prs: WORKSPACE_QUERY_DEFAULTS.prs },
+  queries: { triage: WORKSPACE_QUERY_DEFAULTS.triage },
   bugs: {
     query: WORKSPACE_QUERY_DEFAULTS.bugs,
     priorityField: "Priority",
@@ -183,7 +182,7 @@ export function normalizeFiles(raw) {
 /**
  * Reads a file in the one-repo shape as the new one: its repository and board become one
  * workspace, `launch.folder` becomes that repository's folder, the @me searches move to the
- * account, and the triage and Open PRs searches stay with the workspace.
+ * account, and the triage search (and an old open PRs search, no longer used) stays with the workspace.
  * @param {object} raw The parsed file.
  * @returns {object} `{ account, workspaces }` as the file would hold them.
  */
@@ -245,23 +244,22 @@ export function withCardFilter(raw, key, query) {
 }
 
 /**
- * The searches a workspace's Overview cards filter by, with their defaults: Open bugs, Triage
- * bugs and Open PRs, and the part of a label's name Customer issues counts.
+ * The searches a workspace's Overview cards filter by, with their defaults: Open bugs and Triage
+ * bugs, and the part of a label's name Customer issues counts.
  */
 export const WORKSPACE_FILTER_DEFAULTS = { ...WORKSPACE_QUERY_DEFAULTS, customer: "customer" };
 
-/** Where a workspace keeps each card's search: `bugs.query`, `queries.triage`, `queries.prs`, `customer.labelMatch`. */
+/** Where a workspace keeps each card's search: `bugs.query`, `queries.triage`, `customer.labelMatch`. */
 const WORKSPACE_FILTER_PATHS = {
   bugs: ["bugs", "query"],
   triage: ["queries", "triage"],
-  prs: ["queries", "prs"],
   customer: ["customer", "labelMatch"],
 };
 
 /**
  * A workspace card's search, as the settings hold it.
  * @param {object} ws The normalized workspace.
- * @param {"bugs" | "triage" | "prs" | "customer"} key The card.
+ * @param {"bugs" | "triage" | "customer"} key The card.
  * @returns {string} The search, or the default when none is set.
  */
 export function workspaceFilter(ws, key) {
@@ -272,7 +270,7 @@ export function workspaceFilter(ws, key) {
 /**
  * A copy of a normalized workspace with one card's search changed, to fetch that card with.
  * @param {object} ws The normalized workspace.
- * @param {"bugs" | "triage" | "prs" | "customer"} key The card.
+ * @param {"bugs" | "triage" | "customer"} key The card.
  * @param {string} value The search.
  * @returns {object} The copy; `ws` is not changed.
  */
@@ -284,11 +282,11 @@ export function withWorkspaceSearch(ws, key, value) {
 /**
  * The settings file's contents with one workspace card's search saved, or removed so the card
  * goes back to its default: the same keys Settings writes (`bugs.query`, `queries.triage`,
- * `queries.prs`, `customer.labelMatch`). Everything else stays as the file had it. A file in the
+ * `customer.labelMatch`). Everything else stays as the file had it. A file in the
  * one-repo shape keeps its one workspace's keys at its top level.
  * @param {object} raw The parsed file.
  * @param {number} index The workspace's place in the file's `workspaces`.
- * @param {"bugs" | "triage" | "prs" | "customer"} key The card.
+ * @param {"bugs" | "triage" | "customer"} key The card.
  * @param {string | null} value The search to save, or null to remove it.
  * @returns {object} A new object to write; `raw` is not changed.
  * @throws {Error} When the file has no workspace at that place.

@@ -1,17 +1,14 @@
-// Your GitHub as a whole, for the Dashboard's "All repos" view: the Red checks tile (your lists
-// follow it, from my-day.js), then every repository in scope with its open work and the state of
-// its default branch. Also the open PRs card a workspace without a board shows in place
-// of the team in flight.
+// Your GitHub as a whole, for the Dashboard's "All repos" view: the Red checks tile (beside your
+// issues; your lists are in my-day.js), then every repository in scope with its open work and the
+// state of its default branch.
 
 import { div } from "gpui-kit";
 import { v_flex } from "gpui-base";
 import { theme } from "herdr";
-import { ClaudeButton, checksChip, decisionChip } from "./my-day.js";
 import { Tile } from "./project.js";
-import { Card, Chip, NeedsYou, Note, Row, TextButton, Toggle, ago, itemKey } from "./ui.js";
+import { Card, Chip, NeedsYou, Note, Row, TextButton, Toggle, ago } from "./ui.js";
 
 const REPO_LIMIT = 12;
-const PR_LIMIT = 10;
 
 /**
  * The Red checks tile: default branches and your PRs whose checks fail.
@@ -107,56 +104,5 @@ export function Repos(config, account, options) {
       .when(account.reposTotal > 100, (el) =>
         el.child(div().pt(6).child(Note(`Showing your 100 most recently pushed of ${account.reposTotal}.`))),
       ),
-  );
-}
-
-/**
- * A workspace's open PRs, for a repository with no board: author, review decision, checks, age.
- * @param {object} ws The workspace.
- * @param {object} model The workspace's model.
- * @param {object} actions `{ pinButton, launch, prompt, expanded, onToggleGroup, filter? }`; `filter`
- *   is the card's filter icon (`FilterIcon`), for the header's right end.
- * @returns {object} The card.
- */
-export function OpenPrs(ws, model, actions) {
-  const t = theme();
-  const prs = model.openPrs ?? [];
-  const now = Date.now();
-  const open = actions.expanded.has("open-prs");
-  const rows = (open ? prs : prs.slice(0, PR_LIMIT)).map((pr) =>
-    Row(`op-${itemKey(pr)}`, {
-      number: pr.number,
-      title: pr.title,
-      url: pr.url,
-      dim: pr.isDraft,
-      chips: [
-        pr.isDraft ? Chip("Draft", { color: t.dim }) : null,
-        Chip(pr.author, { color: t.muted }),
-        decisionChip(t, pr, "op"),
-        checksChip(t, pr, "op"),
-        Chip(`${ago(now - pr.updatedAt)} ago`, { color: t.dim }),
-      ].filter(Boolean),
-      buttons: [actions.pinButton(pr), ClaudeButton("op", pr, actions)].filter(Boolean),
-    }),
-  );
-  const more = prs.length - PR_LIMIT;
-  const list = v_flex()
-    .gap(2)
-    .when(!rows.length, (el) =>
-      el.child(Note(model.errors?.prs ? `GitHub: ${model.errors.prs}` : `No open PRs in ${ws.repo}.`)),
-    )
-    .children(rows)
-    .when(more > 0, (el) =>
-      el.child(
-        TextButton("open-prs-more", open ? "Show less" : `Show ${more} more`, (cx) =>
-          actions.onToggleGroup("open-prs", cx),
-        ),
-      ),
-    );
-  return Card(
-    "open-prs",
-    "Open PRs",
-    [Chip(String(model.openPrsTotal ?? prs.length), { color: t.muted }), actions.filter ?? null].filter(Boolean),
-    list,
   );
 }

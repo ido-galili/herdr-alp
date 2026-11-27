@@ -85,7 +85,7 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
     searches of your lists on the Overview (`queries.review`, `queries.mine`, `queries.myPrs`).
   - `workspaces`: each a `repo`, a project `board` (`owner`, `number`, `statusField`,
     `iterationField`, on a user or an organization), or both, with its own `statuses`,
-    `notStarted`, `inFlight`, `mineHidden`, `queries.triage`, `queries.prs`, `bugs`,
+    `notStarted`, `inFlight`, `mineHidden`, `queries.triage`, `bugs`,
     `spotlight` (the Milestone card's issues), `customer`, `nightly` and `boardView`.
   - `files`: the Files editor's auto save (`autoSave`: `off`, `afterDelay` or `onFocusChange`;
     `autoSaveDelay` in ms, 200–60000, default 1000).
@@ -117,23 +117,27 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
     Each tile ends in what a click opens ("See all 7 →", "See both →", "Open the run →", with
     the GitHub mark); a missing nightly or customer label opens Settings on that workspace
     instead ("Set up in Settings →", with the gear). Every tile and card that lists a GitHub
-    search (open bugs, triage bugs, customer issues, a workspace's Open PRs, and your three lists)
+    search (open bugs, triage bugs, customer issues, and your three lists)
     has a filter icon in its top-right corner, with a dot when its saved filter isn't the
     default and the filter in words as its tooltip; it opens the filter dialog (below).
   - **All repos**, top to bottom:
     - While there is no workspace, a card: "This is every repo you can reach.", "Add a
       workspace" (opens Settings) and "Not now", which hides it for good on this computer.
     - Your lists (below), across every repository in scope (with `"all"`, everything the
-      searches find), in two columns when the tab is at least 1000px wide: Waiting for your
-      review and Your open PRs on the left; on the right the Red checks tile (default branches
-      failing, your PRs failing) over Your issues. Narrower, one column, the tile first.
+      searches find), two equal columns a row when the tab is at least 1000px wide: Waiting for
+      your review | Your open PRs, then Your issues | the Red checks tile (default branches
+      failing, your PRs failing). Narrower, one column in that order.
     - The Repos card: every repository in scope, most recently pushed first, 12 rows then
       "Show N more", with a "With open work" toggle (remembered). A row: `owner/name` (dim without open
       work), then chips for private, archived, "local" (a folder is set), open issues, open PRs,
       the default branch's checks ("main passing", or `Needs you` style "main failing"), and
       "pushed 3d ago". A click opens the repository.
-  - **A workspace**, top to bottom; the repository's cards show only with a `repo` (a board-only
-    workspace says what adding one would show):
+  - **A workspace**; the repository's cards show only with a `repo` (a board-only workspace says
+    what adding one would show). Its first two rows are two equal columns when the tab is at
+    least 1000px wide (narrower, one column in the same order): with a repository, the Milestone
+    card | Waiting for your review, then Your open PRs | Your issues, and under them the tiles,
+    then Team in flight; with only a board, Waiting for your review | Your open PRs, then Your
+    issues | Team in flight. The parts:
     - Four tiles, in one row when the tab is at least 1000px wide, else two by two: open bugs by
       priority (total, a strip and a chip per priority, counted from the priority issue field),
       triage bugs, open customer issues (any label whose name contains `customer.labelMatch`,
@@ -142,7 +146,7 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
       repository, your issues in it or on its board. A workspace with only a board narrows to the
       repositories its board's items are in (and your issues on its board). Their counts are the
       narrowed rows, their GitHub links add `repo:` terms, and a row leaves out the repository's
-      name when the workspace has one. With no repository they come first.
+      name when the workspace has one.
     - The nightly tile: "Success", "Failure" or "Running" for the last run, its local start date
       and time ("Tue 17 Nov, 06:05"), then one line per
       `nightly.checks` entry (deploy, unit, API and E2E tests) with an outcome chip. A check
@@ -166,14 +170,12 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
         sub-issues, its status, and an Unassigned flag. 8 rows, then "Show N more".
       - The issues in `spotlight.holdStatus`, under that status's name; left out when there
         are none or no board.
-  - With a board, Team in flight, full width: the board's open issues in the configured statuses, grouped in
+  - With a board, Team in flight (full width under the tiles; beside Your issues without a
+    repository): the board's open issues in the configured statuses, grouped in
     board order, the longest in their status first, 5 rows per group with "Show N more". Its own
     milestone dropdown (All milestones, one milestone, or No milestone) is kept per workspace.
     Chips for assignee (or Unassigned), milestone, days in status and each linked PR's review
     state. An item from another repository than the workspace's names it in a chip.
-  - With a repository and no board, Open PRs in its place: the repository's open PRs
-    (`queries.prs`, drafts dimmed), with author, review decision, checks and age, Pin and the
-    Claude button.
   - **Board**: a workspace's board items that match its filter (`boardView.query`, the board's
     own filter syntax, default `iteration:@current`) and its ticked statuses
     (`boardView.statuses`, the Show on board ticks in Settings), up to 500. The Workspace

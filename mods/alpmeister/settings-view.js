@@ -548,8 +548,7 @@ export class SettingsForm {
 
   /**
    * Every card's filter, as Card filters lists them: your three lists, then each workspace's
-   * Open bugs and Triage bugs (with a repository) and Open PRs (with a repository and no board,
-   * where the Overview lists them). Each row reads the draft.
+   * Open bugs and Triage bugs (with a repository). Each row reads the draft.
    * @returns {{ id: string, key: string, workspace: string | null, group: string, groupKey: string,
    *   label: string, value: string, saved: string, fallback: string, path: (string | number)[] }[]}
    *   `workspace` is the workspace's name (null for your lists'), `saved` the file's value,
@@ -592,9 +591,6 @@ export class SettingsForm {
       });
       rows.push(row("bugs", "Open bugs", ws.bugs.query, before?.bugs?.query, ["bugs", "query"]));
       rows.push(row("triage", "Triage bugs", ws.queries.triage, before?.queries?.triage, ["queries", "triage"]));
-      if (!ws.board) {
-        rows.push(row("prs", "Open PRs", ws.queries.prs, before?.queries?.prs, ["queries", "prs"]));
-      }
     });
     return rows;
   }
@@ -1521,7 +1517,7 @@ export class SettingsForm {
       .child(
         Note(
           "What each card lists, as a GitHub search. The Overview's cards open the same filter from their corner. " +
-            "Its Save writes that filter at once. The workspace cards add their repository; Open PRs adds a sort when it has none.",
+            "Its Save writes that filter at once. The workspace cards add their repository.",
         ),
       )
       .children(
@@ -1531,7 +1527,7 @@ export class SettingsForm {
         }),
       )
       .when(!this.draft.workspaces.some((ws) => ws.repo), (el) =>
-        el.child(Note("A workspace with a repository adds its Open bugs, Triage bugs and Open PRs here.")),
+        el.child(Note("A workspace with a repository adds its Open bugs and Triage bugs here.")),
       );
   }
 
@@ -1717,9 +1713,7 @@ export class SettingsForm {
           t,
           "Project board",
           this.picker(t, "ws-board", ws.board ? boardKey(ws.board) : null, this.boardOptions(ws), (key) => this.pickBoard(ws, key)),
-          ws.repo
-            ? "Statuses, iterations and the team in flight come from it. Without one, the Overview lists the open PRs instead."
-            : "Statuses, iterations and the team in flight come from it.",
+          "Statuses, iterations and the team in flight come from it.",
         ),
       );
   }

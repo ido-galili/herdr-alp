@@ -39,8 +39,7 @@
         "statuses": ["Todo", "In Progress", "In Review", "QA", "Done"]
       },
       "queries": {
-        "triage": "is:issue is:open type:Bug label:triage",
-        "prs": "is:pr is:open"
+        "triage": "is:issue is:open type:Bug label:triage"
       },
       "bugs": {
         "query": "is:issue is:open type:Bug",

@@ -1,6 +1,6 @@
-// The filter dialog: one editor for every card's filter (the Overview tiles and Open PRs, the
-// Daypack cards, the Board, and Settings › Card filters). It opens as a Herdr dialog, centred over
-// a dimmed window, drawn by a copy of this mod opened with `props.part` "filter".
+// The filter dialog: one editor for every card's filter (the Overview tiles, your lists, the
+// Board, and Settings › Card filters). It opens as a Herdr dialog, centred over a dimmed window,
+// drawn by a copy of this mod opened with `props.part` "filter".
 //
 // The copy that opens it keeps the filter: it hands the dialog a session (what to draw, how to
 // count, how to save) through `sessions`, which every copy of the mod shares (module code runs

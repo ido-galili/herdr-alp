@@ -14,7 +14,6 @@ import {
   CUSTOMER_LABELS,
   ISSUE_COUNT,
   NO_MILESTONE_ISSUES,
-  OPEN_PRS,
   WORKSPACE_BOARD,
   WORKSPACE_REPO,
   pickStates,
@@ -83,8 +82,7 @@ export const searchUrl = (repo, query) =>
     : `https://github.com/search?type=issues&q=${encodeURIComponent(query)}`;
 
 /**
- * Every search a workspace runs, scoped to its repository. Open PRs (`queries.prs`) is sorted by
- * the last update unless it names a sort of its own.
+ * Every search a workspace runs, scoped to its repository.
  * @param {object} ws The workspace.
  * @returns {Record<string, string>} The searches by name; repository searches are absent without a repository.
  */
@@ -97,7 +95,6 @@ export function workspaceQueries(ws) {
     inFlightFilter: inFlightParts.join(" "),
     triageQuery: `${repo} ${ws.queries.triage}`,
     bugsQuery: `${repo} ${ws.bugs.query}`,
-    prsQuery: `${repo} ${ws.queries.prs}${/(^|\s)sort:/.test(ws.queries.prs) ? "" : " sort:updated-desc"}`,
   };
 }
 
@@ -505,9 +502,9 @@ const part = (errors, key, promise) =>
   });
 
 /**
- * Loads one workspace: its repository's milestones, bugs, triage, customer issues, nightly run
- * and open PRs, and its board's iterations, items in flight and the Board tab's items. A part the workspace has no
- * repository or board for is null.
+ * Loads one workspace: its repository's milestones, bugs, triage, customer issues and nightly
+ * run, and its board's iterations, items in flight and the Board tab's items. A part the
+ * workspace has no repository or board for is null.
  * @param {object} ws The workspace.
  * @returns {Promise<object>} The workspace's model, with failures in `errors`.
  */
@@ -521,7 +518,7 @@ export async function loadWorkspace(ws) {
   };
   const [owner, name] = ws.repo ? ws.repo.split("/") : [];
   const none = Promise.resolve(null);
-  const [repo, board, nightlyRun, bugs, customer, prs, boardView] = await Promise.all([
+  const [repo, board, nightlyRun, bugs, customer, boardView] = await Promise.all([
     ws.repo
       ? part(
           errors,
@@ -550,7 +547,6 @@ export async function loadWorkspace(ws) {
     ws.repo ? part(errors, "nightly", nightly(ws)) : none,
     ws.repo ? part(errors, "bugs", bugsByPriority(ws, queries.bugsQuery)) : none,
     ws.repo ? part(errors, "customer", customerIssues(ws)) : none,
-    ws.repo && !ws.board ? part(errors, "prs", graphql(OPEN_PRS, { prsQuery: queries.prsQuery })) : none,
     ws.board && boardFilter(ws) ? part(errors, "boardView", loadBoardView(ws)) : none,
   ]);
   const model = { fetchedAt: now, errors, nightly: nightlyRun, bugs, customer, queries, boardView };
@@ -580,20 +576,16 @@ export async function loadWorkspace(ws) {
   } else if (ws.board && !errors.board) {
     errors.board = `Board ${ws.board.owner} #${ws.board.number} not found, or gh lacks the read:project scope.`;
   }
-  if (prs) {
-    model.openPrsTotal = prs.search.issueCount;
-    model.openPrs = prs.search.nodes.filter((pr) => pr.number).map(prRow);
-  }
   return model;
 }
 
 /**
  * Fetches one of a workspace's Overview cards again, for a filter edited on the card, and puts
- * its result into a copy of the workspace's model: Open bugs, Triage bugs, Customer issues or
- * Open PRs. The other cards stay as they were.
+ * its result into a copy of the workspace's model: Open bugs, Triage bugs or Customer issues.
+ * The other cards stay as they were.
  * @param {object} ws The workspace, with the card's edited search in place.
  * @param {object} model The workspace's model, from `loadWorkspace`.
- * @param {"bugs" | "triage" | "customer" | "prs"} key The card.
+ * @param {"bugs" | "triage" | "customer"} key The card.
  * @returns {Promise<object>} The workspace's model with that card's result and searches.
  * @throws {Error} With GitHub's message when it refuses the search.
  */
@@ -607,11 +599,6 @@ export async function loadWorkspaceCard(ws, model, key) {
     next.counts = { ...model.counts, triage: count };
   }
   if (key === "customer") next.customer = await customerIssues(ws);
-  if (key === "prs") {
-    const prs = await graphql(OPEN_PRS, { prsQuery: queries.prsQuery });
-    next.openPrsTotal = prs.search.issueCount;
-    next.openPrs = prs.search.nodes.filter((pr) => pr.number).map(prRow);
-  }
   return next;
 }
 

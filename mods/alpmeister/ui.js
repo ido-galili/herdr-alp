@@ -285,6 +285,9 @@ export const ICONS = {
   iteration: "mods/alpmeister/iteration.svg",
   milestone: "mods/alpmeister/milestone.svg",
   settings: "mods/workspace-chrome/settings.svg",
+  viewOverview: "mods/alpmeister/view-overview.svg",
+  viewBoard: "mods/alpmeister/view-board.svg",
+  viewHerds: "mods/alpmeister/view-herds.svg",
 };
 
 /**

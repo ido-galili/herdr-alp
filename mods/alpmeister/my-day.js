@@ -28,7 +28,7 @@ import {
 
 /**
  * The chips each card's filter offers, by its search's key: a term each turns on and off. The
- * Daypack's three, then a workspace's Open bugs, Triage bugs and Open PRs (on the Overview and in
+ * Daypack's three, then a workspace's Open bugs and Triage bugs (on the Overview and in
  * Settings › Card filters). Every label in the search gets a chip too, and "+ Label" adds one.
  */
 const CARD_CHIPS = {
@@ -55,15 +55,11 @@ const CARD_CHIPS = {
     { term: "is:open", label: "Open" },
     { term: "type:Bug", label: "Bugs only" },
   ],
-  prs: [
-    { term: "is:open", label: "Open" },
-    { term: "draft:false", label: "Not draft" },
-  ],
 };
 
 /**
  * A card's filter chips for a search: the card's own, then one per label in it.
- * @param {"review" | "myPrs" | "mine" | "bugs" | "triage" | "prs"} key The card's search.
+ * @param {"review" | "myPrs" | "mine" | "bugs" | "triage"} key The card's search.
  * @param {string} query The search as it stands in the field.
  * @returns {{ term: string, label: string, on: boolean }[]} Each chip's term, label and whether it is on.
  */

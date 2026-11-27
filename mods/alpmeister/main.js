@@ -31,7 +31,7 @@ import {
   window,
   writeTextFile,
 } from "herdr";
-import { OpenPrs, RedChecks, Repos } from "./account.js";
+import { RedChecks, Repos } from "./account.js";
 import { Avatars } from "./avatars.js";
 import { BoardState } from "./board-state.js";
 import { Board, COLUMN_PADDING, MoveToast, NoBoard } from "./board-view.js";
@@ -124,6 +124,8 @@ const ADD_WORKSPACE_DISMISSED_KEY = "alpmeister.addWorkspaceDismissed";
 const OPEN_SETTINGS_KEY = "alp.openSettings";
 /** The views' names, as the header's tabs and Settings' "Back to <view>" show them. */
 const VIEW_NAMES = { [TABS.dashboard]: "Overview", [TABS.board]: "Board", [TABS.herds]: "Herds" };
+/** The views' icons, left of their names on the header's tabs. */
+const VIEW_ICONS = { [TABS.dashboard]: ICONS.viewOverview, [TABS.board]: ICONS.viewBoard, [TABS.herds]: ICONS.viewHerds };
 /** The Alp layout's stack that shows the terminals or, pinned in their place, Alpmeister. */
 const WORK_STACK = "work-stack";
 const WORK_BODY = "work-body";
@@ -140,13 +142,12 @@ const CARD_NAMES = {
   bugs: "Open bugs",
   triage: "Triage bugs",
   customer: "Customer issues",
-  prs: "Open PRs",
 };
 
 /**
  * The count a workspace's Overview card shows, from the workspace's model.
  * @param {object | undefined} wsModel The workspace's model.
- * @param {"bugs" | "triage" | "customer" | "prs"} key The card.
+ * @param {"bugs" | "triage" | "customer"} key The card.
  * @returns {number | null} The count, or null before the card is loaded.
  */
 function workspaceCardCount(wsModel, key) {
@@ -154,13 +155,13 @@ function workspaceCardCount(wsModel, key) {
   if (key === "bugs") return wsModel.bugs?.total ?? null;
   if (key === "triage") return wsModel.counts?.triage ?? null;
   if (key === "customer") return wsModel.customer?.count ?? null;
-  return wsModel.openPrsTotal ?? null;
+  return null;
 }
 
 /**
  * The id of a workspace Overview card's filter, as `filterTarget` reads it.
  * @param {string} name The workspace's name.
- * @param {"bugs" | "triage" | "customer" | "prs"} key The card.
+ * @param {"bugs" | "triage" | "customer"} key The card.
  * @returns {string} Such as "ws:Website:bugs".
  */
 const wsFilterId = (name, key) => `ws:${name}:${key}`;
@@ -789,7 +790,7 @@ export default class Alpmeister extends View {
       hint: customer
         ? "Counts open issues with a label whose name has this in it. Enter updates the preview."
         : "The chips write this. Enter updates the preview.",
-      noun: ["review", "myPrs", "prs"].includes(key) ? ["PR", "PRs"] : ["issue", "issues"],
+      noun: ["review", "myPrs"].includes(key) ? ["PR", "PRs"] : ["issue", "issues"],
       now: this.cardCount(id),
       saveLabel: "Save for this card",
       demo: this.demo,
@@ -1298,7 +1299,7 @@ export default class Alpmeister extends View {
   }
 
   /**
-   * The views as underlined tabs: Overview, Board and Herds.
+   * The views as underlined tabs, each with its icon: Overview (a grid), Board (columns) and Herds.
    * @param {object} t The theme.
    * @returns {object} The row of tabs.
    */
@@ -1319,6 +1320,8 @@ export default class Alpmeister extends View {
         .text_color(on ? t.foreground : t.muted)
         .hover((style) => style.text_color(t.foreground))
         .on_click((_event, cx) => this.selectTab(name, cx))
+        // The icon takes the label's color, dim when the view isn't shown.
+        .child(svg(VIEW_ICONS[name]).size(13).flex_none())
         .child(VIEW_NAMES[name]);
     };
     return h_flex()
@@ -1728,13 +1731,15 @@ export default class Alpmeister extends View {
   }
 
   /**
-   * The Dashboard tab: All repos (Red checks, your review requests, PRs and issues, and every
-   * repository in scope), or one workspace (its tiles, your lists narrowed to its repositories,
-   * the Milestone card, and the team in flight or the open PRs). A workspace with only a board
-   * says what adding a repository would show.
+   * The Dashboard tab. All repos: Waiting for your review | Your open PRs, then Your issues | Red
+   * checks, then every repository in scope. A workspace with a repository: the Milestone card |
+   * Waiting for your review, then Your open PRs | Your issues (narrowed to its repositories), then
+   * its tiles and the team in flight. A workspace with only a board: Waiting for your review |
+   * Your open PRs, then Your issues | the team in flight, and a line on what adding a repository
+   * would show.
    * @param {object} config The settings.
    * @param {object} model The fetched model.
-   * @param {boolean} wide Whether the tab is wide enough for four tiles across.
+   * @param {boolean} wide Whether the tab is wide enough for four tiles across and two cards a row.
    * @param {object} cx The render's context, to fetch the issues without a milestone when shown.
    * @returns {object} The tab's content.
    */
@@ -1753,16 +1758,17 @@ export default class Alpmeister extends View {
       const firstRun = this.firstRunCard(t);
       if (firstRun) content = content.child(firstRun);
       if (!account) return content.child(Note(this.loading ? "Loading from GitHub…" : "No data yet."));
-      return content
-        .child(this.myLists(config, account, wide, RedChecks(account)))
-        .child(
-          Repos(config, account, {
-            expanded: this.expandedGroups,
-            onToggleGroup,
-            activeOnly: this.reposActiveOnly,
-            onToggleActive: (cx) => this.toggleReposActiveOnly(cx),
-          }),
-        );
+      const { reviews, myPrs, mine } = this.myLists(config, account);
+      // A tile keeps its own height in a column (a row around it).
+      const redChecks = h_flex().child(RedChecks(account));
+      return content.child(this.cardRows([[reviews, myPrs], [mine, redChecks]], wide)).child(
+        Repos(config, account, {
+          expanded: this.expandedGroups,
+          onToggleGroup,
+          activeOnly: this.reposActiveOnly,
+          onToggleActive: (cx) => this.toggleReposActiveOnly(cx),
+        }),
+      );
     }
     const wsModel = model.workspaces?.[ws.name];
     if (!wsModel) return content.child(Note(this.loading ? "Loading from GitHub…" : "Refresh to load this workspace."));
@@ -1770,20 +1776,10 @@ export default class Alpmeister extends View {
       if (part === "github" || part === "board") content = content.child(Note(`GitHub (${part}): ${error}`, t.blocked));
     }
     const choices = this.milestoneChoices(ws, wsModel);
-    if (ws.repo) {
-      content = content.child(
-        Tiles(ws, wsModel, {
-          wide,
-          onSettings: (cx) => this.openSettings({ workspace: ws.name }, cx),
-          filter: (key) => this.cardFilter(wsFilterId(ws.name, key)),
-        }),
-      );
-    }
-    // Your lists, narrowed to the workspace: after its tiles, before the team's cards.
-    if (model.account) content = content.child(this.myLists(config, narrowAccount(model.account, ws, wsModel), wide));
-    if (ws.repo) {
-      content = content.child(
-        MilestoneCard(ws, wsModel, {
+    // Your lists, narrowed to the workspace.
+    const lists = model.account ? this.myLists(config, narrowAccount(model.account, ws, wsModel)) : null;
+    const milestone = ws.repo
+      ? MilestoneCard(ws, wsModel, {
           expanded: this.expandedGroups,
           onToggleGroup,
           pinButton: this.pinFor("sp"),
@@ -1796,12 +1792,10 @@ export default class Alpmeister extends View {
           flag: this.milestoneFlag[ws.name] ?? null,
           onFlag: (flag, cx) => this.toggleMilestoneFlag(ws.name, flag, cx),
           onBoard: ws.board ? (title, cx) => this.openMilestoneOnBoard(ws, title, cx) : null,
-        }),
-      );
-    }
-    if (ws.board) {
-      content = content.child(
-        InFlight(ws, wsModel, {
+        })
+      : null;
+    const inFlight = ws.board
+      ? InFlight(ws, wsModel, {
           milestone: choices.inFlight,
           menuOpen: this.pickerOpen === "ms-if",
           onToggleMenu: (cx) => this.toggleMenu("ms-if", cx),
@@ -1810,50 +1804,67 @@ export default class Alpmeister extends View {
           expanded: this.expandedGroups,
           onToggleGroup,
           pinButton: this.pinFor("if"),
+        })
+      : null;
+    if (ws.repo) {
+      const rows = lists ? [[milestone, lists.reviews], [lists.myPrs, lists.mine]] : [[milestone]];
+      content = content.child(this.cardRows(rows, wide)).child(
+        Tiles(ws, wsModel, {
+          wide,
+          onSettings: (cx) => this.openSettings({ workspace: ws.name }, cx),
+          filter: (key) => this.cardFilter(wsFilterId(ws.name, key)),
         }),
       );
-    } else if (ws.repo) {
-      content = content.child(
-        OpenPrs(ws, wsModel, {
-          ...this.launchActions(),
-          pinButton: this.pinFor("op"),
-          expanded: this.expandedGroups,
-          onToggleGroup,
-          filter: this.cardFilter(wsFilterId(ws.name, "prs")),
-        }),
-      );
+      if (inFlight) content = content.child(inFlight);
+      return content;
     }
-    if (!ws.repo) {
-      content = content.child(
+    // No Milestone card: the team in flight takes the place beside Your issues.
+    const rows = lists ? [[lists.reviews, lists.myPrs], [lists.mine, inFlight]] : [[inFlight]];
+    return content
+      .child(this.cardRows(rows, wide))
+      .child(
         this.settingsLine(t, "add-repo", "Add a repository to this workspace to see bugs, milestones and the nightly.", ws.name),
       );
-    }
-    return content;
   }
 
   /**
-   * Your three lists, as the Today view showed them: review requests and your PRs in one column
-   * and your issues in the other when wide, else one under the other. Each has its pins, Claude
-   * buttons and filter icon.
+   * Cards in rows of two equal columns when wide, each row under the taller card of the one
+   * above; else every card one under the other, in the same order. A row with one card gives it
+   * the whole width.
+   * @param {Array<Array<object | null>>} rows The rows, left card first; a null leaves no card.
+   * @param {boolean} wide Whether the cards go two a row.
+   * @returns {object} The rows.
+   */
+  cardRows(rows, wide) {
+    const cards = rows.map((row) => row.filter(Boolean)).filter((row) => row.length);
+    if (!wide) return v_flex().gap(14).children(cards.flat());
+    return v_flex()
+      .gap(14)
+      .children(
+        cards.map((row) =>
+          h_flex()
+            .gap(14)
+            .items_start()
+            .children(row.map((card) => v_flex().flex_1().min_w(0).child(card))),
+        ),
+      );
+  }
+
+  /**
+   * Your three lists, as the Today view showed them, each with its pins, Claude buttons and
+   * filter icon. `cardRows` places them.
    * @param {object} config The settings.
    * @param {object} account The account model, or one narrowed to a workspace (`narrowAccount`).
-   * @param {boolean} wide Whether the lists go side by side.
-   * @param {object | null} [aside] A tile over your issues when wide (All repos' Red checks), else
-   *   over every list.
-   * @returns {object} The lists.
+   * @returns {{ reviews: object, myPrs: object, mine: object }} Waiting for your review, Your open
+   *   PRs and Your issues.
    */
-  myLists(config, account, wide, aside = null) {
+  myLists(config, account) {
     const actions = { ...this.launchActions(), filter: (key) => this.cardFilter(key) };
-    const reviews = Reviews(account, { ...actions, pinButton: this.pinFor("rv") });
-    const mine = MyIssues(config, account, { ...actions, pinButton: this.pinFor("mi") });
-    const myPrs = MyPrs(account, { ...actions, pinButton: this.pinFor("mp") });
-    return wide
-      ? h_flex()
-          .gap(14)
-          .items_start()
-          .child(v_flex().flex_1().min_w(0).gap(14).child(reviews).child(myPrs))
-          .child(v_flex().flex_1().min_w(0).gap(14).when(Boolean(aside), (el) => el.child(h_flex().child(aside))).child(mine))
-      : v_flex().gap(14).when(Boolean(aside), (el) => el.child(h_flex().child(aside))).child(reviews).child(myPrs).child(mine);
+    return {
+      reviews: Reviews(account, { ...actions, pinButton: this.pinFor("rv") }),
+      myPrs: MyPrs(account, { ...actions, pinButton: this.pinFor("mp") }),
+      mine: MyIssues(config, account, { ...actions, pinButton: this.pinFor("mi") }),
+    };
   }
 
   /** Starts the Settings form over from the file, dropping unsaved edits. */

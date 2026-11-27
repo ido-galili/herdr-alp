@@ -401,21 +401,13 @@ function website(ws, now) {
 }
 
 /**
- * The Herdr core workspace: a repository only, so the Dashboard lists its open PRs.
+ * The Herdr core workspace: a repository only, so the Overview shows no team in flight.
  * @param {object} ws The normalized workspace.
  * @param {number} now Milliseconds since the epoch.
  * @returns {object} The workspace's model.
  */
 function herdrCore(ws, now) {
   const tiles = repoTiles(ws);
-  const allPrs = [
-    pr(CORE, 212, "Terminal: keep scrollback across reloads", { author: "lena-k", checks: "SUCCESS", reviewDecision: "APPROVED", ago: 2 * HOUR }),
-    pr(CORE, 215, "hc: --json for every command", { author: VIEWER, checks: "PENDING", ago: 40 * MIN }),
-    pr(CORE, 209, "Layouts: stacks remember their child", { author: "tobi-s", checks: "FAILURE", reviewDecision: "CHANGES_REQUESTED", ago: 26 * HOUR }),
-    pr(CORE, 217, "WIP: remote machines over SSH", { author: "mara-v", isDraft: true, checks: null, ago: 3 * DAY }),
-  ];
-  // The Open PRs card lists those its search matches, so a filter edited on it changes it.
-  const openPrs = allPrs.filter((row) => matchesSearch(row, ws.queries.prs, VIEWER));
   return {
     fetchedAt: now,
     errors: {},
@@ -453,8 +445,6 @@ function herdrCore(ws, now) {
       ],
     },
     counts: { triage: tiles.triage },
-    openPrsTotal: openPrs.length,
-    openPrs,
   };
 }
 
@@ -596,7 +586,7 @@ const WORKSPACES = { Website: website, "Herdr core": herdrCore, Alphorn: alphorn
  * `loadWorkspaceCard()` on the made-up data. Nothing is fetched.
  * @param {object} ws The normalized workspace, with the card's edited search in place.
  * @param {object} model The workspace's model.
- * @param {"bugs" | "triage" | "customer" | "prs"} key The card.
+ * @param {"bugs" | "triage" | "customer"} key The card.
  * @returns {object} The workspace's model with that card's result and searches.
  */
 export function demoWorkspaceCard(ws, model, key) {
@@ -606,7 +596,6 @@ export function demoWorkspaceCard(ws, model, key) {
   if (key === "bugs") next.bugs = fresh.bugs;
   if (key === "triage") next.counts = { ...model.counts, triage: fresh.counts?.triage };
   if (key === "customer") next.customer = fresh.customer;
-  if (key === "prs") Object.assign(next, { openPrs: fresh.openPrs, openPrsTotal: fresh.openPrsTotal });
   return next;
 }
 
