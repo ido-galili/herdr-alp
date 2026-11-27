@@ -42,7 +42,7 @@ import { loadHerds, saveTabLink, sessionsDir } from "./herds-data.js";
 import { Herds } from "./herds-view.js";
 import { HerdsCanvas } from "./herds-canvas.js";
 import { InFlight } from "./in-flight.js";
-import { MyIssues, MyPrs, Reviews } from "./my-day.js";
+import { DaypackKey, MyIssues, MyPrs, Reviews } from "./my-day.js";
 import { Spotlight } from "./spotlight.js";
 import { Milestone, Tiles } from "./project.js";
 import { SettingsForm } from "./settings-view.js";
@@ -78,6 +78,10 @@ const REPOS_ACTIVE_ONLY_KEY = "alpmeister.reposActiveOnly";
 /** The Dashboard switch's value for your GitHub as a whole. */
 const ALL_REPOS = "";
 const FOCUS_STAMP_KEY = "alp.focusStamp";
+/** The Daypack key's "Hide key": "true" once hidden. */
+const DAYPACK_KEY_HIDDEN_KEY = "alpmeister.daypackKeyHidden";
+/** Set by Basecamp's Daypack to ask the pinned Alp to show Settings in place. */
+const OPEN_SETTINGS_KEY = "alp.openSettings";
 /** The views' names, as the header's tabs and Settings' "Back to <view>" show them. */
 const VIEW_NAMES = { [TABS.dashboard]: "Overview", [TABS.board]: "Board", [TABS.herds]: "Herds", [TABS.today]: "Daypack" };
 /** The Alp layout's stack that shows the terminals or, pinned in their place, Alpmeister. */
@@ -164,6 +168,19 @@ function rememberedMilestoneOnly() {
 }
 
 /**
+ * Whether the Daypack's key was hidden, as remembered.
+ * @returns {boolean} True when it was; false when nothing is remembered.
+ */
+function rememberedKeyHidden() {
+  try {
+    return localStorage.getItem(DAYPACK_KEY_HIDDEN_KEY) === "true";
+  } catch (error) {
+    console.log(`alpmeister: no remembered Daypack key: ${error}`);
+    return false;
+  }
+}
+
+/**
  * Whether the Repos card showed only repositories with open work, as remembered.
  * @returns {boolean} True when it did; false when nothing is remembered.
  */
@@ -187,6 +204,7 @@ export default class Alpmeister extends View {
     // `props.workspace` opens a copy on that workspace's Dashboard; "" is All repos.
     this.workspaceName = typeof props()?.workspace === "string" ? props().workspace : rememberedWorkspace();
     this.reposActiveOnly = rememberedReposActiveOnly();
+    this.keyHidden = rememberedKeyHidden();
     this.failure = null;
     // The workspaces whose Team in flight shows only the next milestone.
     this.milestoneOnly = rememberedMilestoneOnly();
@@ -223,6 +241,7 @@ export default class Alpmeister extends View {
     this.settings = new SettingsForm((cx) => this.announceSettings(cx));
     if (this.demo) this.settings.useDemo(demoDiscovery(demoConfig().config));
     this.settingsStamp = shared(SETTINGS_STAMP_KEY) ?? null;
+    this.openSettingsStamp = shared(OPEN_SETTINGS_KEY) ?? null;
     // Settings shown in place of the view, with "Back to <view>"; its edits stay while Alp is open.
     this.inSettings = false;
     // A save while Settings shows in place fetches again on Back.
@@ -392,6 +411,35 @@ export default class Alpmeister extends View {
     if (stamp === this.settingsStamp) return;
     this.settingsStamp = stamp;
     if (this.tab !== TABS.settings) this.refreshSoon(cx);
+  }
+
+  /**
+   * Shows Settings in place when Basecamp's Daypack asked for it (a dashed Claude button there),
+   * in the pinned Alp only. Called from `render`.
+   * @param {object} cx The render's context.
+   * @returns {void}
+   */
+  syncOpenSettings(cx) {
+    const stamp = shared(OPEN_SETTINGS_KEY) ?? null;
+    if (stamp === this.openSettingsStamp) return;
+    this.openSettingsStamp = stamp;
+    if (!props()?.pane && this.tab !== TABS.settings && !this.inSettings) this.openSettings({}, cx);
+  }
+
+  /**
+   * Hides or shows the Daypack's key, and remembers it for every copy.
+   * @param {boolean} hidden Whether to hide it.
+   * @param {object} cx The context, to redraw.
+   * @returns {void}
+   */
+  setKeyHidden(hidden, cx) {
+    this.keyHidden = hidden;
+    try {
+      localStorage.setItem(DAYPACK_KEY_HIDDEN_KEY, String(hidden));
+    } catch (error) {
+      console.log(`alpmeister: Daypack key not remembered: ${error}`);
+    }
+    cx.notify();
   }
 
   /**
@@ -610,7 +658,12 @@ export default class Alpmeister extends View {
     this.persist(cx);
   }
 
-  /** A pin control for a row. `prefix` keeps ids unique when an item shows in two widgets. */
+  /**
+   * A pin control for a row: "Pin" on hover or focus, or, lit in the accent color, "Unpin" for an
+   * item already on Today.
+   * @param {string} prefix Keeps ids unique when an item shows in two widgets.
+   * @returns {(item: object) => object} Draws the pin for an item.
+   */
   pinFor(prefix) {
     return (item) => {
       const pinned = this.focus.has(item.kind, item.repo, item.number);
@@ -633,8 +686,9 @@ export default class Alpmeister extends View {
           this.persist(cx);
         },
         {
-          tooltip: pinned ? "Unpin" : "Pin to Today",
+          tooltip: pinned ? "Unpin from Today" : "Pin to Today",
           color: pinned ? theme().accent : undefined,
+          label: pinned ? "Unpin" : "Pin",
         },
       );
     };
@@ -680,9 +734,17 @@ export default class Alpmeister extends View {
     if (background) announceBackgroundTab(item, space?.id, before, cx);
   }
 
-  /** The actions every row with a Claude button needs. */
+  /**
+   * The actions every row with a Claude button needs. `openSettings` is for a Claude button
+   * whose prompt is not set.
+   * @returns {{ launch: Function, prompt: Function, openSettings: Function }}
+   */
   launchActions() {
-    return { launch: (item, options) => this.launch(item, options), prompt: (kind) => this.prompt(kind) };
+    return {
+      launch: (item, options) => this.launch(item, options),
+      prompt: (kind) => this.prompt(kind),
+      openSettings: (cx) => this.openSettings({}, cx),
+    };
   }
 
   /** The workspace the Dashboard shows, or null for All repos. */
@@ -1165,13 +1227,30 @@ export default class Alpmeister extends View {
   }
 
   /**
-   * The Daypack tab: today's focus across the top, then review requests and your PRs in one
-   * column and your issues in the other, from every repository in scope.
+   * The Daypack tab: the key to its icons (until hidden), today's focus across the top, then
+   * review requests and your PRs in one column and your issues in the other, from every
+   * repository in scope.
+   * @param {object} config The settings.
+   * @param {object} model The fetched data.
+   * @param {boolean} wide Whether the lists go side by side.
+   * @returns {object} The tab's content.
    */
   today(config, model, wide) {
     const t = theme();
     const items = this.focus.items();
+    const key = this.keyHidden
+      ? null
+      : DaypackKey({
+          missingPrompt: !this.prompt("pr") || !this.prompt("issue"),
+          openSettings: (cx) => this.openSettings({}, cx),
+          hide: (cx) => this.setKeyHidden(true, cx),
+        });
     const focus = FocusList(items, this.input, {
+      extras: this.keyHidden
+        ? [TextButton("daypack-key-show", "Key", (cx) => this.setKeyHidden(false, cx), { tooltip: "Show the key" })]
+        : [],
+      prompt: (kind) => this.prompt(kind),
+      openSettings: (cx) => this.openSettings({}, cx),
       toggle: (id, cx) => {
         this.focus.update(id, { done: !items.find((item) => item.id === id)?.done });
         this.persist(cx);
@@ -1181,7 +1260,6 @@ export default class Alpmeister extends View {
         this.persist(cx);
       },
       launch: (item, options) => this.launch(item, options),
-      command: (kind) => this.prompt(kind),
       edit: {
         id: this.editingTodo,
         input: this.todoEdit,
@@ -1193,6 +1271,7 @@ export default class Alpmeister extends View {
     if (!account) {
       return v_flex()
         .gap(14)
+        .when(Boolean(key), (el) => el.child(key))
         .child(focus)
         .when(Boolean(model.errors?.account), (el) => el.child(Note(`GitHub: ${model.errors.account}`, t.blocked)));
     }
@@ -1207,7 +1286,11 @@ export default class Alpmeister extends View {
           .child(v_flex().flex_1().min_w(0).gap(14).child(reviews).child(myPrs))
           .child(div().flex_1().min_w(0).child(mine))
       : v_flex().gap(14).child(reviews).child(myPrs).child(mine);
-    return v_flex().gap(14).child(focus).child(lists);
+    return v_flex()
+      .gap(14)
+      .when(Boolean(key), (el) => el.child(key))
+      .child(focus)
+      .child(lists);
   }
 
   /** Starts the Settings form over from the file, dropping unsaved edits. */
@@ -1279,6 +1362,7 @@ export default class Alpmeister extends View {
   render(cx) {
     this.syncFocus(cx);
     this.syncSettings(cx);
+    this.syncOpenSettings(cx);
     this.fetchIfStale(cx);
     const t = theme();
     const wide = this.width >= WIDE;

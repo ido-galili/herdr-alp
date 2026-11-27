@@ -1,21 +1,26 @@
 // Your day, across every repository in scope: review requests, your own PRs and your own
-// issues. Each row has a pin and a button that opens a Claude tab on it.
+// issues. Each row has a pin and a button that opens a Claude tab on it, and the key over the
+// lists says what the two icons do.
 
-import { v_flex } from "gpui-base";
+import { div, image, svg } from "gpui-kit";
+import { h_flex, v_flex } from "gpui-base";
 import { theme } from "herdr";
 import { searchUrl } from "./data.js";
 import {
   Card,
   Chip,
+  DashedMark,
   GroupHeading,
   ICONS,
   IconButton,
   NeedsYou,
   Note,
   Row,
+  TextButton,
   ago,
   claudeTooltip,
   fillPrompt,
+  noPromptTooltip,
   itemKey,
   openUrl,
   statusColor,
@@ -42,21 +47,80 @@ export function checksChip(t, pr, prefix) {
 }
 
 /**
- * The Claude button for an issue or PR, when its prompt is set.
+ * The Claude button for an issue or PR. With its prompt set, it shows the Claude mark and grows
+ * "Review" (a PR) or "Start" (an issue) on hover or focus; a click opens a Claude tab on the item
+ * and a middle click opens it in the background. Without one, the mark is dashed and a click
+ * opens Settings, where the prompt is set.
  * @param {string} prefix Keeps the button's id unique per list.
  * @param {object} item The issue or PR.
- * @param {{ launch(item: object, options?: { background?: boolean }): void, prompt(kind: string): string }} actions
- * @returns {object | null} The button, or null without a prompt. A middle click opens the tab
- *   in the background.
+ * @param {{ launch(item: object, options?: { background?: boolean }): void, prompt(kind: string): string,
+ *   openSettings?(cx: object): void }} actions
+ * @returns {object} The button.
  */
 export function ClaudeButton(prefix, item, actions) {
+  const id = `${prefix}-go-${itemKey(item)}`;
   const prompt = actions.prompt(item.kind);
-  if (!prompt) return null;
-  return IconButton(`${prefix}-go-${itemKey(item)}`, ICONS.claude, () => actions.launch(item), {
+  if (!prompt) {
+    return IconButton(id, null, (cx) => actions.openSettings?.(cx), {
+      mark: DashedMark(theme()),
+      label: "Set prompt",
+      tooltip: noPromptTooltip(item.kind),
+    });
+  }
+  return IconButton(id, ICONS.claude, () => actions.launch(item), {
     picture: true,
+    label: item.kind === "pr" ? "Review" : "Start",
     tooltip: claudeTooltip(fillPrompt(prompt, item)),
     onMiddleClick: (cx) => actions.launch(item, { background: true, cx }),
   });
+}
+
+/**
+ * The key over the Daypack's lists: what the Claude mark and the pin do, and, while a prompt is
+ * missing, what the dashed mark means, with a link that opens Settings. "Hide key" on the right.
+ * @param {{ missingPrompt: boolean, openSettings(cx: object): void, hide(cx: object): void }} actions
+ * @returns {object} The key row.
+ */
+export function DaypackKey({ missingPrompt, openSettings, hide }) {
+  const t = theme();
+  const entry = (mark, ...words) => h_flex().flex_none().gap(6).items_center().child(mark).children(words);
+  return h_flex()
+    .id("daypack-key")
+    .flex_wrap()
+    .items_center()
+    .gap_x(18)
+    .gap_y(6)
+    .px(12)
+    .py(6)
+    .rounded(8)
+    .bg(t.background)
+    .border_1()
+    .border_color(t.border)
+    .text_size(11.5)
+    .text_color(t.muted)
+    .child(div().font_semibold().text_color(t.dim).child("Key"))
+    .child(entry(image(ICONS.claude).w(13).h(13).flex_none(), "Review a PR or Start an issue in Claude"))
+    .child(entry(svg(ICONS.pin).size(13).flex_none().text_color(t.muted), "Pin to Today"))
+    .when(missingPrompt, (el) =>
+      el.child(
+        entry(
+          DashedMark(t),
+          "no prompt yet ·",
+          div()
+            .id("daypack-key-settings")
+            .text_color(t.accent)
+            .cursor_pointer()
+            .hover((style) => style.text_color(t.foreground))
+            .on_click((_event, cx) => {
+              cx.stop_propagation();
+              openSettings(cx);
+            })
+            .child("set it in Settings"),
+        ),
+      ),
+    )
+    .child(div().flex_1())
+    .child(TextButton("daypack-key-hide", "Hide key", (cx) => hide(cx)));
 }
 
 /**
@@ -81,7 +145,7 @@ export function Reviews(account, actions) {
         Chip(`${ago(now - pr.updatedAt)} ago`, { color: now - pr.updatedAt > STALE_PR_AGE ? warningColor(t) : t.dim }),
         checksChip(t, pr, "rv"),
       ].filter(Boolean),
-      buttons: [actions.pinButton(pr), ClaudeButton("rv", pr, actions)].filter(Boolean),
+      buttons: [actions.pinButton(pr), ClaudeButton("rv", pr, actions)],
     }),
   );
   return Card(
@@ -137,7 +201,7 @@ export function MyPrs(account, actions) {
         checksChip(t, pr, "mp"),
         Chip(`${ago(now - pr.updatedAt)} ago`, { color: now - pr.updatedAt > STALE_PR_AGE ? warningColor(t) : t.dim }),
       ].filter(Boolean),
-      buttons: [actions.pinButton(pr), ClaudeButton("mp", pr, actions)].filter(Boolean),
+      buttons: [actions.pinButton(pr), ClaudeButton("mp", pr, actions)],
     }),
   );
   return Card(
@@ -200,7 +264,7 @@ export function MyIssues(config, account, actions) {
               title: issue.title,
               url: issue.url,
               chips: issue.milestone ? [Chip(issue.milestone, { color: t.dim })] : [],
-              buttons: [actions.pinButton(issue), ClaudeButton("mi", issue, actions)].filter(Boolean),
+              buttons: [actions.pinButton(issue), ClaudeButton("mi", issue, actions)],
             }),
           ),
         ]),

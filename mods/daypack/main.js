@@ -1,5 +1,6 @@
 // Daypack: what you carry through the day, in Basecamp's Daypack tab on the window's right edge.
-// It holds today's trail, each issue and PR with the Claude button Alpmeister shows. It reads the
+// It holds today's trail, each issue and PR with the Claude button Alpmeister shows (dashed while
+// its prompt is not set). It reads the
 // focus list Alpmeister keeps, and reloads when Alpmeister changes it. Basecamp's header (the
 // `basecamp` mod) shows how many items are open.
 
@@ -9,6 +10,11 @@ import { exec, home, notify, panes, readTextFile, run, setShared, shared, spaces
 import { FocusFile } from "./focus-file.js";
 
 const STAMP_KEY = "alp.focusStamp";
+/** Asks the pinned Alp to show Settings in place: keep in step with Alpmeister's main.js. */
+const OPEN_SETTINGS_KEY = "alp.openSettings";
+/** The Alp layout's work stack and the block Alp is pinned in. */
+const WORK_STACK = "work-stack";
+const ALPMEISTER_VIEW = "alpmeister-view";
 const CLAUDE_ICON = "icons/claude.svg";
 const TERMINAL_ICON = "mods/workspace-chrome/terminal.svg";
 const PR_STANDINGS = {
@@ -134,6 +140,16 @@ function announceBackgroundTab(item, spaceId, before, cx) {
   });
 }
 
+/**
+ * Shows Alp in place of the terminals and asks it to show Settings there, as a Claude button
+ * without a prompt does in Alp itself.
+ * @returns {void}
+ */
+function openAlpSettings() {
+  setShared(OPEN_SETTINGS_KEY, Date.now());
+  run("layout.select", { stack: WORK_STACK, child: ALPMEISTER_VIEW });
+}
+
 export default class Daypack extends View {
   init(_props, cx) {
     this.store = new FocusFile();
@@ -171,30 +187,84 @@ export default class Daypack extends View {
     if (background) announceBackgroundTab(item, space?.id, before, cx);
   }
 
-  /** The Claude button for an issue or PR, when its command is set; null otherwise. */
+  /**
+   * The Claude button for an issue or PR, as Alpmeister draws it: the Claude mark, a little faded
+   * at rest, growing "Review" (a PR) or "Start" (an issue) on hover or Tab focus without moving
+   * the row. With no prompt set, the mark is dashed and a click shows Alp's Settings in place.
+   * @param {Record<string, string>} t The theme.
+   * @param {object} item The focus-list item.
+   * @returns {object | null} The button, or null for a todo.
+   */
   claudeButton(t, item) {
-    const command =
-      item.kind === "pr" ? this.launchSettings.pr : item.kind === "issue" ? this.launchSettings.issue : "";
-    if (!command || item.number == null) return null;
-    return h_flex()
-      .id(`ds-go-${item.id}`)
+    if (item.kind === "todo" || item.number == null) return null;
+    const command = item.kind === "pr" ? this.launchSettings.pr : this.launchSettings.issue;
+    const label = command ? (item.kind === "pr" ? "Review" : "Start") : "Set prompt";
+    const press = (cx) => {
+      cx.stop_propagation();
+      if (command) this.launch(item);
+      else openAlpSettings();
+    };
+    const open = (style) =>
+      style
+        .w(22 + 6 + Math.ceil(label.length * 6.8) + 2)
+        .bg(t.border)
+        .text_color(t.foreground)
+        .opacity(1);
+    const mark = command
+      ? image(CLAUDE_ICON).w(13).h(13)
+      : div().flex_none().w(13).h(11).rounded(3).border_1().border_dashed().border_color(t.dim);
+    return div()
+      .relative()
       .flex_none()
       .size(22)
-      .items_center()
-      .justify_center()
-      .rounded(5)
-      .cursor_pointer()
-      .hover((style) => style.bg(t.selected))
-      .tooltip(`Open a Claude tab running ${fillPrompt(command, item)}. Middle-click opens it in the background.`)
-      .on_click((_event, cx) => {
-        cx.stop_propagation();
-        this.launch(item);
-      })
-      .on_mouse_up("middle", (_event, cx) => {
-        cx.stop_propagation();
-        this.launch(item, { background: true, cx });
-      })
-      .child(image(CLAUDE_ICON).w(13).h(13));
+      .child(
+        h_flex()
+          .id(`ds-go-${item.id}`)
+          .absolute()
+          .top(0)
+          .right(0)
+          .size(22)
+          .items_center()
+          .justify_end()
+          .overflow_hidden()
+          .rounded(5)
+          .text_color(t.dim)
+          .cursor_pointer()
+          .when(Boolean(command), (el) => el.opacity(0.65))
+          .tab_index(0)
+          .hover(open)
+          .focus(open)
+          .tooltip(
+            command
+              ? `Open a Claude tab running ${fillPrompt(command, item)}. Middle-click opens it in the background.`
+              : `No Claude prompt for ${item.kind === "pr" ? "PRs" : "issues"} yet. Click to set it in Alp's Settings, under Claude buttons.`,
+          )
+          .on_click((_event, cx) => press(cx))
+          .on_key_down((event, cx) => {
+            if (event.key === "enter" || event.key === "space") press(cx);
+          })
+          .when(Boolean(command), (el) =>
+            el.on_mouse_up("middle", (_event, cx) => {
+              cx.stop_propagation();
+              this.launch(item, { background: true, cx });
+            }),
+          )
+          .child(
+            div()
+              .absolute()
+              .top(0)
+              .right(22)
+              .h(22)
+              .pl(6)
+              .flex()
+              .items_center()
+              .whitespace_nowrap()
+              .text_size(11.5)
+              .font_medium()
+              .child(label),
+          )
+          .child(h_flex().flex_none().size(22).items_center().justify_center().child(mark)),
+      );
   }
 
   /**

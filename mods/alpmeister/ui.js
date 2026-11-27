@@ -12,6 +12,14 @@ const SESSION_STATUS_LABELS = { working: "working", blocked: "needs you", done: 
 export const claudeTooltip = (prompt) =>
   `Open a Claude tab running ${prompt}. Middle-click opens it in the background.`;
 
+/**
+ * The tooltip of a Claude button whose prompt is not set.
+ * @param {string} kind "pr" or "issue".
+ * @returns {string}
+ */
+export const noPromptTooltip = (kind) =>
+  `No Claude prompt for ${kind === "pr" ? "PRs" : "issues"} yet. Click to set it in Settings, under Claude buttons.`;
+
 /** Opens a URL in the default browser. */
 export const openUrl = (url) => exec("open", [url]).catch((error) => console.log(`alpmeister: open failed: ${error}`));
 
@@ -262,13 +270,47 @@ export const ICONS = {
 };
 
 /**
- * A 22px icon button with a tooltip. `color` tints a one-color icon; `picture` draws a
- * full-color icon as it is, such as a program's. `onMiddleClick`, when given, runs on a
- * middle-button release over the button.
+ * Roughly how wide a short label is drawn at 11.5px, for a button that grows to show it. A
+ * little over, so the label is never clipped.
+ * @param {string} text The label.
+ * @returns {number} The width in pixels.
  */
-export function IconButton(id, icon, onClick, { tooltip, color, picture = false, onMiddleClick } = {}) {
+const labelWidth = (text) => Math.ceil(text.length * 6.8) + 2;
+
+/**
+ * The mark Claude buttons show while their prompt is not set: the Claude mark's place, drawn as a
+ * dashed outline.
+ * @param {object} t The theme.
+ * @returns {object} The mark.
+ */
+export function DashedMark(t) {
+  return div().flex_none().w(13).h(11).rounded(3).border_1().border_dashed().border_color(t.dim);
+}
+
+/**
+ * A 22px icon button with a tooltip. `color` tints a one-color icon; `picture` draws a
+ * full-color icon as it is, such as a program's, a little faded until hovered or focused; `mark`
+ * draws an element in place of the icon. `onMiddleClick`, when given, runs on a middle-button
+ * release over the button.
+ *
+ * With a `label`, the button is a Tab stop (Enter or Space presses it) and, while hovered or
+ * focused, grows leftwards over its neighbours to show the label before the icon. It still takes
+ * 22px in the row, so nothing else moves.
+ * @param {string} id A unique element id.
+ * @param {string | null} icon The icon's path, or null with `mark`.
+ * @param {(cx: object) => void} onClick Called with the window context.
+ * @param {{ tooltip?: string, color?: string, picture?: boolean, mark?: object, label?: string,
+ *   onMiddleClick?: (cx: object) => void }} [options]
+ * @returns {object} The button.
+ */
+export function IconButton(id, icon, onClick, { tooltip, color, picture = false, mark, label, onMiddleClick } = {}) {
   const t = theme();
-  return h_flex()
+  const glyph = mark ?? (picture ? image(icon).w(13).h(13) : svg(icon).size(13));
+  const press = (cx) => {
+    cx.stop_propagation();
+    onClick(cx);
+  };
+  const button = h_flex()
     .id(id)
     .flex_none()
     .size(22)
@@ -277,19 +319,66 @@ export function IconButton(id, icon, onClick, { tooltip, color, picture = false,
     .rounded(5)
     .text_color(color ?? t.dim)
     .cursor_pointer()
-    .hover((style) => style.bg(t.hover).text_color(color ?? t.foreground))
-    .on_click((_event, cx) => {
-      cx.stop_propagation();
-      onClick(cx);
-    })
+    .on_click((_event, cx) => press(cx))
     .when(Boolean(onMiddleClick), (el) =>
       el.on_mouse_up("middle", (_event, cx) => {
         cx.stop_propagation();
         onMiddleClick(cx);
       }),
     )
-    .when(Boolean(tooltip), (el) => el.tooltip(tooltip))
-    .child(picture ? image(icon).w(13).h(13) : svg(icon).size(13));
+    .when(Boolean(tooltip), (el) => el.tooltip(tooltip));
+  if (!label) {
+    return button.hover((style) => style.bg(t.hover).text_color(color ?? t.foreground)).child(glyph);
+  }
+  // The label sits left of the icon, clipped until the button widens: the icon stays put.
+  const open = (style) =>
+    style
+      .w(22 + 6 + labelWidth(label))
+      .bg(t.border)
+      .text_color(t.foreground)
+      .opacity(1);
+  return div()
+    .relative()
+    .flex_none()
+    .size(22)
+    .child(
+      button
+        .absolute()
+        .top(0)
+        .right(0)
+        .justify_end()
+        .overflow_hidden()
+        .when(picture && !color, (el) => el.opacity(0.65))
+        .tab_index(0)
+        .hover(open)
+        .focus(open)
+        .on_key_down((event, cx) => {
+          if (event.key === "enter" || event.key === "space") press(cx);
+        })
+        .child(
+          div()
+            .absolute()
+            .top(0)
+            .right(22)
+            .h(22)
+            .pl(6)
+            .flex()
+            .items_center()
+            .whitespace_nowrap()
+            .text_size(11.5)
+            .font_medium()
+            .child(label),
+        )
+        .child(
+          h_flex()
+            .flex_none()
+            .size(22)
+            .items_center()
+            .justify_center()
+            .when(Boolean(color) && !picture && !mark, (el) => el.text_color(color))
+            .child(glyph),
+        ),
+    );
 }
 
 /** The name a Claude tab opened on an issue or PR carries: `repo#12`, or `PR repo#12`. */
