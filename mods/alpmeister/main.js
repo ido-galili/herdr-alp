@@ -21,6 +21,7 @@ import {
   readTextFile,
   run,
   setShared,
+  settings,
   shared,
   spaces,
   theme,
@@ -1804,9 +1805,10 @@ export default class Alpmeister extends View {
           canvas: this.herdsCanvas,
           // The map takes the room under the header and the Herds toolbar (the tab's padding,
           // the header, the card's padding, the toolbar and the gaps); in full tab, all the room
-          // under the toolbar. Herds takes the key's row off both while the key shows.
-          canvasHeight: Math.max(260, this.height - 36 - 32 - 14 - 28 - 26 - 12),
-          fullHeight: Math.max(300, this.height - 36 - 26 - 12),
+          // under the toolbar. Herds takes the key's row off both while the key shows. The size
+          // comes in px at the app's zoom; heights take unzoomed px.
+          canvasHeight: Math.max(260, this.height / (settings().zoom || 1) - 36 - 32 - 14 - 28 - 26 - 12),
+          fullHeight: Math.max(300, this.height / (settings().zoom || 1) - 36 - 26 - 12),
         }),
       );
     } else {

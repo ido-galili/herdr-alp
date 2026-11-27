@@ -124,7 +124,7 @@ the Overview starts on all your repositories, with a card that offers to add a w
   The filter's summary on the header ("Filter: current iteration · 5 columns") opens its editor:
   chips for Type, Columns and People, and the board filter in the board's own syntax, such as
   `type:Bug iteration:@current`. A chip or Enter applies it as a preview; nothing is saved until
-  "Save for this board", which writes the filter and the columns (the On Board ticks in
+  "Save for this board", which writes the filter and the columns (the Show on board ticks in
   Settings). Reset or Esc goes back to the saved one. People are remembered on this computer
   only. A card names its iteration, unless the filter already asks for that one. Drag a card to
   another column to move it to that status; its ⋯ (or a right click) moves it, or changes its
