@@ -120,6 +120,8 @@ export default class Pane extends View {
     const t = theme();
     const p = this.me();
     if (!p) return div();
+    // Alp: the Files editor pane draws its own top line (file, folder, Unsaved, Save, ✕).
+    if (p.mod === "alp-files") return div().size_full().bg(t.background);
     const name = ((p.program?.agent || p.program?.shell) && p.program.name) || p.title || p.program?.name || "shell";
     const pic = icon(p.program, 14, t.dim);
     const st = p.status;
