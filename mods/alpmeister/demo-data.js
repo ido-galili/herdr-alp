@@ -187,6 +187,72 @@ function meta(statuses, its) {
 }
 
 /**
+ * Each demo repository's open issues, as `[number, type, priority, labels]`, for its Open bugs,
+ * Triage bugs and Customer issues tiles: each tile counts those its search matches, so a filter
+ * edited on a tile changes it.
+ */
+const REPO_ISSUES = {
+  [WEB]: [
+    [412, "Bug", "Blocker", ["backend", "customer-reported"]],
+    [409, "Bug", "Critical", ["backend"]],
+    [401, "Bug", "Critical", ["frontend", "triage"]],
+    [421, "Bug", "Critical", ["frontend", "customer: acme-shop"]],
+    [426, "Bug", "Major", ["frontend", "triage"]],
+    [427, "Bug", "Major", ["backend"]],
+    [429, "Bug", "Major", ["frontend"]],
+    [430, "Bug", "Major", ["frontend", "customer-reported"]],
+    [432, "Bug", "Major", ["backend", "triage"]],
+    [434, "Bug", "Major", ["frontend"]],
+    [437, "Bug", "Minor", ["frontend"]],
+    [438, "Bug", "Minor", ["backend", "triage"]],
+    [439, "Bug", "Minor", ["frontend"]],
+    [441, "Bug", null, ["frontend"]],
+    [418, "Improvement", null, ["frontend", "triage"]],
+    [446, "Story", null, ["frontend"]],
+    [448, "Task", null, ["backend", "triage"]],
+    [452, "Task", null, ["backend"]],
+  ],
+  [CORE]: [
+    [201, "Bug", "Critical", ["terminal"]],
+    [203, "Bug", "Major", ["layouts", "triage"]],
+    [206, "Bug", "Major", ["terminal"]],
+    [207, "Bug", "Minor", ["docs"]],
+    [210, "Bug", "Minor", ["layouts"]],
+    [220, "Task", null, ["docs"]],
+    [222, "Task", null, ["terminal", "good first issue"]],
+  ],
+};
+
+/** Each demo repository's labels, for Customer issues: Herdr core has no customer label. */
+const REPO_LABELS = {
+  [WEB]: ["backend", "frontend", "triage", "customer: acme-shop", "customer-reported"],
+  [CORE]: ["docs", "good first issue", "layouts", "terminal", "triage"],
+};
+
+/**
+ * A demo repository's Open bugs, Triage bugs and Customer issues, from the workspace's searches,
+ * as `loadWorkspace()` would count them: nothing is fetched.
+ * @param {object} ws The normalized workspace.
+ * @returns {{ bugs: object, triage: number, customer: object }} Open bugs by priority, the
+ *   triage count, and the customer labels with their count and search.
+ */
+function repoTiles(ws) {
+  const pool = (REPO_ISSUES[ws.repo] ?? []).map(([number, type, priority, labels]) => ({ kind: "issue", number, type, priority, labels }));
+  const bugs = pool.filter((item) => matchesSearch(item, ws.bugs.query, VIEWER));
+  const counts = Object.fromEntries([...ws.bugs.priorities, "Unset"].map((priority) => [priority, 0]));
+  for (const bug of bugs) counts[ws.bugs.priorities.includes(bug.priority) ? bug.priority : "Unset"] += 1;
+  const match = ws.customer.labelMatch.toLowerCase();
+  const labels = (REPO_LABELS[ws.repo] ?? []).filter((label) => label.toLowerCase().includes(match));
+  const customers = pool.filter((item) => item.labels.some((label) => labels.includes(label)));
+  const query = labels.length ? `repo:${ws.repo} is:issue is:open label:${labels.map((label) => `"${label}"`).join(",")}` : null;
+  return {
+    bugs: { total: bugs.length, read: bugs.length, counts },
+    triage: pool.filter((item) => matchesSearch(item, ws.queries.triage, VIEWER)).length,
+    customer: { labels, count: customers.length, query },
+  };
+}
+
+/**
  * The Website workspace: a repository with a board, every Dashboard part filled.
  * @param {object} ws The normalized workspace.
  * @param {number} now Milliseconds since the epoch.
@@ -210,7 +276,7 @@ function website(ws, now) {
     card(WEB, 377, "Move images to the CDN", { status: "Done", iteration: current, assignees: [VIEWER], milestone: m24 }),
     card(WEB, 380, "Lighthouse budget in CI", { status: "Done", iteration: current, type: "Improvement", assignees: ["mara-v"] }),
   ];
-  const bugs = { total: 14, read: 14, counts: { Blocker: 1, Critical: 3, Major: 6, Minor: 3, Unset: 1 } };
+  const tiles = repoTiles(ws);
   const inFlight = items
     .filter((item) => ws.inFlight.statuses.includes(item.status) && item.kind === "issue")
     .map((item, index) => ({
@@ -251,8 +317,8 @@ function website(ws, now) {
       url: `https://github.com/${WEB}/actions`,
       at: now - 6 * HOUR,
     },
-    bugs,
-    customer: { labels: ["customer: acme-shop", "customer-reported"], count: 3, query: `repo:${WEB} is:issue is:open label:"customer-reported"` },
+    bugs: tiles.bugs,
+    customer: tiles.customer,
     boardView: { filter: boardFilter(ws), total: items.length, items, meta: meta(ws.statuses, its) },
     milestone: {
       title: m24,
@@ -272,7 +338,7 @@ function website(ws, now) {
       ],
       onHold: [{ ...issue(WEB, 414, "Apple Pay on the web", { status: "On Hold", type: "Story", assignees: ["tobi-s"] }), milestone: m25 }],
     },
-    counts: { triage: 4 },
+    counts: { triage: tiles.triage },
     boardUrl: `https://github.com/orgs/${ORG}/projects/4`,
     iteration: { title: current.title, start: Date.parse(`${current.startDate}T00:00:00`), end: Date.parse(`${current.startDate}T00:00:00`) + 14 * DAY },
     inFlightTotal: inFlight.length,
@@ -287,19 +353,22 @@ function website(ws, now) {
  * @returns {object} The workspace's model.
  */
 function herdrCore(ws, now) {
-  const openPrs = [
+  const tiles = repoTiles(ws);
+  const allPrs = [
     pr(CORE, 212, "Terminal: keep scrollback across reloads", { author: "lena-k", checks: "SUCCESS", reviewDecision: "APPROVED", ago: 2 * HOUR }),
     pr(CORE, 215, "hc: --json for every command", { author: VIEWER, checks: "PENDING", ago: 40 * MIN }),
     pr(CORE, 209, "Layouts: stacks remember their child", { author: "tobi-s", checks: "FAILURE", reviewDecision: "CHANGES_REQUESTED", ago: 26 * HOUR }),
     pr(CORE, 217, "WIP: remote machines over SSH", { author: "mara-v", isDraft: true, checks: null, ago: 3 * DAY }),
   ];
+  // The Open PRs card lists those its search matches, so a filter edited on it changes it.
+  const openPrs = allPrs.filter((row) => matchesSearch(row, ws.queries.prs, VIEWER));
   return {
     fetchedAt: now,
     errors: {},
     queries: workspaceQueries(ws),
     nightly: null,
-    bugs: { total: 5, read: 5, counts: { Blocker: 0, Critical: 1, Major: 2, Minor: 2, Unset: 0 } },
-    customer: { labels: [], count: 0, query: null },
+    bugs: tiles.bugs,
+    customer: tiles.customer,
     boardView: null,
     milestone: {
       title: "0.2",
@@ -325,7 +394,7 @@ function herdrCore(ws, now) {
       ],
       onHold: null,
     },
-    counts: { triage: 1 },
+    counts: { triage: tiles.triage },
     openPrsTotal: openPrs.length,
     openPrs,
   };
@@ -463,6 +532,25 @@ export function demoCardSearch(account, key, query) {
 
 /** Each demo workspace's model, by its name. */
 const WORKSPACES = { Website: website, "Herdr core": herdrCore, Alphorn: alphorn };
+
+/**
+ * One of a demo workspace's Overview cards counted again with another search, in the demo:
+ * `loadWorkspaceCard()` on the made-up data. Nothing is fetched.
+ * @param {object} ws The normalized workspace, with the card's edited search in place.
+ * @param {object} model The workspace's model.
+ * @param {"bugs" | "triage" | "customer" | "prs"} key The card.
+ * @returns {object} The workspace's model with that card's result and searches.
+ */
+export function demoWorkspaceCard(ws, model, key) {
+  const fresh = WORKSPACES[ws.name]?.(ws, Date.now());
+  if (!fresh) return model;
+  const next = { ...model, queries: fresh.queries };
+  if (key === "bugs") next.bugs = fresh.bugs;
+  if (key === "triage") next.counts = { ...model.counts, triage: fresh.counts?.triage };
+  if (key === "customer") next.customer = fresh.customer;
+  if (key === "prs") Object.assign(next, { openPrs: fresh.openPrs, openPrsTotal: fresh.openPrsTotal });
+  return next;
+}
 
 /**
  * A demo workspace's model with its board's cards filtered by the workspace's Board filter, as

@@ -20,7 +20,7 @@ import {
   tildePath,
 } from "./config.js";
 import { filterChips } from "./my-day.js";
-import { hasTerm, summaryWords, termOf, toggleTerm, valuesOf } from "./search-terms.js";
+import { summaryWords, toggleTerm } from "./search-terms.js";
 import { boardFields, discover, findClones, guessRoles, repoDetails, saveSettings } from "./settings-data.js";
 import { Chip, FilterControl, Note, TextButton, Toggle, statusColor, warningColor } from "./ui.js";
 
@@ -147,22 +147,6 @@ const AUTO_SAVE_CHOICES = [
   { value: "afterDelay", label: "After a delay", tooltip: "Save a moment after you stop typing" },
   { value: "onFocusChange", label: "When you leave the file", tooltip: "Save when you click away or switch files" },
 ];
-
-/** The chips a workspace card's filter offers in Card filters, by its search's key. */
-const WORKSPACE_CHIPS = {
-  bugs: [
-    { term: "is:open", label: "Open" },
-    { term: "type:Bug", label: "Bugs only" },
-  ],
-  triage: [
-    { term: "is:open", label: "Open" },
-    { term: "type:Bug", label: "Bugs only" },
-  ],
-  prs: [
-    { term: "is:open", label: "Open" },
-    { term: "draft:false", label: "Not draft" },
-  ],
-};
 
 /**
  * A count and its word, plural when the count is not one.
@@ -676,20 +660,14 @@ export class SettingsForm {
   }
 
   /**
-   * A row's chips: the Daypack card's own, or the workspace card's, then one per label in the
-   * search, then "+ Label".
+   * A row's chips: the card's own (the same the card's filter on the Daypack or the Overview
+   * offers), then one per label in the search, then "+ Label".
    * @param {object} row The row.
    * @param {string} typed The search as it stands in the field.
    * @returns {object[]} The chips, as FilterControl takes them.
    */
   filterChipsOf(row, typed) {
-    const own = WORKSPACE_CHIPS[row.key];
-    const chips = own
-      ? [
-          ...own,
-          ...valuesOf(typed, "label").map((label) => ({ term: termOf("label", label), label: `label ${label}` })),
-        ].map((chip) => ({ ...chip, on: hasTerm(typed, chip.term) }))
-      : filterChips(row.key, typed);
+    const chips = filterChips(row.key, typed);
     return [
       ...chips.map((chip, index) => ({
         id: `${row.id}-chip-${index}`,
@@ -1612,7 +1590,7 @@ export class SettingsForm {
       .gap(14)
       .child(
         Note(
-          "What each card lists, as a GitHub search. The Daypack cards edit the same filters from their headers. " +
+          "What each card lists, as a GitHub search. The Daypack and Overview cards edit the same filters on the card. " +
             "The workspace cards add their repository; Open PRs adds a sort when it has none.",
         ),
       )

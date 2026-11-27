@@ -248,6 +248,23 @@ export function TextButton(id, label, onClick, { icon, tooltip } = {}) {
   return tooltip ? button.tooltip(tooltip) : button;
 }
 
+/**
+ * A link's words with its icon on their left, both in the link's color: the gear on a link that
+ * opens Settings, the GitHub mark on one that opens GitHub.
+ * @param {string | null} icon The icon's path, such as `ICONS.settings` or `ICONS.github`; null for none.
+ * @param {string} text The link's words.
+ * @param {number} [size] The icon's size: about the text's, 12 for 11.5-12px text.
+ * @returns {object} The words and the icon, side by side.
+ */
+export function LinkLabel(icon, text, size = 12) {
+  return h_flex()
+    .flex_none()
+    .gap(5)
+    .items_center()
+    .when(Boolean(icon), (el) => el.child(svg(icon).size(size).flex_none()))
+    .child(text);
+}
+
 /** Icons this mod draws: its own, Herdr's shipped pin and close, and the Claude program icon. */
 export const ICONS = {
   github: "mods/alpmeister/github.svg",

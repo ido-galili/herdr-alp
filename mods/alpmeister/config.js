@@ -245,6 +245,68 @@ export function withCardFilter(raw, key, query) {
 }
 
 /**
+ * The searches a workspace's Overview cards filter by, with their defaults: Open bugs, Triage
+ * bugs and Open PRs, and the part of a label's name Customer issues counts.
+ */
+export const WORKSPACE_FILTER_DEFAULTS = { ...WORKSPACE_QUERY_DEFAULTS, customer: "customer" };
+
+/** Where a workspace keeps each card's search: `bugs.query`, `queries.triage`, `queries.prs`, `customer.labelMatch`. */
+const WORKSPACE_FILTER_PATHS = {
+  bugs: ["bugs", "query"],
+  triage: ["queries", "triage"],
+  prs: ["queries", "prs"],
+  customer: ["customer", "labelMatch"],
+};
+
+/**
+ * A workspace card's search, as the settings hold it.
+ * @param {object} ws The normalized workspace.
+ * @param {"bugs" | "triage" | "prs" | "customer"} key The card.
+ * @returns {string} The search, or the default when none is set.
+ */
+export function workspaceFilter(ws, key) {
+  const [section, field] = WORKSPACE_FILTER_PATHS[key];
+  return ws[section]?.[field] ?? WORKSPACE_FILTER_DEFAULTS[key];
+}
+
+/**
+ * A copy of a normalized workspace with one card's search changed, to fetch that card with.
+ * @param {object} ws The normalized workspace.
+ * @param {"bugs" | "triage" | "prs" | "customer"} key The card.
+ * @param {string} value The search.
+ * @returns {object} The copy; `ws` is not changed.
+ */
+export function withWorkspaceSearch(ws, key, value) {
+  const [section, field] = WORKSPACE_FILTER_PATHS[key];
+  return { ...ws, [section]: { ...ws[section], [field]: value } };
+}
+
+/**
+ * The settings file's contents with one workspace card's search saved, or removed so the card
+ * goes back to its default: the same keys Settings writes (`bugs.query`, `queries.triage`,
+ * `queries.prs`, `customer.labelMatch`). Everything else stays as the file had it. A file in the
+ * one-repo shape keeps its one workspace's keys at its top level.
+ * @param {object} raw The parsed file.
+ * @param {number} index The workspace's place in the file's `workspaces`.
+ * @param {"bugs" | "triage" | "prs" | "customer"} key The card.
+ * @param {string | null} value The search to save, or null to remove it.
+ * @returns {object} A new object to write; `raw` is not changed.
+ * @throws {Error} When the file has no workspace at that place.
+ */
+export function withWorkspaceFilter(raw, index, key, value) {
+  const next = copy(raw ?? {});
+  const holder = next.repo || next.project ? next : next.workspaces?.[index];
+  if (!holder || typeof holder !== "object") throw new Error("That workspace is no longer in the settings file.");
+  const [section, field] = WORKSPACE_FILTER_PATHS[key];
+  const part = { ...holder[section] };
+  if (value === null) delete part[field];
+  else part[field] = value;
+  if (Object.keys(part).length) holder[section] = part;
+  else delete holder[section];
+  return next;
+}
+
+/**
  * Reads the settings file. A missing file gives the defaults: every repository you can reach,
  * no workspaces. Resolves with `{ config, text }`, or `{ error, text }` when the file cannot be
  * read, so the view can say how to fix it. `text` is the file as read, for writing it back.
