@@ -359,8 +359,8 @@ export function pickedItem(item, picked) {
 }
 
 /**
- * The avatar row above the board: every person on it with their item count, then Unassigned. A
- * click picks or unpicks one, as the People chips in the filter dialog do; with any picked, the
+ * The avatar row above the board: every person on it as an avatar alone (their item count is in
+ * the tooltip), then Unassigned. A click picks or unpicks one, as the People chips in the filter dialog do; with any picked, the
  * board shows only their items. Someone picked whose cards the filter hides stays, to unpick.
  * @param {object} t The theme.
  * @param {{ login: string, avatar?: string | null, count: number }[]} people The people on the board.
@@ -384,9 +384,7 @@ function PeoplePicker(t, people, options) {
         return h_flex()
           .id(`bv-pick-${key}`)
           .flex_none()
-          .gap(4)
           .p(2)
-          .pr(6)
           .items_center()
           .rounded_full()
           .border_1()
@@ -401,8 +399,7 @@ function PeoplePicker(t, people, options) {
             person.login
               ? Avatar(t, person, `bv-pick-av-${key}`, options.avatarPath, PICKER_SIZE - 6)
               : div().size(PICKER_SIZE - 6).rounded_full().border_1().border_color(t.dim),
-          )
-          .child(div().text_size(11.5).text_color(on ? t.foreground : t.muted).child(String(person.count)));
+          );
       }),
     )
     .when(picked.size > 0, (el) => el.child(TextButton("bv-pick-clear", "Everyone", (cx) => options.onClearPeople(cx))));

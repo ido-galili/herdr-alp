@@ -333,14 +333,9 @@ export default class Alpmeister extends View {
     // filter (absent: All milestones). A title, or "" for No milestone.
     this.milestonePick = this.demo ? {} : (rememberedChoices(MILESTONE_PICK_KEY) ?? {});
     this.inFlightMilestone = this.demo ? {} : rememberedInFlightMilestones();
-    // Per workspace: the Milestone card's pressed flag ("unassigned" or "notStarted"), not remembered.
-    this.milestoneFlag = {};
     // Per workspace: the open issues without a milestone, fetched when the card shows No milestone:
     // `{ parts, fetchedFor }`, `{ loading: true }` or `{ error }`.
     this.noMilestone = {};
-    // The Board narrowed to one milestone from the Milestone card's link: `{ ws, title }` (title
-    // null for No milestone), until "Show every milestone" or another tab.
-    this.boardMilestone = null;
     this.expandedGroups = new Set();
     this.avatars = new Avatars();
     this.boardState = new BoardState(this);
@@ -1179,7 +1174,6 @@ export default class Alpmeister extends View {
    */
   pickMilestone(ws, pick, cx) {
     this.pickerOpen = null;
-    delete this.milestoneFlag[ws.name];
     if (pick === null) delete this.milestonePick[ws.name];
     else this.milestonePick[ws.name] = pick;
     if (!this.demo) rememberChoices(MILESTONE_PICK_KEY, this.milestonePick);
@@ -1198,18 +1192,6 @@ export default class Alpmeister extends View {
     if (pick === null) delete this.inFlightMilestone[name];
     else this.inFlightMilestone[name] = pick;
     if (!this.demo) rememberChoices(IN_FLIGHT_MILESTONE_KEY, this.inFlightMilestone);
-    cx.notify();
-  }
-
-  /**
-   * Lists a flag's issues on the Milestone card in place of its Issues, or the Issues again.
-   * @param {string} name The workspace's name.
-   * @param {"unassigned" | "notStarted"} flag The flag pressed.
-   * @param {object} cx The context.
-   */
-  toggleMilestoneFlag(name, flag, cx) {
-    if (this.milestoneFlag[name] === flag) delete this.milestoneFlag[name];
-    else this.milestoneFlag[name] = flag;
     cx.notify();
   }
 
@@ -1273,21 +1255,9 @@ export default class Alpmeister extends View {
     return known ?? null;
   }
 
-  /**
-   * Shows the Board on a workspace with only one milestone's items, from the Milestone card.
-   * @param {object} ws The workspace, with a board.
-   * @param {string | null} title The milestone, or null for the items without one.
-   * @param {object} cx The context.
-   */
-  openMilestoneOnBoard(ws, title, cx) {
-    this.boardMilestone = { ws: ws.name, title };
-    this.selectTab(TABS.board, cx);
-  }
-
   /** Shows one of the tabs and remembers it for this copy. */
   selectTab(tab, cx) {
     this.tab = tab;
-    if (tab !== TABS.board) this.boardMilestone = null;
     if (tab === TABS.herds) this.watchHerds(cx);
     if (this.demo) return cx.notify();
     try {
@@ -1683,13 +1653,7 @@ export default class Alpmeister extends View {
     if (!ws) return NoBoard((cx) => this.addBoard(cx));
     const t = theme();
     const switcher = this.workspaceSwitch(t, { boards, shown: ws.name });
-    let wsModel = model.workspaces?.[ws.name];
-    // Narrowed from the Milestone card's "Open v2.4 on the Board →": only that milestone's items.
-    const only = this.boardMilestone?.ws === ws.name ? this.boardMilestone : null;
-    if (only && wsModel?.boardView) {
-      const items = wsModel.boardView.items.filter((item) => (item.milestone?.title ?? null) === only.title);
-      wsModel = { ...wsModel, boardView: { ...wsModel.boardView, items, total: items.length } };
-    }
+    const wsModel = model.workspaces?.[ws.name];
     const people = (wsModel?.boardView?.items ?? []).flatMap((item) => item.assignees);
     if (this.avatars.missing(people).length) {
       cx.spawn(async (cx) => {
@@ -1700,25 +1664,6 @@ export default class Alpmeister extends View {
     return v_flex()
       .gap(14)
       .when(Boolean(switcher), (el) => el.child(switcher))
-      .when(Boolean(only), (el) =>
-        el.child(
-          h_flex()
-            .gap(8)
-            .items_center()
-            .child(
-              div()
-                .text_size(12)
-                .text_color(t.foreground)
-                .child(only.title === null ? "Only the items without a milestone" : `Only the items in ${only.title}`),
-            )
-            .child(
-              TextButton("bv-every-milestone", "Show every milestone", (cx) => {
-                this.boardMilestone = null;
-                cx.notify();
-              }),
-            ),
-        ),
-      )
       .child(
         Board(ws, wsModel, {
           ...this.launchActions(),
@@ -1791,9 +1736,6 @@ export default class Alpmeister extends View {
           onCloseMenu: (cx) => this.closeMenu("ms-card", cx),
           onPick: (pick, cx) => this.pickMilestone(ws, pick, cx),
           noMilestone: choices.pick === "" && wsModel.milestones ? this.noMilestoneFor(ws, wsModel, cx) : null,
-          flag: this.milestoneFlag[ws.name] ?? null,
-          onFlag: (flag, cx) => this.toggleMilestoneFlag(ws.name, flag, cx),
-          onBoard: ws.board ? (title, cx) => this.openMilestoneOnBoard(ws, title, cx) : null,
         })
       : null;
     const inFlight = ws.board

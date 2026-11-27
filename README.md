@@ -106,9 +106,10 @@ the Overview starts on all your repositories, with a card that offers to add a w
 ("Not now" hides it for good).
 
 - **Overview:** your GitHub as a whole, or one workspace, picked from the Workspace dropdown on
-  top, with what the workspace covers beside it. Each tile ends in what a click opens ("See all
-  7 →", with the GitHub mark); a missing nightly or customer label opens Settings on that
-  workspace instead ("Set up in Settings →", with the gear). Every tile and card that lists a
+  top, with what the workspace covers beside it. A tile or card that opens GitHub has the GitHub
+  mark in its top-right corner (its tooltip says where: "See all 7 on GitHub", "Open the run on
+  GitHub"); a missing nightly or customer label opens Settings on that workspace instead ("Set
+  up in Settings →", with the gear). Every tile and card that lists a
   GitHub search (open bugs, triage bugs, customer issues, Waiting for your review, Your open PRs
   and Your issues) has a small filter icon in its top-right corner, with a dot when its
   saved filter isn't the default; hovering says the filter in words. The
@@ -135,14 +136,13 @@ the Overview starts on all your repositories, with a card that offers to add a w
     board no tiles and no Milestone card. On a narrow tab every card stacks, in the same order.
     The Milestone card shows one milestone, picked in its header ("v2.4 · next ▾": Next, which moves on
     by itself, any open milestone by due date with overdue ones in red, or No milestone). It
-    shows X of Y closed (orange when behind schedule), the due date, the time from the start to
-    the due date with today's tick, the board statuses, and the flags "1 unassigned" and
-    "3 not started", which list their issues on the card. Under it, Issues (the open issues
+    shows two bars: Progress (the share closed, orange when behind schedule, with today's tick
+    on the time from the start to the due date, and the due date and days left over its right
+    end) and By status (the board statuses, a chip each). Under them, Issues (the open issues
     with a priority, a prioritizing label or a feature type) and those on hold. A milestone
     picked by hand outlines the card and offers "Back to next"; each workspace keeps its pick,
-    and one that closes goes back to Next. "On GitHub →" opens the milestone (or the open issues
-    without one) on GitHub; with a board, "Open v2.4 on the Board →" shows the Board with only
-    that milestone's items. With a board: the issues in flight, by status, the
+    and one that closes goes back to Next. The GitHub mark opens the milestone (or the open
+    issues without one) on GitHub. With a board: the issues in flight, by status, the
     longest in their status first, with their own milestone dropdown (All milestones, one
     milestone, or No milestone), which each workspace keeps too.
 - **Board:** a workspace's board items, a column per status, with each card's assignee avatars.

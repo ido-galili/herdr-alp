@@ -176,7 +176,7 @@ const listUrl = (account, key) =>
   searchUrl(null, account.scope ? `${account.queries[key]} ${account.scope}` : account.queries[key]);
 
 /**
- * Review requests.
+ * Review requests: each row's author and checks (no review verdict or age, so the title has room).
  * @param {object} account The account model.
  * @param {{ pinButton(item: object): object, launch(item: object): void, prompt(kind: string): string,
  *   filter?(key: string): object }} actions `filter` gives the card's filter icon (`FilterIcon`),
@@ -186,19 +186,15 @@ const listUrl = (account, key) =>
 export function Reviews(account, actions) {
   const t = theme();
   const reviews = account.reviews ?? [];
-  const now = Date.now();
   const rows = reviews.map((pr) =>
     Row(`rv-${itemKey(pr)}`, {
       number: pr.number,
       repo: shownRepo(account, pr),
       title: pr.title,
       url: pr.url,
-      chips: [
-        Chip(pr.author, { color: t.muted }),
-        decisionChip(t, pr, "rv"),
-        Chip(`${ago(now - pr.updatedAt)} ago`, { color: now - pr.updatedAt > STALE_PR_AGE ? warningColor(t) : t.dim }),
-        checksChip(t, pr, "rv"),
-      ].filter(Boolean),
+      // The author and the checks only: other reviewers' verdict and the age are left out, so the
+      // title keeps its room on a half-width card.
+      chips: [Chip(pr.author, { color: t.muted }), checksChip(t, pr, "rv")].filter(Boolean),
       buttons: [actions.pinButton(pr), ClaudeButton("rv", pr, actions)],
     }),
   );

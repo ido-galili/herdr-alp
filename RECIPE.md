@@ -114,9 +114,10 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
     view), for demos and screenshots.
   - **Overview**: on top, "Workspace: <name> ▾", a dropdown of All repos (first) and every
     workspace, with a dim line beside it saying what the workspace covers ("repo … · board …").
-    Each tile ends in what a click opens ("See all 7 →", "See both →", "Open the run →", with
-    the GitHub mark); a missing nightly or customer label opens Settings on that workspace
-    instead ("Set up in Settings →", with the gear). Every tile and card that lists a GitHub
+    A tile or card that opens GitHub has the GitHub mark (an icon button, no words) in its
+    top-right corner, before its filter icon, with a tooltip saying where ("See all 7 on
+    GitHub", "See both on GitHub", "Open the run on GitHub"); a missing nightly or customer label
+    opens Settings on that workspace instead ("Set up in Settings →", with the gear). Every tile and card that lists a GitHub
     search (open bugs, triage bugs, customer issues, and your three lists)
     has a filter icon in its top-right corner, with a dot when its saved filter isn't the
     default and the filter in words as its tooltip; it opens the filter dialog (below).
@@ -155,15 +156,14 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
       moves on by itself, any open milestone by due date (overdue ones in `blocked`, undated
       last), or No milestone. A milestone picked by hand outlines the card in `accent` and offers
       "Back to next (v2.4)"; each workspace keeps its pick, and one that closes goes back to
-      Next. The header also holds "On GitHub →" (the GitHub mark; the milestone's page, or the
-      open issues without a milestone) and, with a board, "Open v2.4 on the Board →", which
-      shows the Board with only that milestone's items. Then:
-      - The progress band: "1 of 12 closed" (`warning` when behind schedule, no words), the due date
-        chip, a usage-limits style time bar from the start (the previous milestone's due date,
-        else its creation) to the due date with today's tick, a strip of board-status segments
-        with a chip per status (Open and Closed with no board), and the flags "1 unassigned"
-        and "3 not started" (`notStarted` statuses, New and Todo by default, in the last 7
-        days) as buttons that list their issues on the card.
+      Next. The header ends in the GitHub mark (the milestone's page, or the open issues
+      without a milestone). Then:
+      - The progress band, two bars each with a small dim title over its left end. "Progress":
+        a usage-limits style bar of the share closed (`warning` when behind schedule), with
+        today's tick on the time from the start (the previous milestone's due date, else its
+        creation) to the due date, and the due date and days left over its right end; its
+        tooltip has the counts and dates. "By status": a strip of board-status segments with a
+        chip per status (Open and Closed with no board).
       - "Issues": its open issues with a priority value, a `spotlight.labels` label or a
         `spotlight.featureTypes` type, most urgent first, then by feature type. Each row shows
         its issue type beside the number, then an epic's "X of Y" sub-issues, its status, and
@@ -187,7 +187,7 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
       `boardView.statuses`; a filter GitHub refuses shows its error in the dialog, unsaved, and
       the last good board stays. People (each assignee's avatar with their item count, then
       Unassigned) are kept in localStorage only; the same people show as an avatar row above
-      the columns, where a click picks or unpicks one (and "Everyone" clears them). "Choose columns ▾" opens the same dialog; a
+      the columns (avatars only; the count is in the tooltip), where a click picks or unpicks one (and "Everyone" clears them). "Choose columns ▾" opens the same dialog; a
       board the filter empties says "Nothing matches." with Clear filters.
     - The columns are the ticked statuses, each shown even when empty; with none ticked, the
       statuses that hold an item.

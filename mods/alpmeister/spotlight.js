@@ -1,6 +1,6 @@
 // The Milestone card: one milestone of the workspace, picked in its header ("Next", which moves
-// on by itself, or one picked by hand), how it is going (closed of total, the due date, the time
-// from its start to its due date with today's tick, the board statuses and the flags), then its
+// on by itself, or one picked by hand), how it is going (a Progress bar with today's tick and the
+// due date, and a By status bar), then its
 // issues in focus (priorities and features) and those on hold. Also the milestone dropdown, which
 // Team in flight's own filter uses too.
 
@@ -13,7 +13,7 @@ import {
   Chip,
   GroupHeading,
   ICONS,
-  LinkLabel,
+  IconButton,
   Note,
   Row,
   TextButton,
@@ -210,53 +210,17 @@ function ListHeading(t, name, count, extras = []) {
 }
 
 /**
- * A flag on the progress band, as a button: "1 unassigned", "3 not started". A press lists its
- * issues in place of the card's Issues; while they are listed it is outlined, and a press again
- * lists the Issues again.
- * @param {string} id The element id.
- * @param {string} text The words.
- * @param {string} color Its color.
- * @param {boolean} on Whether its issues are listed now.
- * @param {object[]} issues Its issues, for the tooltip.
- * @param {(cx: object) => void} onPress Called on a press.
- * @returns {object}
- */
-function Flag(id, text, color, on, issues, onPress) {
-  const t = theme();
-  return h_flex()
-    .id(id)
-    .flex_none()
-    .px(7)
-    .h(22)
-    .items_center()
-    .rounded(5)
-    .border_1()
-    .border_color(on ? color : t.background)
-    .bg(`${color}26`)
-    .text_size(11.5)
-    .text_color(color)
-    .cursor_pointer()
-    .hover((style) => style.border_color(color))
-    .on_click((_event, cx) => {
-      cx.stop_propagation();
-      onPress(cx);
-    })
-    .tooltip(`${on ? "List the Issues again" : "List these"}:\n${issues.map((issue) => `#${issue.number} ${issue.title}`).join("\n")}`)
-    .child(text);
-}
-
-/**
- * The progress band: closed of total (orange when behind schedule, without words for it), the
- * due date, the flags, the time from the start to the due date with today's tick, and the board
- * statuses.
- * "No milestone" has no due date or total: only its open issues, by status, and its flags.
+ * The progress band: two bars, each with a small title over its left end. "Progress": the share
+ * of issues closed (orange when behind schedule) with today's tick on the time from the start to
+ * the due date, and the due date with the days left over its right end. "By status": the open and
+ * closed issues by board status, with a chip per status under it. The numbers behind the first
+ * bar are in its tooltip. "No milestone" has no due date or total: only its issues by status.
  * @param {object} t The theme.
  * @param {object} config The workspace's config.
  * @param {object} shown The shown milestone, or "No milestone"'s parts with `none: true`.
- * @param {{ flag: string | null, onFlag(name: string, cx: object): void }} options
  * @returns {object}
  */
-function ProgressBand(t, config, shown, options) {
+function ProgressBand(t, config, shown) {
   const now = Date.now();
   const fraction = shown.total ? shown.closed / shown.total : 0;
   const span = shown.due != null && shown.start != null && shown.due > shown.start ? shown.due - shown.start : null;
@@ -266,128 +230,78 @@ function ProgressBand(t, config, shown, options) {
   const ahead = shown.start != null && shown.start > now;
   const color = behind ? warningColor(t) : t.accent;
   const due = shown.none ? null : dueWords(t, shown);
-  const nearDeadline = shown.overdue || (shown.due != null && daysUntil(shown.due) < WEEK_DAYS);
-  const flags = [];
-  if (shown.unassigned.length) {
-    flags.push(
-      Flag(
-        "ms-flag-unassigned",
-        `${shown.unassigned.length} unassigned`,
-        warningColor(t),
-        options.flag === "unassigned",
-        shown.unassigned,
-        (cx) => options.onFlag("unassigned", cx),
-      ),
-    );
-  }
-  if (shown.notStarted.length) {
-    flags.push(
-      Flag(
-        "ms-flag-not-started",
-        `${shown.notStarted.length} not started`,
-        nearDeadline ? t.blocked : t.muted,
-        options.flag === "notStarted",
-        shown.notStarted,
-        (cx) => options.onFlag("notStarted", cx),
-      ),
-    );
-  }
   const order = [
     ...config.statuses,
     ...Object.keys(shown.byStatus).filter((status) => !config.statuses.includes(status)),
   ];
   const present = order.filter((status) => shown.byStatus[status]);
   const counted = present.reduce((sum, status) => sum + shown.byStatus[status], 0);
-  const headline = shown.none ? `${shown.openCount} open` : `${shown.closed} of ${shown.total} closed`;
-  const startTip = shown.startFrom != null ? `The day ${shown.startFrom} was due` : "The day the milestone was created";
+  const showBar = !shown.none && shown.total > 0 && shown.due != null;
+  const started = shown.start != null ? `${ahead ? "Starts" : "Started"} ${formatDate(shown.start, { utc: shown.startFrom != null })}` : null;
+  const today = elapsed == null
+    ? null
+    : ahead
+      ? `starts in ${daysUntil(shown.start)}d`
+      : shown.overdue
+        ? `${Math.max(1, Math.floor((now - shown.due) / 86400000))}d past the due date`
+        : `${Math.round(elapsed * 100)}% of the time gone`;
+  const tooltip = [
+    `${shown.closed} of ${shown.total} closed (${Math.round(fraction * 100)}%)${behind ? ", behind schedule" : ""}`,
+    started,
+    today ? `Today, ${formatDate(now)}: ${today} (the tick)` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+  /** A bar's title row: its title on the left and, when given, words on the right. */
+  const titleRow = (title, right) =>
+    h_flex()
+      .gap(8)
+      .items_center()
+      .text_size(11.5)
+      .child(div().flex_none().text_color(t.dim).child(title))
+      .child(div().flex_1())
+      .when(Boolean(right), (el) => el.child(div().min_w(0).truncate().text_color(right.color).child(right.text)));
   return v_flex()
-    .gap(8)
-    .child(
-      h_flex()
-        .flex_wrap()
-        .items_center()
-        .gap(10)
-        .child(div().text_size(18).font_semibold().text_color(shown.none ? t.foreground : color).child(headline))
-        .when(Boolean(due), (el) => el.child(Chip(due.text, { color: due.color })))
-        .child(div().flex_1())
-        .children(flags),
-    )
-    .when(!shown.none && shown.total > 0 && shown.due != null, (el) =>
+    .gap(10)
+    .when(showBar, (el) =>
       el.child(
         v_flex()
           .gap(4)
-          .child(
-            div()
-              .id("ms-time-bar")
-              .tooltip(
-                elapsed == null
-                  ? `${Math.round(fraction * 100)}% closed`
-                  : `${Math.round(fraction * 100)}% closed; today's tick: ${Math.round(elapsed * 100)}% of the time from the start to the due date gone`,
-              )
-              .child(Bar(fraction, color, elapsed)),
-          )
-          .when(elapsed != null, (col) =>
-            col.child(
-              h_flex()
-                .gap(8)
-                .text_size(11.5)
-                .text_color(t.dim)
-                .child(
-                  div()
-                    .id("ms-start")
-                    .flex_none()
-                    .tooltip(startTip)
-                    .child(`${ahead ? "Starts" : "Started"} ${formatDate(shown.start, { utc: shown.startFrom != null })}`),
-                )
-                .child(
-                  div()
-                    .flex_1()
-                    .min_w(0)
-                    .truncate()
-                    .text_center()
-                    .child(
-                      `Today, ${formatDate(now)} · ${
-                        ahead
-                          ? `starts in ${daysUntil(shown.start)}d`
-                          : shown.overdue
-                            ? `${Math.max(1, Math.floor((now - shown.due) / 86400000))}d past the due date`
-                            : `${Math.round(elapsed * 100)}% of the time gone`
-                      }, ${Math.round(fraction * 100)}% closed`,
-                    ),
-                )
-                .child(div().flex_none().child(`Due ${formatDate(shown.due, { utc: true })}`)),
-            ),
-          ),
+          .child(titleRow("Progress", due))
+          .child(div().id("ms-time-bar").tooltip(tooltip).child(Bar(fraction, color, elapsed))),
       ),
     )
+    .when(!showBar && Boolean(due), (el) => el.child(titleRow("", due)))
     .when(counted > 0, (el) =>
-      el
-        .child(
-          h_flex()
-            .w_full()
-            .h(6)
-            .rounded(3)
-            .overflow_hidden()
-            .children(
-              present.map((status) =>
-                div()
-                  .h_full()
-                  .w(`${(shown.byStatus[status] / counted) * 100}%`)
-                  .bg(statusColor(t, status)),
+      el.child(
+        v_flex()
+          .gap(4)
+          .child(titleRow("By status", null))
+          .child(
+            h_flex()
+              .w_full()
+              .h(6)
+              .rounded(3)
+              .overflow_hidden()
+              .children(
+                present.map((status) =>
+                  div()
+                    .h_full()
+                    .w(`${(shown.byStatus[status] / counted) * 100}%`)
+                    .bg(statusColor(t, status)),
+                ),
               ),
-            ),
-        )
-        .child(
-          h_flex()
-            .flex_wrap()
-            .gap(6)
-            .children(present.map((status) => Chip(`${status} ${shown.byStatus[status]}`, { color: statusColor(t, status) }))),
-        ),
+          )
+          .child(
+            h_flex()
+              .pt(2)
+              .flex_wrap()
+              .gap(6)
+              .children(present.map((status) => Chip(`${status} ${shown.byStatus[status]}`, { color: statusColor(t, status) }))),
+          ),
+      ),
     );
 }
-
-/** Each flag's list heading, and where its issues sit on the shown milestone. */
-const FLAG_LISTS = { unassigned: ["Unassigned", "unassigned"], notStarted: ["Not started", "notStarted"] };
 
 /**
  * The Milestone card's choice, in the dropdown's keys: "next", "none" or "ms:<title>".
@@ -429,46 +343,18 @@ export function milestoneRows(t, data, right = (milestone) => `${milestone.openC
 }
 
 /**
- * A link in the Milestone card's header, in the accent: its words, with the icon on their left
- * when given (the GitHub mark on one that opens GitHub; none for one that stays in Alp).
- * @param {object} t The theme.
- * @param {string} id The element id.
- * @param {string | null} icon The icon's path, or null for none.
- * @param {string} text The words.
- * @param {string} tooltip The tooltip.
- * @param {(cx: object) => void} onPress Called on a click.
- * @returns {object} The link.
- */
-function HeaderLink(t, id, icon, text, tooltip, onPress) {
-  return div()
-    .id(id)
-    .flex_none()
-    .text_size(11.5)
-    .font_medium()
-    .text_color(t.accent)
-    .cursor_pointer()
-    .hover((style) => style.text_color(t.foreground))
-    .tooltip(tooltip)
-    .on_click((_event, cx) => onPress(cx))
-    .child(LinkLabel(icon, text));
-}
-
-/**
  * The Milestone card. The header holds the dropdown ("v2.4 · next ▾"), "Back to next (v2.4)"
- * while a milestone is picked by hand (the card is then outlined in the accent), "On GitHub →"
- * (the milestone, or the open issues without one, on GitHub; the GitHub mark on its left), and
- * "Open v2.4 on the Board →" when the workspace has a board. Then the progress band, "Issues" (the open
- * issues with a priority, a prioritizing label or a feature type) and the issues on hold (left
- * out when none). A pressed flag lists its issues in place of the Issues.
+ * while a milestone is picked by hand (the card is then outlined in the accent), and at its right
+ * end the GitHub mark (the milestone, or the open issues without one, on GitHub). Then the
+ * progress band, "Issues" (the open issues with a priority, a prioritizing label or a feature
+ * type) and the issues on hold (left out when none).
  * @param {object} config The workspace's settings.
  * @param {object} model The workspace's model, with `milestones` from data.js.
  * @param {{ expanded: Set<string>, onToggleGroup: Function, pinButton: Function,
  *   pick: string | null, menuOpen: boolean, onToggleMenu(cx: object): void, onCloseMenu(cx: object): void,
- *   onPick(pick: string | null, cx: object): void, noMilestone: { parts?: object, error?: string } | null,
- *   flag: string | null, onFlag(name: string, cx: object): void,
- *   onBoard: ((title: string | null, cx: object) => void) | null }} options `pick`: null for Next,
- *   "" for No milestone, else an open milestone's title. `noMilestone`: the open issues without a
- *   milestone, fetched when picked. `onBoard` is null without a board; it gets null for No milestone.
+ *   onPick(pick: string | null, cx: object): void, noMilestone: { parts?: object, error?: string } | null }}
+ *   options `pick`: null for Next, "" for No milestone, else an open milestone's title.
+ *   `noMilestone`: the open issues without a milestone, fetched when picked.
  * @returns {object} The card.
  */
 export function MilestoneCard(config, model, options) {
@@ -517,7 +403,7 @@ export function MilestoneCard(config, model, options) {
     onOutside: (cx) => options.onCloseMenu(cx),
     onPick: (key, cx) => options.onPick(keyPick(key), cx),
   });
-  const boardTitle = shown?.none ? "No milestone" : shown?.title;
+  const shownTitle = shown?.none ? "No milestone" : shown?.title;
   const githubUrl = shown?.none
     ? config.repo && searchUrl(config.repo, "is:issue is:open no:milestone")
     : (shown?.url ?? null);
@@ -535,35 +421,12 @@ export function MilestoneCard(config, model, options) {
       ),
     )
     .child(div().flex_1())
-    .child(
-      h_flex()
-        .flex_none()
-        .gap(14)
-        .items_center()
-        .when(Boolean(githubUrl), (el) =>
-          el.child(
-            HeaderLink(
-              t,
-              "ms-github",
-              ICONS.github,
-              "On GitHub →",
-              shown?.none ? "The open issues without a milestone, on GitHub" : `Open ${boardTitle} on GitHub`,
-              () => openUrl(githubUrl),
-            ),
-          ),
-        )
-        .when(Boolean(options.onBoard && boardTitle), (el) =>
-          el.child(
-            HeaderLink(
-              t,
-              "ms-board",
-              null,
-              shown?.none ? "Open on the Board →" : `Open ${boardTitle} on the Board →`,
-              `The Board with only ${shown?.none ? "the items without a milestone" : `the items in ${boardTitle}`}`,
-              (cx) => options.onBoard(shown.none ? null : shown.title, cx),
-            ),
-          ),
-        ),
+    .when(Boolean(githubUrl), (el) =>
+      el.child(
+        IconButton("ms-github", ICONS.github, () => openUrl(githubUrl), {
+          tooltip: shown?.none ? "The open issues without a milestone, on GitHub" : `Open ${shownTitle} on GitHub`,
+        }),
+      ),
     );
   if (!shown) {
     const words = data.list.length ? "No open milestone with a due date ahead." : "No open milestones.";
@@ -577,33 +440,24 @@ export function MilestoneCard(config, model, options) {
       byHand,
     );
   }
-  const flag = FLAG_LISTS[options.flag] ? options.flag : null;
-  const [flagName, flagKey] = flag ? FLAG_LISTS[flag] : [];
-  const listed = flag ? shown[flagKey] : shown.issues;
+  const listed = shown.issues;
   const prefix = `sp-${shown.title ?? "none"}`;
   const rowsOf = (issues, key) => issues.map((issue) => issueRow(t, config, key, issue, options));
   const hold = shown.onHold ?? [];
   const body = v_flex()
     .gap(10)
-    .child(ProgressBand(t, config, shown, { flag, onFlag: options.onFlag }))
+    .child(ProgressBand(t, config, shown))
     .child(
       v_flex()
         .gap(2)
-        .child(
-          ListHeading(
-            t,
-            flag ? flagName : "Issues",
-            listed.length,
-            flag ? [TextButton("ms-flag-clear", "Back to Issues", (cx) => options.onFlag(flag, cx))] : [],
-          ),
-        )
+        .child(ListHeading(t, "Issues", listed.length))
         .children(
           listed.length
-            ? limited(`${prefix}-${flag ?? "issues"}`, rowsOf(listed, `${prefix}-${flag ?? "i"}`), options)
-            : [Note(flag ? "None." : "Nothing prioritized or planned.")],
+            ? limited(`${prefix}-issues`, rowsOf(listed, `${prefix}-i`), options)
+            : [Note("Nothing prioritized or planned.")],
         ),
     )
-    .when(!flag && hold.length > 0, (el) =>
+    .when(hold.length > 0, (el) =>
       el.child(
         v_flex()
           .gap(2)

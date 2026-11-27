@@ -5,28 +5,30 @@ import { div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { theme } from "herdr";
 import { searchUrl } from "./data.js";
-import { Chip, ICONS, LinkLabel, Note, formatDate, formatTime, openUrl, warningColor } from "./ui.js";
+import { Chip, ICONS, IconButton, LinkLabel, Note, formatDate, formatTime, openUrl, warningColor } from "./ui.js";
 
 /**
- * The words that end a tile which opens a list: "See all 7 →", "See both →", "See it →".
+ * The tooltip of a tile's GitHub mark when it opens a list: "See all 7 on GitHub", "See both on
+ * GitHub", "See it on GitHub".
  * @param {number | null | undefined} count How many the list holds.
- * @returns {string | null} The words, or null for an empty or unknown list.
+ * @returns {string} The words; "Open the search on GitHub" for an empty or unknown list.
  */
 export function seeAll(count) {
-  if (!count) return null;
-  if (count === 1) return "See it →";
-  if (count === 2) return "See both →";
-  return `See all ${count} →`;
+  if (!count) return "Open the search on GitHub";
+  if (count === 1) return "See it on GitHub";
+  if (count === 2) return "See both on GitHub";
+  return `See all ${count} on GitHub`;
 }
 
 /** The words that end a tile whose setting is missing; a click opens Settings on it. */
 export const SET_UP = "Set up in Settings →";
 
 /**
- * One number tile: a label, a big value, then lines or any element under it, and at the
- * bottom the words that say what a click opens, with their icon. A tile with a filter has its
- * filter icon in the top-right corner. `sub` is a string, an element, or a list of them. `action` is a URL to open
- * or a function to run on click.
+ * One number tile: a label, a big value, then lines or any element under it. A tile that opens
+ * GitHub has the GitHub mark in its top-right corner (no words; the tooltip says where it goes),
+ * then its filter icon when it has one. A tile whose setting is missing ends in "Set up in
+ * Settings →" with the gear. `sub` is a string, an element, or a list of them. `action` is a URL
+ * to open or a function to run on click.
  * @param {string} id The tile's element id.
  * @param {string} label The tile's label.
  * @param {string} value The big value.
@@ -34,14 +36,20 @@ export const SET_UP = "Set up in Settings →";
  * @param {string} color The value's color.
  * @param {string | Function | null} action A URL to open, or a function to run, on click.
  * @param {string} [note] A short clause after the label that says what the tile counts.
- * @param {{ link?: string | null, linkIcon?: string | null, outline?: string | null, filter?: object | null }} [options]
- *   `link`: the words at the bottom, such as "See all 7 →", and `linkIcon` the icon on their
- *   left (the GitHub mark, or the gear for Settings); `outline`: a border color, such as red for
- *   a failed run; `filter`: the tile's filter icon (`FilterIcon`), for its top-right corner.
+ * @param {{ link?: string | null, linkIcon?: string | null, github?: string | null, outline?: string | null,
+ *   filter?: object | null }} [options] `link`: words at the bottom, such as "Set up in Settings →",
+ *   and `linkIcon` the icon on their left (the gear); `github`: the GitHub mark's tooltip, shown
+ *   when `action` is a URL, such as "See all 7 on GitHub"; `outline`: a border color, such as red
+ *   for a failed run; `filter`: the tile's filter icon (`FilterIcon`), for its top-right corner.
  * @returns {object} The tile.
  */
-export function Tile(id, label, value, sub, color, action, note, { link, linkIcon, outline, filter } = {}) {
+export function Tile(id, label, value, sub, color, action, note, { link, linkIcon, github, outline, filter } = {}) {
   const t = theme();
+  const mark =
+    github && typeof action === "string"
+      ? IconButton(`${id}-github`, ICONS.github, () => openUrl(action), { tooltip: github })
+      : null;
+  const corner = [mark, filter].filter(Boolean);
   return v_flex()
     .id(id)
     .relative()
@@ -60,7 +68,7 @@ export function Tile(id, label, value, sub, color, action, note, { link, linkIco
     })
     .child(
       div()
-        .when(Boolean(filter), (el) => el.pr(20))
+        .when(corner.length > 0, (el) => el.pr(24 * corner.length))
         .truncate()
         .text_size(11.5)
         .text_color(t.dim)
@@ -76,7 +84,7 @@ export function Tile(id, label, value, sub, color, action, note, { link, linkIco
     .when(Boolean(link && action), (el) =>
       el.child(h_flex().pt(2).text_size(11.5).text_color(t.accent).child(LinkLabel(linkIcon ?? null, link))),
     )
-    .when(Boolean(filter), (el) => el.child(div().absolute().top(7).right(7).child(filter)));
+    .when(corner.length > 0, (el) => el.child(div().absolute().top(7).right(7).child(h_flex().gap(2).children(corner))));
 }
 
 /**
@@ -201,7 +209,7 @@ export function Tiles(config, model, { wide, onSettings, filter }) {
       t.foreground,
       searchUrl(config.repo, model.queries.bugsQuery),
       undefined,
-      { link: seeAll(bugs?.total), linkIcon: ICONS.github, filter: filters.bugs },
+      { github: seeAll(bugs?.total), filter: filters.bugs },
     ),
     Tile(
       "tile-triage",
@@ -211,7 +219,7 @@ export function Tiles(config, model, { wide, onSettings, filter }) {
       t.foreground,
       searchUrl(config.repo, model.queries.triageQuery),
       undefined,
-      { link: seeAll(counts?.triage), linkIcon: ICONS.github, filter: filters.triage },
+      { github: seeAll(counts?.triage), filter: filters.triage },
     ),
     Tile(
       "tile-customer",
@@ -222,8 +230,9 @@ export function Tiles(config, model, { wide, onSettings, filter }) {
       noLabel ? onSettings : customer?.query ? searchUrl(config.repo, customer.query) : null,
       undefined,
       {
-        link: noLabel ? SET_UP : seeAll(customer?.count),
-        linkIcon: noLabel ? ICONS.settings : ICONS.github,
+        link: noLabel ? SET_UP : null,
+        linkIcon: ICONS.settings,
+        github: noLabel ? null : seeAll(customer?.count),
         filter: filters.customer,
       },
     ),
@@ -236,8 +245,9 @@ export function Tiles(config, model, { wide, onSettings, filter }) {
       noNightly ? onSettings : model.nightly?.url,
       "latest run",
       {
-        link: noNightly ? SET_UP : "Open the run →",
-        linkIcon: noNightly ? ICONS.settings : ICONS.github,
+        link: noNightly ? SET_UP : null,
+        linkIcon: ICONS.settings,
+        github: noNightly ? null : "Open the run on GitHub",
         outline: failed ? `${t.blocked}80` : null,
       },
     ),
