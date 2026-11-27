@@ -118,7 +118,7 @@ const DAYPACK_KEY_HIDDEN_KEY = "alpmeister.daypackKeyHidden";
 /** Set by Basecamp's Daypack to ask the pinned Alp to show Settings in place. */
 const OPEN_SETTINGS_KEY = "alp.openSettings";
 /** The views' names, as the header's tabs and Settings' "Back to <view>" show them. */
-const VIEW_NAMES = { [TABS.dashboard]: "Overview", [TABS.board]: "Board", [TABS.herds]: "Herds", [TABS.today]: "Daypack" };
+const VIEW_NAMES = { [TABS.dashboard]: "Overview", [TABS.board]: "Board", [TABS.herds]: "Herds", [TABS.today]: "Today" };
 /** The Alp layout's stack that shows the terminals or, pinned in their place, Alpmeister. */
 const WORK_STACK = "work-stack";
 const WORK_BODY = "work-body";
@@ -1898,7 +1898,7 @@ export default class Alpmeister extends View {
   }
 
   /**
-   * The Daypack tab: the key to its icons (until hidden), today's focus across the top, then
+   * The Today view: the key to its icons (until hidden), today's focus across the top, then
    * review requests and your PRs in one column and your issues in the other, from every
    * repository in scope.
    * @param {object} config The settings.

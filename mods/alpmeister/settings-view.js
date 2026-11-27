@@ -567,7 +567,7 @@ export class SettingsForm {
       id: `stf-${key}`,
       key,
       workspace: null,
-      group: "Daypack",
+      group: "Today",
       groupKey: "daypack",
       label,
       value: account.queries[key] ?? DEFAULT_QUERIES[key],
@@ -1380,7 +1380,7 @@ export class SettingsForm {
                 .child(Chip(`${scopedCount} in scope`, { color: t.muted })),
             )
             .child(this.scopeChips(t)),
-          "The Overview's All repos view and the Daypack lists cover these.",
+          "The Overview's All repos view and the Today view's lists cover these.",
         ),
       );
   }
@@ -1520,7 +1520,7 @@ export class SettingsForm {
       .gap(14)
       .child(
         Note(
-          "What each card lists, as a GitHub search. The Daypack and Overview cards open the same filter from their corner. " +
+          "What each card lists, as a GitHub search. The Today and Overview cards open the same filter from their corner. " +
             "Its Save writes that filter at once. The workspace cards add their repository; Open PRs adds a sort when it has none.",
         ),
       )

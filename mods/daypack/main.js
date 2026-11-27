@@ -410,7 +410,7 @@ export default class Daypack extends View {
                 .gap(2)
                 .text_size(11.5)
                 .child(div().text_color(t.muted).child("Nothing pinned for today."))
-                .child(div().text_color(t.dim).child("Pin an issue or PR from Alp's Daypack.")),
+                .child(div().text_color(t.dim).child("Pin an issue or PR from Alp.")),
             ),
           )
           .children(
