@@ -147,10 +147,10 @@ the Overview starts on all your repositories, with a card that offers to add a w
   syntax, such as `type:Bug iteration:@current`, with a count of the cards it shows. The board
   keeps the saved filter until "Save for this board", which writes the filter and the columns
   (the Show on board ticks in Settings); a filter GitHub refuses shows its error in the dialog and
-  isn't saved. People are remembered on this computer only. A card names its iteration, unless the filter already asks for that one. Drag a card to
+  isn't saved. People are remembered on this computer only; an avatar row above the board picks them in one click too. A card names its iteration, unless the filter already asks for that one. Drag a card to
   another column to move it to that status; its ⋯ (or a right click) moves it, or changes its
   iteration or milestone. These write to GitHub at once, so `gh` needs the `project` scope; after
-  a move, a toast offers Undo.
+  a move, a toast at the board's bottom left offers Undo.
 - **Herds:** your Claude Code sessions and their agents, and how they are linked. A session that messaged others
   (`SendMessage`) or made their worktrees is a herdsman, marked with a crook: drawn on top, with a line down to each
   of its herd, labelled `msg 12:36` for its latest message or dotted `worktree`. Who and when
@@ -158,7 +158,7 @@ the Overview starts on all your repositories, with a card that offers to add a w
   stripe in the space's color and its avatar in the corner. Every box and card ends with
   the session's git branch. A session that started agents (the Agent tool, forks included) leads
   them too: a smaller box per agent, a lamb for a fork and a herding dog for any other agent, with what it is for and how long it has run (or when it
-  finished), on a line labelled with its type, dotted for a background agent. An agent started
+  finished), on a solid line labelled with its type; a background agent is tagged "bg". An agent started
   by an agent sits under it. Agents that finished over 30 minutes ago fold into "+ N finished
   earlier". A click opens
   a session's tab. A background session is shown in the tab titled with its name, or in the

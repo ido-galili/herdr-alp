@@ -1,7 +1,8 @@
 // Board: a workspace's board items that match the Board tab filter, one column per status, as
 // GitHub's board shows them. Each card carries its assignees' avatars. The filter's summary sits
 // on the header and opens the filter dialog. Dragging a card to another column moves it to that status,
-// and a toast offers Undo; the ⋯ on a card (shown on hover or focus), or a right click, opens its
+// and a toast floating at the board's bottom left offers Undo; the avatar row above the board picks
+// people, as the dialog's People chips do; the ⋯ on a card (shown on hover or focus), or a right click, opens its
 // menu to move it or set its iteration and milestone.
 
 import { div, image, svg } from "gpui-kit";
@@ -39,6 +40,8 @@ export const CARD_GAP = 6;
 const PROBE_WIDTH = 100;
 /** The people picker's key for items with no assignee. */
 export const UNASSIGNED = "";
+/** An avatar's box in the avatar row above the board. */
+const PICKER_SIZE = 26;
 
 /**
  * The board's columns: the statuses ticked for the Board, each shown even when empty. With none
@@ -356,7 +359,58 @@ export function pickedItem(item, picked) {
 }
 
 /**
- * The toast after a move: what moved where, with Undo while it can be undone.
+ * The avatar row above the board: every person on it with their item count, then Unassigned. A
+ * click picks or unpicks one, as the People chips in the filter dialog do; with any picked, the
+ * board shows only their items. Someone picked whose cards the filter hides stays, to unpick.
+ * @param {object} t The theme.
+ * @param {{ login: string, avatar?: string | null, count: number }[]} people The people on the board.
+ * @param {object} options The Board options.
+ * @returns {object | null} The row, or null with nobody to pick.
+ */
+function PeoplePicker(t, people, options) {
+  const picked = options.picked;
+  const shown = [...people];
+  for (const login of picked) if (!shown.some((person) => person.login === login)) shown.push({ login, avatar: null, count: 0 });
+  if (!shown.length) return null;
+  return h_flex()
+    .flex_wrap()
+    .gap(6)
+    .items_center()
+    .children(
+      shown.map((person) => {
+        const on = picked.has(person.login);
+        const key = person.login || "unassigned";
+        const label = person.login || "Unassigned";
+        return h_flex()
+          .id(`bv-pick-${key}`)
+          .flex_none()
+          .gap(4)
+          .p(2)
+          .pr(6)
+          .items_center()
+          .rounded_full()
+          .border_1()
+          .border_color(on ? t.accent : t.border)
+          .bg(on ? t.selected : t.background)
+          .cursor_pointer()
+          .when(picked.size > 0 && !on, (el) => el.opacity(0.5))
+          .hover((style) => style.border_color(t.accent))
+          .tooltip(`${label}: ${person.count} item${person.count === 1 ? "" : "s"}. Click to ${on ? "unpick" : "pick"}.`)
+          .on_click((_event, cx) => options.onTogglePerson(person.login, cx))
+          .child(
+            person.login
+              ? Avatar(t, person, `bv-pick-av-${key}`, options.avatarPath, PICKER_SIZE - 6)
+              : div().size(PICKER_SIZE - 6).rounded_full().border_1().border_color(t.dim),
+          )
+          .child(div().text_size(11.5).text_color(on ? t.foreground : t.muted).child(String(person.count)));
+      }),
+    )
+    .when(picked.size > 0, (el) => el.child(TextButton("bv-pick-clear", "Everyone", (cx) => options.onClearPeople(cx))));
+}
+
+/**
+ * The toast after a move: what moved where, with Undo while it can be undone. Over the board it
+ * floats at the bottom left, like a small toast; over a note it sits in line.
  * @param {object} t The theme.
  * @param {{ text: string, status: string, tail: string, undo?: Function } | null} toast The toast.
  * @param {(cx: object) => void} onUndo Undoes the move.
@@ -366,7 +420,6 @@ function MoveToast(t, toast, onUndo) {
   if (!toast) return null;
   return h_flex()
     .id("bv-toast")
-    .self_center()
     .h(34)
     .pl(12)
     .pr(toast.undo ? 5 : 12)
@@ -458,12 +511,14 @@ export function NoBoard(onAdd) {
 
 /**
  * The Board tab's card for one workspace: the filter in words on the header (a button that opens
- * the filter dialog), the toast after a move, then a column per status, each with its count.
+ * the filter dialog), the avatar row to pick people, then a column per status, each with its
+ * count, and the toast after a move floating over the board's bottom-left corner.
  * @param {object} ws The workspace, with a board.
  * @param {object | undefined} wsModel The workspace's last load.
  * @param {{ loading: boolean, avatarPath(login: string): string | null,
  *   filter: object, onChooseColumns(cx: object): void,
- *   onClearFilters(cx: object): void, picked: Set<string>, toast: object | null, onUndo(cx: object): void,
+ *   onClearFilters(cx: object): void, picked: Set<string>, onTogglePerson(login: string, cx: object): void,
+ *   onClearPeople(cx: object): void, toast: object | null, onUndo(cx: object): void,
  *   pinFor(prefix: string): Function, launch: Function, prompt: Function }} options The rest
  *   come from `BoardState.options()`.
  * @returns {object} The card.
@@ -497,7 +552,7 @@ export function Board(ws, wsModel, options) {
       : !view.items.length
         ? NothingMatches(t, options.onClearFilters)
         : null;
-  if (notice) return Card("board-view", ws.board.title || ws.name, extras, body.when(Boolean(toast), (el) => el.child(toast)).child(notice));
+  if (notice) return Card("board-view", ws.board.title || ws.name, extras, body.when(Boolean(toast), (el) => el.child(toast.self_start())).child(notice));
   const cardOptions = {
     ...options,
     repo: ws.repo,
@@ -509,8 +564,9 @@ export function Board(ws, wsModel, options) {
   /** A column's shown cards, in board order, without the one being dragged. */
   const shownIn = (column) =>
     items.filter((item) => (item.status ?? NO_STATUS) === column && item.itemId !== options.draggedId);
+  const people = PeoplePicker(t, peopleOf(view.items), options);
   body = body
-    .when(Boolean(toast), (el) => el.child(toast))
+    .when(Boolean(people), (el) => el.child(people))
     .when(!items.length, (el) => el.child(NothingMatches(t, options.onClearFilters)))
     .when(view.total > view.items.length, (el) =>
       el.child(Note(`Showing the first ${view.items.length} of ${view.total} items.`, warningColor(t))),
@@ -582,6 +638,7 @@ export function Board(ws, wsModel, options) {
             .h(0)
             .on_size_change((size) => options.onUnitProbe(size.width, PROBE_WIDTH)),
         )
+        .when(Boolean(toast), (el) => el.child(div().absolute().left(COLUMN_PADDING).bottom(COLUMN_PADDING).child(toast)))
         .when(ghost !== null, (el) =>
           el.child(
             div()

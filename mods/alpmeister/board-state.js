@@ -156,6 +156,8 @@ export class BoardState {
       onChooseColumns: () => this.openFilter(ws),
       onClearFilters: (cx) => this.clearFilters(ws, cx),
       picked: this.picked(ws),
+      onTogglePerson: (login, cx) => this.togglePerson(ws, login, cx),
+      onClearPeople: (cx) => this.setPicked(ws, new Set(), cx),
       draggedId: this.drag?.moved ? this.drag.item.itemId : null,
       dragOver: this.drag?.over ?? null,
       writing: this.writing,
@@ -464,6 +466,34 @@ export class BoardState {
    */
   picked(ws) {
     return new Set(this.pickedByWorkspace[ws.name] ?? []);
+  }
+
+  /**
+   * Picks or unpicks one person from the avatar row above the board.
+   * @param {object} ws The workspace.
+   * @param {string} login The person, or UNASSIGNED.
+   * @param {object} cx The context.
+   * @returns {void}
+   */
+  togglePerson(ws, login, cx) {
+    const picked = this.picked(ws);
+    if (picked.has(login)) picked.delete(login);
+    else picked.add(login);
+    this.setPicked(ws, picked, cx);
+  }
+
+  /**
+   * Sets a workspace's picked people, the same ones the filter dialog's People chips show, keeps
+   * them on this computer and redraws.
+   * @param {object} ws The workspace.
+   * @param {Set<string>} picked The people.
+   * @param {object} cx The context.
+   * @returns {void}
+   */
+  setPicked(ws, picked, cx) {
+    this.pickedByWorkspace = { ...this.pickedByWorkspace, [ws.name]: [...picked] };
+    this.rememberPicked();
+    cx.notify();
   }
 
   /**
