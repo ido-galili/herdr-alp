@@ -179,7 +179,9 @@ export default class Alpmeister extends View {
     this.expandedAgents = new Set();
     this.herdsFailure = null;
     this.picking = null;
-    this.herdsCanvas = new HerdsCanvas();
+    // `props.herdsView` ("map" or "cards") and `props.herdsFull` open Herds on that view, for demos
+    // and screenshots; otherwise it opens on Cards in a tab and on the Map in full tab.
+    this.herdsCanvas = new HerdsCanvas({ view: props()?.herdsView, full: props()?.herdsFull === true });
     this.focus = new FocusStore(this.demo ? demoFocus() : null);
     this.focusStamp = shared(FOCUS_STAMP_KEY) ?? null;
     this.input = InputState.new({ placeholder: "Add a todo and press Enter" });
@@ -957,11 +959,11 @@ export default class Alpmeister extends View {
           expandedAgents: this.expandedAgents,
           toggleAgents: (sessionId, cx) => this.toggleAgents(sessionId, cx),
           canvas: this.herdsCanvas,
-          // In the Herds tab the canvas takes 30% of the tab (half in the demo, so its herd
-          // fits large enough to read); Full tab gives it all the room under its row of
-          // controls (the tab's padding, the row, the gap).
-          canvasHeight: Math.max(220, Math.round(this.height * (this.demo ? 0.5 : 0.3))),
-          fullHeight: Math.max(300, this.height - 36 - 30 - 8),
+          // The map takes the room under the header and the Herds toolbar (the tab's padding,
+          // the header, the card's padding, the toolbar and the gaps); in full tab, all the room
+          // under the toolbar. Herds takes the key's row off both while the key shows.
+          canvasHeight: Math.max(260, this.height - 36 - 32 - 14 - 28 - 26 - 12),
+          fullHeight: Math.max(300, this.height - 36 - 26 - 12),
         }),
       );
     } else {
