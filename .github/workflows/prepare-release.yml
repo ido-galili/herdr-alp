@@ -25,8 +25,6 @@ env:
 permissions:
   contents: write
   pull-requests: write
-  # To start the PR checks on the release PR: a PR this workflow opens doesn't start them itself.
-  actions: write
 
 jobs:
   prepare:
@@ -69,16 +67,20 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch -c release
-          git commit -qam "$title"
+          git add CHANGELOG.md plugins/alp/.claude-plugin/plugin.json
+          git commit -qm "$title"
           # The release branch is only ever this workflow's: each run replaces it.
           git push -f origin release
-          { echo "Merge to publish $VERSION: a tag and a GitHub Release with these notes."; echo; cat "$RUNNER_TEMP/notes.md"; } > "$RUNNER_TEMP/body.md"
+          {
+            echo "Merge to publish $VERSION: a tag and a GitHub Release with these notes."
+            echo
+            echo "GitHub holds this PR's checks until someone approves them: **Approve workflows to run**, below."
+            echo
+            cat "$RUNNER_TEMP/notes.md"
+          } > "$RUNNER_TEMP/body.md"
           open=$(gh pr list --head release --state open --json number -q '.[0].number')
           if [ -n "$open" ]; then
             gh api -X PATCH "repos/$GITHUB_REPOSITORY/pulls/$open" -f title="$title" -F body=@"$RUNNER_TEMP/body.md" > /dev/null
           else
             gh pr create --base main --head release --title "$title" --body-file "$RUNNER_TEMP/body.md"
           fi
-          # The PR checks are required before merging, and a PR this token opens or pushes to
-          # doesn't start them, so start them on the release branch here.
-          gh workflow run pr.yml --ref release -f title="$title"
