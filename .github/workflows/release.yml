@@ -1,0 +1,39 @@
+# Publishes a release when its release PR is merged (see prepare-release.yml, the "Prepare release"
+# button): the merge's subject is "release: vX.Y.Z (#N)" and the plugin's version is X.Y.Z. This
+# tags that merge and creates the GitHub Release from its CHANGELOG.md section. Every other merge
+# does nothing here. Nothing is pushed to main.
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Tag and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          subject=$(git log -1 --format=%s)
+          version="v$(jq -r .version plugins/alp/.claude-plugin/plugin.json)"
+          if [[ ! "$subject" =~ ^release:\ (v[0-9]+\.[0-9]+\.[0-9]+)(\ \(#[0-9]+\))?$ ]]; then
+            echo "Not a release PR: nothing to publish."; exit 0
+          fi
+          if [ "${BASH_REMATCH[1]}" != "$version" ]; then
+            echo "::error::The merge says ${BASH_REMATCH[1]}, but the plugin's version is $version."; exit 1
+          fi
+          if gh release view "$version" > /dev/null 2>&1; then
+            echo "::error::$version is already released."; exit 1
+          fi
+          awk -v head="## [${version#v}]" 'index($0, head) == 1 { on = 1; next } on && /^## / { exit } on' CHANGELOG.md > notes.md
+          gh release create "$version" --target "$GITHUB_SHA" --title "$version" --notes-file notes.md

@@ -33,7 +33,10 @@ What's inside:
 | `schema/alp.schema.json` | the JSON schema for Alp's config files |
 | `RECIPE.md` | the brief to rebuild it from scratch (herdr.dev format) |
 | `icon.png` | Alp's logo |
-| `sync.sh` | copy the layout and mods into Herdr's home, or pull live edits back |
+| `sync.sh` | copy the layout and mods into Herdr's home (and record what it installed, for Updates), or pull live edits back |
+| `CHANGELOG.md`, `cliff.toml` | every release's notes, made by git-cliff from merged PR titles |
+| `.github/workflows/` | checks on each PR; Prepare release (the release PR), and its GitHub Release on merge |
+| `package.json` | dev tools only (oxlint, oxfmt, git-cliff); nothing in it ships to Herdr |
 | `setup.sh` | one-step install: checks `gh`, syncs, installs the plugin and switches to the alp layout |
 
 ## Install
@@ -77,7 +80,7 @@ claude plugin marketplace add ido-galili/herdr-alp
 claude plugin install alp@herdr-alp
 ```
 
-Update it later with `/plugin marketplace update herdr-alp`.
+Update it later from Alp's [Settings › Updates](#updates), or with `/plugin marketplace update herdr-alp`.
 
 **While developing**, load it straight from this folder instead, in `~/.claude/settings.json`:
 
@@ -216,8 +219,8 @@ writes to GitHub: a card's status, its place in the column, its iteration and it
 rest of Alp only reads. Nothing is saved until Save, in the bar at the bottom, which keeps the
 previous file as `alpmeister.json.bak`; Revert drops the unsaved changes.
 
-A side list picks the page: **You** (GitHub, Local folders, Claude buttons, Card filters), then
-a page per workspace and "+ Add workspace".
+A side list picks the page: **You** (GitHub, Local folders, Claude buttons, Card filters, Files),
+then a page per workspace and "+ Add workspace", then **Alp** › [Updates](#updates).
 
 | Page | What you set |
 |---|---|
@@ -335,6 +338,23 @@ The plugin and the mods talk through files in `~/.local/state/herdr-agents/`. Th
 
 To add another agent: make it write these files, then add its program key to `REPORTING` in `mods/pane-agent/main.js`.
 
+## Updates
+
+Alp's Settings › Updates shows the installed version of herdr-alp and of the alp plugin.
+**Check for updates** reads the [releases](https://github.com/ido-galili/herdr-alp/releases) on
+GitHub; nothing checks on its own. When one is newer, **Notes** shows what changed and
+**Update** installs it:
+
+- **herdr-alp:** downloads that release's source, runs its `sync.sh install` into Herdr's home and
+  reloads Alp. Your clone is never touched. Files you edited in Herdr's home are listed before
+  they're overwritten: run `./sync.sh pull` first to keep them. An install from a clone with
+  `./sync.sh install` shows as a dev build, and Update replaces it with the release.
+- **Plugin:** `claude plugin marketplace update herdr-alp`, then `claude plugin update
+  alp@herdr-alp`. Restart running Claude sessions to load it. A plugin loaded from a folder
+  (`CLAUDE_CODE_PLUGIN_DIRS`) runs that folder, so it has nothing to update.
+
+herdr-alp and the plugin share one version.
+
 ## Working on it
 
 Herdr hot-reloads its home, so the quickest loop is to edit there and pull back:
@@ -344,6 +364,43 @@ Herdr hot-reloads its home, so the quickest loop is to edit there and pull back:
 ./sync.sh install   # repo -> ~/.config/herdr-app
 herdr-app check ~/.config/herdr-app/mods/pane-agent
 ```
+
+`npm install` sets up the dev tools and a pre-commit hook that runs oxlint and oxfmt on the
+files you commit (`npm run lint`, `npm run format` for the whole repo).
+
+### Pull requests and releases
+
+PRs are squash-merged, and the title becomes the commit, so it follows
+[Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) and is written for the
+person using Alp: it becomes a line in the changelog word for word.
+
+```
+type(scope): what changed, for the person using Alp
+type(scope)!: a breaking change
+```
+
+- **Types:** a change to shipped code (`mods/`, `layouts/`, `themes/`, `plugins/`, `sync.sh`,
+  `setup.sh`) is `feat` (Added), `fix` (Fixed), `perf` (Faster) or `refactor` (Changed). `docs`,
+  `test`, `ci` and `chore` stay out of the changelog. `release` is the release PR's own.
+- **Scopes:** a mod folder (`alpmeister`, `alp-runs`, …), a part people know by name (`overview`,
+  `board`, `herds`, `today`, `settings`, `updates`, `files`, `runs`, `tabs`, `sidebar`,
+  `filters`, `pane-header`, `demo`, `alp`), or `plugin`, `layout`, `theme`, `setup`, `deps`.
+  Several are comma-separated; none is fine too.
+- **The text after the colon starts with a lowercase letter**, even before a name: "pin Alp
+  before the tabs", not "Alp pinned before the tabs".
+
+A PR check ([action-semantic-pull-request](https://github.com/amannn/action-semantic-pull-request),
+as Vite uses) checks the title, and again when you edit it.
+
+The PR checks (title, lint and format) must pass before a PR can merge.
+
+**Releases**, the way Vite does them: when you want one, open **Actions › Prepare release › Run
+workflow** (or `gh workflow run prepare-release.yml -f release=auto`). It opens a
+`release: vX.Y.Z` PR that writes `CHANGELOG.md` and the plugin's version with git-cliff, from the
+titles merged since the last release. `auto` picks the version (below 1.0, a feat or breaking
+change bumps the minor, anything else the patch); `patch`, `minor` or `major` set it. Running it
+again while that PR is open updates it. Merging it tags the merge and creates the GitHub Release
+from its `CHANGELOG.md` section, which is what Settings › Updates offers.
 
 ## Planned
 

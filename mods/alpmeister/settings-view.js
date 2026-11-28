@@ -3,7 +3,8 @@
 // workflows) and from your disk (local clones). Edits stay in a draft until Save.
 //
 // A side list picks the page: You (GitHub, Local folders, Claude buttons, Card filters, Files), then a
-// page per workspace. The save bar stays at the bottom, under the page, which scrolls.
+// page per workspace, then Alp's Updates (updates-view.js). The save bar stays at the bottom,
+// under the page, which scrolls; Updates has no settings to save, so it has none.
 
 import { div } from "gpui-kit";
 import { h_flex, v_flex, Input, InputState, NumberInput } from "gpui-base";
@@ -24,6 +25,7 @@ import { inFlightWords } from "./in-flight.js";
 import { summaryWords } from "./search-terms.js";
 import { boardFields, discover, findClones, guessRoles, repoDetails, saveSettings } from "./settings-data.js";
 import { Chip, Note, TextButton, Toggle, statusColor, warningColor } from "./ui.js";
+import { UpdatesPage } from "./updates-view.js";
 
 /** A deep copy of plain JSON data. */
 const copy = (value) => JSON.parse(JSON.stringify(value));
@@ -233,8 +235,10 @@ export class SettingsForm {
     this.saving = false;
     this.message = null;
     this.removeArmed = false;
-    /** The page shown: one of ACCOUNT_PAGES' keys, or "workspace" for the workspace at `wsIndex`. */
+    /** The page shown: one of ACCOUNT_PAGES' keys, "workspace" for the workspace at `wsIndex`, or "updates". */
     this.page = "github";
+    /** The Updates page, which edits no settings: it has its own buttons and no save bar. */
+    this.updates = new UpdatesPage();
     /** The folded sections that are open, by key: the board's columns start open. */
     this.folds = new Set(["board"]);
     /** Whether the status table shows its extra columns. */
@@ -676,6 +680,7 @@ export class SettingsForm {
         );
     }
     this.ensureLoaded(cx);
+    if (this.page === "updates") this.updates.ensureLoaded(cx, Boolean(this.demo));
     return h_flex()
       .flex_1()
       .min_h(0)
@@ -699,7 +704,7 @@ export class SettingsForm {
               .gap(14)
               .children(this.pageParts(t)),
           )
-          .child(this.saveBar(t, options)),
+          .when(this.page !== "updates", (el) => el.child(this.saveBar(t, options))),
       );
   }
 
@@ -755,18 +760,28 @@ export class SettingsForm {
       .child(group("You"))
       .children(
         ACCOUNT_PAGES.map((page) =>
-          this.navItem(t, `st-nav-${page.key}`, page.label, this.page === page.key, (cx) => this.showPage(page.key, cx)),
+          this.navItem(t, `st-nav-${page.key}`, page.label, this.page === page.key, (cx) =>
+            this.showPage(page.key, cx),
+          ),
         ),
       )
       .child(group("Workspaces"))
       .children(
         this.draft.workspaces.map((ws, index) =>
-          this.navItem(t, `st-nav-ws-${index}`, ws.name || "Unnamed", this.page === "workspace" && index === this.wsIndex, (cx) =>
-            this.selectWorkspace(index, cx),
+          this.navItem(
+            t,
+            `st-nav-ws-${index}`,
+            ws.name || "Unnamed",
+            this.page === "workspace" && index === this.wsIndex,
+            (cx) => this.selectWorkspace(index, cx),
           ),
         ),
       )
       .child(this.navItem(t, "st-ws-add", "+ Add workspace", false, (cx) => this.addWorkspace(cx), { accent: true }))
+      .child(group("Alp"))
+      .child(
+        this.navItem(t, "st-nav-updates", "Updates", this.page === "updates", (cx) => this.showPage("updates", cx)),
+      )
       .child(div().flex_1().min_h(16))
       .when(this.discovering, (el) => el.child(div().px(10).child(Note("Reading GitHub…"))))
       .child(
@@ -792,8 +807,11 @@ export class SettingsForm {
     if (this.page === "claude") return [this.pageTitle(t, "Claude buttons"), this.claudeSection(t)];
     if (this.page === "filters") return [this.pageTitle(t, "Card filters"), this.filtersSection(t)];
     if (this.page === "files") return [this.pageTitle(t, "Files"), this.filesSection(t)];
+    if (this.page === "updates") return this.updates.parts(t, this);
     return [
-      this.pageTitle(t, "Your GitHub", [Chip(this.discovery ? `signed in as ${this.discovery.login}` : "gh", { color: t.dim })]),
+      this.pageTitle(t, "Your GitHub", [
+        Chip(this.discovery ? `signed in as ${this.discovery.login}` : "gh", { color: t.dim }),
+      ]),
       this.githubSection(t),
     ];
   }
@@ -841,13 +859,24 @@ export class SettingsForm {
           .child(changes ? `${counted(changes, "unsaved change")}` : idle),
       )
       .when(Boolean(this.message), (el) =>
-        el.child(div().min_w(0).truncate().child(Note(this.message.text, this.message.error ? t.blocked : t.done))),
+        el.child(
+          div()
+            .min_w(0)
+            .truncate()
+            .child(Note(this.message.text, this.message.error ? t.blocked : t.done)),
+        ),
       )
       .child(div().flex_1())
       .when(changes > 0, (el) =>
-        el.child(TextButton("st-revert", "Revert", (cx) => options.onRevert(cx), { tooltip: "Drop the unsaved changes" })),
+        el.child(
+          TextButton("st-revert", "Revert", (cx) => options.onRevert(cx), { tooltip: "Drop the unsaved changes" }),
+        ),
       )
-      .child(this.primaryButton(t, "st-save", this.saving ? "Saving…" : "Save", changes > 0 && !this.saving, (cx) => this.save(cx)));
+      .child(
+        this.primaryButton(t, "st-save", this.saving ? "Saving…" : "Save", changes > 0 && !this.saving, (cx) =>
+          this.save(cx),
+        ),
+      );
   }
 
   /** A filled button, dimmed while `enabled` is false. */
@@ -1009,7 +1038,14 @@ export class SettingsForm {
       .when(options.length > PICKER_ROWS, (el) => el.child(this.text(t, "filter")))
       .when(!matching.length, (el) => el.child(div().px(6).py(4).child(Note("Nothing matches."))))
       .children(matching.slice(0, PICKER_ROWS).map(row))
-      .when(more > 0, (el) => el.child(div().px(6).py(4).child(Note(`${more} more: type to narrow the list.`))))
+      .when(more > 0, (el) =>
+        el.child(
+          div()
+            .px(6)
+            .py(4)
+            .child(Note(`${more} more: type to narrow the list.`)),
+        ),
+      )
       .when(footer.length > 0, (el) => el.child(h_flex().pt(2).gap(6).children(footer)));
   }
 
@@ -1041,7 +1077,9 @@ export class SettingsForm {
       })
       .when(Boolean(lead), (el) => el.child(lead))
       .child(div().flex_1().min_w(0).truncate().child(option.label))
-      .when(Boolean(option.sub), (el) => el.child(div().flex_none().text_size(11.5).text_color(t.dim).child(option.sub)));
+      .when(Boolean(option.sub), (el) =>
+        el.child(div().flex_none().text_size(11.5).text_color(t.dim).child(option.sub)),
+      );
   }
 
   /** A dropdown's trigger: the shown text and an arrow, accented while open. */
@@ -1061,8 +1099,21 @@ export class SettingsForm {
       .bg(t.background)
       .cursor_pointer()
       .on_click((_event, cx) => this.togglePicker(key, cx))
-      .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(dim ? t.dim : t.foreground).child(text))
-      .child(div().text_size(10).text_color(t.dim).child(open ? "▲" : "▼"));
+      .child(
+        div()
+          .flex_1()
+          .min_w(0)
+          .truncate()
+          .text_size(12)
+          .text_color(dim ? t.dim : t.foreground)
+          .child(text),
+      )
+      .child(
+        div()
+          .text_size(10)
+          .text_color(t.dim)
+          .child(open ? "▲" : "▼"),
+      );
   }
 
   /**
@@ -1172,9 +1223,15 @@ export class SettingsForm {
     const found = this.discovery?.repos ?? [];
     const names = new Set(found.map((repo) => repo.repo));
     const account = this.draft.account;
-    const extra = [...(Array.isArray(account.repos) ? account.repos : []), ...account.exclude, ...Object.keys(account.folders)]
-      .filter((repo) => !names.has(repo));
-    return [...found, ...[...new Set(extra)].map((repo) => ({ repo, isArchived: false, isPrivate: false, isFork: false }))];
+    const extra = [
+      ...(Array.isArray(account.repos) ? account.repos : []),
+      ...account.exclude,
+      ...Object.keys(account.folders),
+    ].filter((repo) => !names.has(repo));
+    return [
+      ...found,
+      ...[...new Set(extra)].map((repo) => ({ repo, isArchived: false, isPrivate: false, isFork: false })),
+    ];
   }
 
   /** A repository as a dropdown option: its name, and what sets it apart. */
@@ -1219,10 +1276,9 @@ export class SettingsForm {
     const picked = Array.isArray(account.repos);
     const repos = this.knownRepos();
     const eligible = repos.filter((repo) => picked || account.archived || !repo.isArchived);
-    const options = [
-      ...eligible.filter((repo) => !repo.isArchived),
-      ...eligible.filter((repo) => repo.isArchived),
-    ].map((repo) => this.repoOption(repo));
+    const options = [...eligible.filter((repo) => !repo.isArchived), ...eligible.filter((repo) => repo.isArchived)].map(
+      (repo) => this.repoOption(repo),
+    );
     const chosen = picked ? account.repos : account.exclude;
     const chips = chosen.map((name) =>
       this.removableChip(
@@ -1291,21 +1347,29 @@ export class SettingsForm {
       )
       .when(Boolean(found), (el) =>
         el.child(
-          TextButton(`st-use-${repo}`, "Use", (cx) => {
-            account.folders[repo] = found;
-            cx.notify();
-          }, { tooltip: "A local clone of this repository" }),
+          TextButton(
+            `st-use-${repo}`,
+            "Use",
+            (cx) => {
+              account.folders[repo] = found;
+              cx.notify();
+            },
+            { tooltip: "A local clone of this repository" },
+          ),
         ),
       )
       .when(Boolean(folder), (el) =>
-        el
-          .child(TextButton(`st-change-${repo}`, "Change", (cx) => this.chooseFolder(repo, cx)))
-          .child(
-            TextButton(`st-forget-${repo}`, "×", (cx) => {
+        el.child(TextButton(`st-change-${repo}`, "Change", (cx) => this.chooseFolder(repo, cx))).child(
+          TextButton(
+            `st-forget-${repo}`,
+            "×",
+            (cx) => {
               delete account.folders[repo];
               cx.notify();
-            }, { tooltip: "Forget this folder" }),
+            },
+            { tooltip: "Forget this folder" },
           ),
+        ),
       );
   }
 
@@ -1319,7 +1383,11 @@ export class SettingsForm {
       .map((repo) => this.repoOption(repo));
     return v_flex()
       .gap(6)
-      .child(Note("Where each repository's Claude buttons open their tab. Without one, the tab opens in the space's folder."))
+      .child(
+        Note(
+          "Where each repository's Claude buttons open their tab. Without one, the tab opens in the space's folder.",
+        ),
+      )
       .children(set.map(([repo, folder]) => this.folderRow(t, repo, folder, null)))
       .children(suggestions.map(([repo, found]) => this.folderRow(t, repo, null, found)))
       .when(suggestions.length > 1, (el) =>
@@ -1532,7 +1600,15 @@ export class SettingsForm {
             .text_color(color)
             .child(unsaved ? `${wordsOf(row)} · not saved yet` : wordsOf(row)),
         )
-        .child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(t.dim).child(row.value || "(empty)"))
+        .child(
+          div()
+            .flex_1()
+            .min_w(0)
+            .truncate()
+            .text_size(11.5)
+            .text_color(t.dim)
+            .child(row.value || "(empty)"),
+        )
         .child(
           TextButton(`${row.id}-edit`, "Edit", (cx) => this.onEditFilter?.(row, cx), {
             tooltip: `Change what ${row.label} shows`,
@@ -1554,7 +1630,11 @@ export class SettingsForm {
         }),
       )
       .when(!this.draft.workspaces.some((ws) => ws.repo || ws.board), (el) =>
-        el.child(Note("A workspace with a repository adds its Open bugs and Triage bugs here; one with a board, its Team in flight.")),
+        el.child(
+          Note(
+            "A workspace with a repository adds its Open bugs and Triage bugs here; one with a board, its Team in flight.",
+          ),
+        ),
       );
   }
 
@@ -1595,7 +1675,14 @@ export class SettingsForm {
             this.open = null;
             cx.notify();
           })
-          .child(div().flex_none().w(10).text_size(11.5).text_color(t.dim).child(open ? "▾" : "▸"))
+          .child(
+            div()
+              .flex_none()
+              .w(10)
+              .text_size(11.5)
+              .text_color(t.dim)
+              .child(open ? "▾" : "▸"),
+          )
           .child(div().flex_none().text_size(12.5).font_semibold().text_color(t.foreground).child(title))
           .when(!open, (el) => el.child(div().min_w(0).truncate().text_size(11.5).text_color(t.dim).child(summary))),
       )
@@ -1620,7 +1707,9 @@ export class SettingsForm {
           t,
           "board",
           "Board columns",
-          shown ? `${shown} of ${counted(ws.statuses.length, "status", "statuses")} on the board` : "every status with an item on the board",
+          shown
+            ? `${shown} of ${counted(ws.statuses.length, "status", "statuses")} on the board`
+            : "every status with an item on the board",
           () => this.boardSection(t, ws),
         ),
       );
@@ -1675,8 +1764,12 @@ export class SettingsForm {
     const repos = this.knownRepos();
     return [
       { value: null, label: "None", sub: "a board only" },
-      ...repos.filter((repo) => !repo.isArchived).map((repo) => ({ value: repo.repo, label: repo.repo, sub: repo.isPrivate ? "private" : "" })),
-      ...repos.filter((repo) => repo.isArchived).map((repo) => ({ value: repo.repo, label: repo.repo, sub: "archived" })),
+      ...repos
+        .filter((repo) => !repo.isArchived)
+        .map((repo) => ({ value: repo.repo, label: repo.repo, sub: repo.isPrivate ? "private" : "" })),
+      ...repos
+        .filter((repo) => repo.isArchived)
+        .map((repo) => ({ value: repo.repo, label: repo.repo, sub: "archived" })),
     ];
   }
 
@@ -1687,11 +1780,19 @@ export class SettingsForm {
     const rest = (this.discovery?.boards ?? []).filter((board) => !linkedKeys.has(board.key) && !board.closed);
     const options = [
       { value: null, label: "None", sub: "the repository only" },
-      ...linked.map((board) => ({ value: board.key, label: `${board.title}`, sub: `${board.owner} #${board.number} · linked` })),
+      ...linked.map((board) => ({
+        value: board.key,
+        label: `${board.title}`,
+        sub: `${board.owner} #${board.number} · linked`,
+      })),
       ...rest.map((board) => ({ value: board.key, label: `${board.title}`, sub: `${board.owner} #${board.number}` })),
     ];
     if (ws.board && !options.some((option) => option.value === boardKey(ws.board))) {
-      options.push({ value: boardKey(ws.board), label: ws.board.title ?? "Board", sub: `${ws.board.owner} #${ws.board.number}` });
+      options.push({
+        value: boardKey(ws.board),
+        label: ws.board.title ?? "Board",
+        sub: `${ws.board.owner} #${ws.board.number}`,
+      });
     }
     return options;
   }
@@ -1703,8 +1804,16 @@ export class SettingsForm {
       return;
     }
     const [owner, number] = key.split("#");
-    const known = [...(this.details[ws.repo]?.boards ?? []), ...(this.discovery?.boards ?? [])].find((board) => board.key === key);
-    ws.board = { owner, number: Number(number), title: known?.title ?? "", statusField: "Status", iterationField: "Iteration" };
+    const known = [...(this.details[ws.repo]?.boards ?? []), ...(this.discovery?.boards ?? [])].find(
+      (board) => board.key === key,
+    );
+    ws.board = {
+      owner,
+      number: Number(number),
+      title: known?.title ?? "",
+      statusField: "Status",
+      iterationField: "Iteration",
+    };
     this.guessFor = key;
     if (this.fields[key] && !this.fields[key].loading && !this.fields[key].error) this.fitBoard(key);
   }
@@ -1739,7 +1848,9 @@ export class SettingsForm {
         this.field(
           t,
           "Project board",
-          this.picker(t, "ws-board", ws.board ? boardKey(ws.board) : null, this.boardOptions(ws), (key) => this.pickBoard(ws, key)),
+          this.picker(t, "ws-board", ws.board ? boardKey(ws.board) : null, this.boardOptions(ws), (key) =>
+            this.pickBoard(ws, key),
+          ),
           "Statuses, iterations and the team in flight come from it.",
         ),
       );
@@ -1759,7 +1870,9 @@ export class SettingsForm {
     const section = v_flex().gap(10);
     if (!fields || fields.loading) return section.child(Note("Reading the board's fields…"));
     if (fields.error) {
-      return section.child(Note(`${fields.error}. The board needs gh's read:project scope: gh auth refresh -s read:project`, t.blocked));
+      return section.child(
+        Note(`${fields.error}. The board needs gh's read:project scope: gh auth refresh -s read:project`, t.blocked),
+      );
     }
     return section
       .when(Boolean(differs), (el) =>
@@ -1779,10 +1892,14 @@ export class SettingsForm {
       .child(this.statusTable(t, ws))
       .child(
         h_flex().child(
-          TextButton("st-more-status", this.moreStatus ? "Fewer per-status options" : "More per-status options…", (cx) => {
-            this.moreStatus = !this.moreStatus;
-            cx.notify();
-          }),
+          TextButton(
+            "st-more-status",
+            this.moreStatus ? "Fewer per-status options" : "More per-status options…",
+            (cx) => {
+              this.moreStatus = !this.moreStatus;
+              cx.notify();
+            },
+          ),
         ),
       )
       .when(fields.selects.length > 1, (el) =>
@@ -1794,7 +1911,11 @@ export class SettingsForm {
               t,
               "ws-status-field",
               ws.board.statusField,
-              fields.selects.map((field) => ({ value: field.name, label: field.name, sub: `${field.options.length} options` })),
+              fields.selects.map((field) => ({
+                value: field.name,
+                label: field.name,
+                sub: `${field.options.length} options`,
+              })),
               (name) => {
                 ws.board.statusField = name;
                 this.useBoardStatuses(ws);
@@ -1811,7 +1932,10 @@ export class SettingsForm {
             t,
             "ws-iteration-field",
             ws.board.iterationField || null,
-            [{ value: null, label: "None", sub: "no iteration filters" }, ...fields.iterations.map((name) => ({ value: name, label: name }))],
+            [
+              { value: null, label: "None", sub: "no iteration filters" },
+              ...fields.iterations.map((name) => ({ value: name, label: name })),
+            ],
             (name) => (ws.board.iterationField = name ?? ""),
           ),
         ),
@@ -1844,7 +1968,9 @@ export class SettingsForm {
           .child(div().w(150).child("Status"))
           .child(div().w(230).child("Means"))
           .child(div().w(100).child("Show on board"))
-          .when(this.moreStatus, (el) => el.child(div().w(130).child("Hide in Your issues")).child(div().child("On hold"))),
+          .when(this.moreStatus, (el) =>
+            el.child(div().w(130).child("Hide in Your issues")).child(div().child("On hold")),
+          ),
       )
       .children(
         ws.statuses.map((status, index) =>
@@ -2006,7 +2132,9 @@ export class SettingsForm {
   bugsSection(t, ws) {
     return v_flex()
       .gap(10)
-      .child(this.field(t, "Open bugs search", this.text(t, "bugsQuery"), `Scoped to ${ws.repo}; also under Card filters`))
+      .child(
+        this.field(t, "Open bugs search", this.text(t, "bugsQuery"), `Scoped to ${ws.repo}; also under Card filters`),
+      )
       .child(this.field(t, "Priority field", this.text(t, "priorityField"), "The issue field the bugs are counted by"))
       .child(this.field(t, "Priorities", this.text(t, "priorities")))
       .child(this.field(t, "Triage search", this.text(t, "triage")));
@@ -2023,7 +2151,11 @@ export class SettingsForm {
   spotlightSection(t, ws) {
     return v_flex()
       .gap(10)
-      .child(Note("The Milestone card lists, under Issues, the open issues with a priority, one of these labels or one of these types."))
+      .child(
+        Note(
+          "The Milestone card lists, under Issues, the open issues with a priority, one of these labels or one of these types.",
+        ),
+      )
       .child(this.field(t, "Labels", this.text(t, "spotlightLabels")))
       .child(this.field(t, "Feature types", this.text(t, "featureTypes"), "Issue types always shown, in this order"));
   }

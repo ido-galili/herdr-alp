@@ -1,0 +1,11 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 120,
+  "ignorePatterns": [
+    "CHANGELOG.md",
+    "package-lock.json",
+    "**/gpui-kit.d.ts",
+    "**/herdr.d.ts",
+    "**/.claude-plugin/types"
+  ]
+}
