@@ -1,0 +1,5 @@
+# Commits git blame skips (GitHub reads this file too). Use locally with:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# refactor: format every JS, TS and JSON file with oxfmt (#47)
+c78f4ac9c44db16d6cbbfbf310330687bb519168

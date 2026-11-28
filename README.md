@@ -399,7 +399,8 @@ workflow** (or `gh workflow run prepare-release.yml -f release=auto`). It opens 
 `release: vX.Y.Z` PR that writes `CHANGELOG.md` and the plugin's version with git-cliff, from the
 titles merged since the last release. `auto` picks the version (below 1.0, a feat or breaking
 change bumps the minor, anything else the patch); `patch`, `minor` or `major` set it. Running it
-again while that PR is open updates it. Merging it tags the merge and creates the GitHub Release
+again while that PR is open updates it. GitHub holds that PR's checks until you click **Approve
+workflows to run** on it. Merging it tags the merge and creates the GitHub Release
 from its `CHANGELOG.md` section, which is what Settings › Updates offers.
 
 ## Planned
