@@ -1,0 +1,84 @@
+# The "Prepare release" button (Actions › Prepare release › Run workflow), as Vite does it: opens
+# a pull request titled "release: vX.Y.Z" that writes CHANGELOG.md and the plugin's version with
+# git-cliff, from the PR titles merged since the last release. Merging it publishes the release
+# (release.yml). Running it again while one is open updates that PR.
+name: Prepare release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Version bump: auto picks it from the titles (a feat or breaking change bumps the minor, anything else the patch)"
+        required: true
+        default: auto
+        type: choice
+        options: [auto, patch, minor, major]
+
+concurrency:
+  group: prepare-release
+  cancel-in-progress: false
+
+env:
+  # husky only sets up git hooks on your machine.
+  HUSKY: 0
+
+permissions:
+  contents: write
+  pull-requests: write
+  # To start the PR checks on the release PR: a PR this workflow opens doesn't start them itself.
+  actions: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+
+      - name: Write CHANGELOG.md and the version
+        id: version
+        env:
+          BUMP: ${{ inputs.release }}
+        run: |
+          count=$(npx git-cliff --unreleased --context | jq '[.[].commits[]] | length')
+          if [ "$count" = "0" ]; then
+            echo "::error::Nothing to release: no feat, fix, perf, refactor or breaking PR merged since the last release."
+            exit 1
+          fi
+          version=$(npx git-cliff --bump "$BUMP" --bumped-version)
+          npx git-cliff --bump "$BUMP" -o CHANGELOG.md
+          plugin=plugins/alp/.claude-plugin/plugin.json
+          sed -E "s/(\"version\": *\")[^\"]*\"/\1${version#v}\"/" "$plugin" > "$plugin.tmp" && mv "$plugin.tmp" "$plugin"
+          awk -v head="## [${version#v}]" 'index($0, head) == 1 { on = 1; next } on && /^## / { exit } on' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "$count changes for $version."
+
+      - name: Open or update the release PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          title="release: $VERSION"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c release
+          git commit -qam "$title"
+          # The release branch is only ever this workflow's: each run replaces it.
+          git push -f origin release
+          { echo "Merge to publish $VERSION: a tag and a GitHub Release with these notes."; echo; cat "$RUNNER_TEMP/notes.md"; } > "$RUNNER_TEMP/body.md"
+          open=$(gh pr list --head release --state open --json number -q '.[0].number')
+          if [ -n "$open" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/pulls/$open" -f title="$title" -F body=@"$RUNNER_TEMP/body.md" > /dev/null
+          else
+            gh pr create --base main --head release --title "$title" --body-file "$RUNNER_TEMP/body.md"
+          fi
+          # The PR checks are required before merging, and a PR this token opens or pushes to
+          # doesn't start them, so start them on the release branch here.
+          gh workflow run pr.yml --ref release -f title="$title"

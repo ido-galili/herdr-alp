@@ -1,14 +1,12 @@
-# Publishes the release a merged pull request prepared. A PR titled feat, fix, perf or refactor
-# (or with a "!") ends with a release commit (scripts/release-commit.sh) that sets CHANGELOG.md
-# and the plugin's version, so its squash merge lands on main already released in name. This tags
-# that merge and creates the GitHub Release from its CHANGELOG.md section. Nothing is pushed to
-# main, so the "Protect main" rule needs no way around it.
+# Publishes a release when its release PR is merged (see prepare-release.yml, the "Prepare release"
+# button): the merge's subject is "release: vX.Y.Z (#N)" and the plugin's version is X.Y.Z. This
+# tags that merge and creates the GitHub Release from its CHANGELOG.md section. Every other merge
+# does nothing here. Nothing is pushed to main.
 name: Release
 
 on:
   push:
     branches: [main]
-  workflow_dispatch:
 
 concurrency:
   group: release
@@ -26,13 +24,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          subject=$(git log -1 --format=%s)
           version="v$(jq -r .version plugins/alp/.claude-plugin/plugin.json)"
-          if gh release view "$version" > /dev/null 2>&1; then
-            echo "$version is already released: this merge has no release commit."; exit 0
+          if [[ ! "$subject" =~ ^release:\ (v[0-9]+\.[0-9]+\.[0-9]+)(\ \(#[0-9]+\))?$ ]]; then
+            echo "Not a release PR: nothing to publish."; exit 0
           fi
-          # Only a release commit writes a version's section into CHANGELOG.md.
-          if ! grep -q "^## \[${version#v}\]" CHANGELOG.md 2> /dev/null; then
-            echo "No release commit in this merge."; exit 0
+          if [ "${BASH_REMATCH[1]}" != "$version" ]; then
+            echo "::error::The merge says ${BASH_REMATCH[1]}, but the plugin's version is $version."; exit 1
+          fi
+          if gh release view "$version" > /dev/null 2>&1; then
+            echo "::error::$version is already released."; exit 1
           fi
           awk -v head="## [${version#v}]" 'index($0, head) == 1 { on = 1; next } on && /^## / { exit } on' CHANGELOG.md > notes.md
           gh release create "$version" --target "$GITHUB_SHA" --title "$version" --notes-file notes.md

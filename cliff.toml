@@ -1,7 +1,6 @@
 # git-cliff turns the squash commits on main (one per merged PR, its title) into CHANGELOG.md, and
-# each GitHub Release's notes are its section. scripts/release-commit.sh runs it in the PR, as the
-# PR's last commit, so the merge brings the changelog with it. Titles follow Conventional Commits;
-# commitlint.config.js checks them on the PR.
+# each GitHub Release's notes are its section. The "Prepare release" workflow runs it and opens the
+# release PR. Titles follow Conventional Commits; the PR title check (.github/workflows/pr.yml) checks them.
 
 [changelog]
 header = """
@@ -55,7 +54,7 @@ commit_parsers = [
   { message = "^fix", group = "<!-- 1 -->Fixed" },
   { message = "^perf", group = "<!-- 2 -->Faster" },
   { message = "^refactor", group = "<!-- 3 -->Changed" },
-  { message = "^chore\\(release\\)", skip = true },
+  { message = "^release", skip = true },
   { message = "^(docs|chore|ci|test|style|build|revert)", skip = true },
   { message = ".*", skip = true },
 ]

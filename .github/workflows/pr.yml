@@ -1,10 +1,16 @@
 # Checks on every pull request: its title (it becomes the squash commit and a changelog line),
-# its release commit, lint, and the format of the files it changes.
+# lint, and the format of the files it changes. "Prepare release" starts them on its release PR
+# by hand (workflow_dispatch): a PR the workflow's own token opens doesn't start them.
 name: PR
 
 on:
   pull_request:
     types: [opened, edited, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      title:
+        description: The pull request's title
+        required: true
 
 env:
   # husky only sets up git hooks on your machine.
@@ -17,39 +23,36 @@ jobs:
   title:
     name: PR title
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      # As Vite checks it: a Conventional Commits title of these types, its text not starting
+      # with a capital ("pin Alp before the tabs"). A breaking change has "!" before the colon.
+      - if: github.event_name == 'pull_request'
+        uses: amannn/action-semantic-pull-request@66e72920af32222769c386d81f89656ebcb6d6d5 # v6.1.4
         with:
-          node-version: 24
-          cache: npm
-      - run: npm ci
-      # The title goes in through an environment variable, never pasted into the script.
-      - name: Check the title with commitlint
+          types: |
+            feat
+            fix
+            perf
+            refactor
+            docs
+            chore
+            ci
+            test
+            release
+          subjectPattern: ^(?![A-Z]).+$
+          subjectPatternError: |
+            The text after the colon in "{title}" starts with a capital. Start it lowercase, even
+            before a name: "pin Alp before the tabs".
         env:
-          TITLE: ${{ github.event.pull_request.title }}
-        run: printf '%s\n' "$TITLE" | npx commitlint
-
-  release:
-    name: Release commit
-    # Runs on a title edit too: the title is the changelog line and picks the version.
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          # Main's history and tags make the changelog.
-          fetch-depth: 0
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: npm
-      - run: npm ci
-      - name: CHANGELOG.md and the version match the title
+          GITHUB_TOKEN: ${{ github.token }}
+      # The release PR, whose checks Prepare release starts by hand: its title is the workflow's.
+      - if: github.event_name == 'workflow_dispatch'
         env:
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          BASE_REF: ${{ github.base_ref }}
-        run: scripts/release-commit.sh --check
+          TITLE: ${{ inputs.title }}
+        run: |
+          [[ "$TITLE" =~ ^release:\ v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Not a release PR title: $TITLE"; exit 1; }
 
   lint:
     name: Lint and format
@@ -70,7 +73,7 @@ jobs:
       # Only the files this PR changes, until the one-time format of every file lands.
       - name: oxfmt on the changed files
         env:
-          BASE: ${{ github.event.pull_request.base.sha }}
+          BASE: ${{ github.event.pull_request.base.sha || 'origin/main' }}
         run: |
           git diff --name-only --diff-filter=ACMR "$BASE"...HEAD -- '*.js' '*.mjs' '*.ts' '*.json' ':!package-lock.json' > changed.txt
           if [ -s changed.txt ]; then xargs -d '\n' npx oxfmt --check < changed.txt; else echo "No JS, TS or JSON changed."; fi

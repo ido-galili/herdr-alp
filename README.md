@@ -35,8 +35,8 @@ What's inside:
 | `icon.png` | Alp's logo |
 | `sync.sh` | copy the layout and mods into Herdr's home (and record what it installed, for Updates), or pull live edits back |
 | `CHANGELOG.md`, `cliff.toml` | every release's notes, made by git-cliff from merged PR titles |
-| `.github/workflows/`, `scripts/release-commit.sh` | checks on each PR; the release commit a PR ends with, and its GitHub Release on merge |
-| `package.json` | dev tools only (oxlint, oxfmt, commitlint, git-cliff); nothing in it ships to Herdr |
+| `.github/workflows/` | checks on each PR; Prepare release (the release PR), and its GitHub Release on merge |
+| `package.json` | dev tools only (oxlint, oxfmt, git-cliff); nothing in it ships to Herdr |
 | `setup.sh` | one-step install: checks `gh`, syncs, installs the plugin and switches to the alp layout |
 
 ## Install
@@ -379,32 +379,28 @@ type(scope): what changed, for the person using Alp
 type(scope)!: a breaking change
 ```
 
-- **Types:** every change to shipped code (`mods/`, `layouts/`, `themes/`, `plugins/`, `sync.sh`,
-  `setup.sh`) is a release: `feat` (Added), `fix` (Fixed), `perf` (Faster) or `refactor`
-  (Changed). `docs`, `test`, `ci` and `chore` release nothing, stay out of the changelog, and
-  can't change shipped code: the PR check fails them if they do.
+- **Types:** a change to shipped code (`mods/`, `layouts/`, `themes/`, `plugins/`, `sync.sh`,
+  `setup.sh`) is `feat` (Added), `fix` (Fixed), `perf` (Faster) or `refactor` (Changed). `docs`,
+  `test`, `ci` and `chore` stay out of the changelog. `release` is the release PR's own.
 - **Scopes:** a mod folder (`alpmeister`, `alp-runs`, …), a part people know by name (`overview`,
   `board`, `herds`, `today`, `settings`, `updates`, `files`, `runs`, `tabs`, `sidebar`,
   `filters`, `pane-header`, `demo`, `alp`), or `plugin`, `layout`, `theme`, `setup`, `deps`.
-  Several are comma-separated; none is fine too. The list is in `commitlint.config.js`.
+  Several are comma-separated; none is fine too.
 - **The text after the colon starts with a lowercase letter**, even before a name: "pin Alp
   before the tabs", not "Alp pinned before the tabs".
 
-A PR check runs commitlint on the title, and again when you edit it.
+A PR check ([action-semantic-pull-request](https://github.com/amannn/action-semantic-pull-request),
+as Vite uses) checks the title, and again when you edit it.
 
-Every `feat`, `fix`, `perf`, `refactor` or breaking PR is released by itself, and ends with its **release
-commit**. Once the PR is open and its title is final:
+The PR checks (title, lint and format) must pass before a PR can merge.
 
-```sh
-npm run release-commit   # writes CHANGELOG.md and the plugin's version as chore(release): vX.Y.Z
-git push                 # each run adds a commit; only the squash merge's files count
-```
-
-git-cliff picks the version (below 1.0, a feat or breaking change bumps the minor, anything else the
-patch) from `main` and the PR's title. Run it again after rebasing on `main` or changing the
-title; a PR check fails while it's missing or out of date, and fails a PR that releases nothing
-but changes either file. On merge, the release workflow tags the merge and creates the GitHub
-Release from its `CHANGELOG.md` section. Nothing is pushed to `main` but the merge.
+**Releases**, the way Vite does them: when you want one, open **Actions › Prepare release › Run
+workflow** (or `gh workflow run prepare-release.yml -f release=auto`). It opens a
+`release: vX.Y.Z` PR that writes `CHANGELOG.md` and the plugin's version with git-cliff, from the
+titles merged since the last release. `auto` picks the version (below 1.0, a feat or breaking
+change bumps the minor, anything else the patch); `patch`, `minor` or `major` set it. Running it
+again while that PR is open updates it. Merging it tags the merge and creates the GitHub Release
+from its `CHANGELOG.md` section, which is what Settings › Updates offers.
 
 ## Planned
 
