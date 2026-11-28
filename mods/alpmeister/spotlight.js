@@ -72,7 +72,10 @@ export function dueWords(t, milestone) {
  *   for a button at a card's right end.
  * @returns {object} The button, with its list while open.
  */
-export function MilestoneMenu(id, { open, label, tag, rows, picked, onToggle, onOutside, onPick, tooltip, anchor = "top_left" }) {
+export function MilestoneMenu(
+  id,
+  { open, label, tag, rows, picked, onToggle, onOutside, onPick, tooltip, anchor = "top_left" },
+) {
   const t = theme();
   const trigger = h_flex()
     .id(`${id}-button`)
@@ -146,7 +149,13 @@ export function MilestoneMenu(id, { open, label, tag, rows, picked, onToggle, on
                       .when(Boolean(row.tag), (el) => el.child(div().text_size(11.5).text_color(t.dim).child(row.tag))),
                   )
                   .when(Boolean(row.sub), (el) =>
-                    el.child(div().truncate().text_size(11.5).text_color(row.subColor ?? t.dim).child(row.sub)),
+                    el.child(
+                      div()
+                        .truncate()
+                        .text_size(11.5)
+                        .text_color(row.subColor ?? t.dim)
+                        .child(row.sub),
+                    ),
                   ),
               )
               .when(Boolean(row.right), (el) =>
@@ -267,14 +276,18 @@ function ProgressBand(t, config, shown) {
   const present = order.filter((status) => shown.byStatus[status]);
   const counted = present.reduce((sum, status) => sum + shown.byStatus[status], 0);
   const showBar = !shown.none && shown.total > 0 && shown.due != null;
-  const started = shown.start != null ? `${ahead ? "Starts" : "Started"} ${formatDate(shown.start, { utc: shown.startFrom != null })}` : null;
-  const today = elapsed == null
-    ? null
-    : ahead
-      ? `starts in ${daysUntil(shown.start)}d`
-      : shown.overdue
-        ? `${Math.max(1, Math.floor((now - shown.due) / 86400000))}d past the due date`
-        : `${Math.round(elapsed * 100)}% of the time gone`;
+  const started =
+    shown.start != null
+      ? `${ahead ? "Starts" : "Started"} ${formatDate(shown.start, { utc: shown.startFrom != null })}`
+      : null;
+  const today =
+    elapsed == null
+      ? null
+      : ahead
+        ? `starts in ${daysUntil(shown.start)}d`
+        : shown.overdue
+          ? `${Math.max(1, Math.floor((now - shown.due) / 86400000))}d past the due date`
+          : `${Math.round(elapsed * 100)}% of the time gone`;
   const tooltip = [
     `${shown.closed} of ${shown.total} closed (${Math.round(fraction * 100)}%)${behind ? ", behind schedule" : ""}`,
     started,
@@ -298,7 +311,12 @@ function ProgressBand(t, config, shown) {
         v_flex()
           .gap(4)
           .child(titleRow("Progress", due))
-          .child(div().id("ms-time-bar").tooltip(tooltip).child(Bar(fraction, color, elapsed))),
+          .child(
+            div()
+              .id("ms-time-bar")
+              .tooltip(tooltip)
+              .child(Bar(fraction, color, elapsed)),
+          ),
       ),
     )
     .when(!showBar && Boolean(due), (el) => el.child(titleRow("", due)))
@@ -327,7 +345,9 @@ function ProgressBand(t, config, shown) {
               .pt(2)
               .flex_wrap()
               .gap(6)
-              .children(present.map((status) => Chip(`${status} ${shown.byStatus[status]}`, { color: statusColor(t, status) }))),
+              .children(
+                present.map((status) => Chip(`${status} ${shown.byStatus[status]}`, { color: statusColor(t, status) })),
+              ),
           ),
       ),
     );
@@ -445,9 +465,14 @@ export function MilestoneCard(config, model, options) {
     .child(menu)
     .when(byHand, (el) =>
       el.child(
-        TextButton("ms-back", next ? `Back to next (${next.title})` : "Back to next", (cx) => options.onPick(null, cx), {
-          tooltip: "Show the next milestone again; it moves on by itself",
-        }),
+        TextButton(
+          "ms-back",
+          next ? `Back to next (${next.title})` : "Back to next",
+          (cx) => options.onPick(null, cx),
+          {
+            tooltip: "Show the next milestone again; it moves on by itself",
+          },
+        ),
       ),
     )
     .child(div().flex_1())

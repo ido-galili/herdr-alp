@@ -62,24 +62,36 @@ export default class Pane extends View {
   init(_props, cx) {
     this.hovered = false;
     this.info = null;
-    this.wt = null;          // worktree name, or null in a main checkout / outside git
-    this.wtRepo = null;      // the main checkout a linked worktree belongs to
-    this.wtCwd = undefined;  // the folder this.wt was worked out for
+    this.wt = null; // worktree name, or null in a main checkout / outside git
+    this.wtRepo = null; // the main checkout a linked worktree belongs to
+    this.wtCwd = undefined; // the folder this.wt was worked out for
     // A linked worktree's git dir is <repo>/.git/worktrees/<name>, while its
     // common dir is the main <repo>/.git; in the main checkout the two are equal.
     const checkWorktree = () => {
       const cwd = this.me()?.cwd ?? null;
       if (cwd === this.wtCwd) return;
       this.wtCwd = cwd;
-      if (!cwd) { if (this.wt) { this.wt = this.wtRepo = null; cx.notify(); } return; }
-      exec("git", ["rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir"], { cwd, timeout: 3000 }).then((r) => {
-        if (this.wtCwd !== cwd) return; // the folder changed again meanwhile
-        const [gitDir, commonDir] = r.code === 0 ? r.stdout.trim().split("\n") : [];
-        const next = gitDir && commonDir && gitDir !== commonDir ? gitDir.split("/").pop() : null;
-        // <repo>/.git -> <repo>; a bare repo's common dir is the repo itself
-        const repo = next ? commonDir.replace(/\/\.git\/?$/, "") : null;
-        if (next !== this.wt || repo !== this.wtRepo) { this.wt = next; this.wtRepo = repo; cx.notify(); }
-      }).catch(() => {});
+      if (!cwd) {
+        if (this.wt) {
+          this.wt = this.wtRepo = null;
+          cx.notify();
+        }
+        return;
+      }
+      exec("git", ["rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir"], { cwd, timeout: 3000 })
+        .then((r) => {
+          if (this.wtCwd !== cwd) return; // the folder changed again meanwhile
+          const [gitDir, commonDir] = r.code === 0 ? r.stdout.trim().split("\n") : [];
+          const next = gitDir && commonDir && gitDir !== commonDir ? gitDir.split("/").pop() : null;
+          // <repo>/.git -> <repo>; a bare repo's common dir is the repo itself
+          const repo = next ? commonDir.replace(/\/\.git\/?$/, "") : null;
+          if (next !== this.wt || repo !== this.wtRepo) {
+            this.wt = next;
+            this.wtRepo = repo;
+            cx.notify();
+          }
+        })
+        .catch(() => {});
     };
     const load = () => {
       checkWorktree();
@@ -87,9 +99,16 @@ export default class Pane extends View {
       if (!term) return;
       readTextFile(`${home()}/.local/state/herdr-agents/${term}.json`).then((txt) => {
         let next = null;
-        try { next = txt ? JSON.parse(txt) : null; } catch { next = null; }
+        try {
+          next = txt ? JSON.parse(txt) : null;
+        } catch {
+          next = null;
+        }
         const pick = (i) => JSON.stringify([i?.agent, i?.model, i?.effort, i?.context_pct]);
-        if (pick(next) !== pick(this.info)) { this.info = next; cx.notify(); }
+        if (pick(next) !== pick(this.info)) {
+          this.info = next;
+          cx.notify();
+        }
       });
     };
     load();
@@ -104,7 +123,17 @@ export default class Pane extends View {
    * @returns {object} The chip element.
    */
   chip(t, text, color) {
-    return div().flex_none().px(6).h(18).flex().items_center().rounded(5).bg(t.hover).text_size(11.5).text_color(color).child(text);
+    return div()
+      .flex_none()
+      .px(6)
+      .h(18)
+      .flex()
+      .items_center()
+      .rounded(5)
+      .bg(t.hover)
+      .text_size(11.5)
+      .text_color(color)
+      .child(text);
   }
 
   /**
@@ -117,10 +146,30 @@ export default class Pane extends View {
   ctx(t, used) {
     const v = Math.max(0, Math.min(100, used));
     const color = v >= 90 ? t.blocked : v >= 70 ? warning(t) : t.accent;
-    return h_flex().flex_none().items_center().gap(6).h(18).px(6).rounded(5).bg(t.hover)
+    return h_flex()
+      .flex_none()
+      .items_center()
+      .gap(6)
+      .h(18)
+      .px(6)
+      .rounded(5)
+      .bg(t.hover)
       .child(div().text_size(11.5).text_color(t.muted).child("context"))
-      .child(div().w(44).h(5).rounded(3).bg(t.border).overflow_hidden().child(div().h(5).w(`${v}%`).rounded(3).bg(color)))
-      .child(div().text_size(11.5).text_color(color).child(`${Math.round(v)}%`));
+      .child(
+        div()
+          .w(44)
+          .h(5)
+          .rounded(3)
+          .bg(t.border)
+          .overflow_hidden()
+          .child(div().h(5).w(`${v}%`).rounded(3).bg(color)),
+      )
+      .child(
+        div()
+          .text_size(11.5)
+          .text_color(color)
+          .child(`${Math.round(v)}%`),
+      );
   }
 
   /**
@@ -148,10 +197,28 @@ export default class Pane extends View {
    * @returns {object | null} The status element, or null when idle or unknown.
    */
   status(t, st) {
-    if (st === "blocked") return div().flex_none().px(6).h(18).flex().items_center().rounded(5).bg(t.blocked + "26").text_size(11.5).font_semibold().text_color(t.blocked).child("Needs you");
-    if (st === "working") return h_flex().flex_none().gap(5).items_center().text_size(11.5).text_color(t.working)
-      .child(svg("mods/workspace-chrome/spinner.svg").size(12).flex_none().text_color(t.working).spin(900))
-      .child("working");
+    if (st === "blocked")
+      return div()
+        .flex_none()
+        .px(6)
+        .h(18)
+        .flex()
+        .items_center()
+        .rounded(5)
+        .bg(t.blocked + "26")
+        .text_size(11.5)
+        .font_semibold()
+        .text_color(t.blocked)
+        .child("Needs you");
+    if (st === "working")
+      return h_flex()
+        .flex_none()
+        .gap(5)
+        .items_center()
+        .text_size(11.5)
+        .text_color(t.working)
+        .child(svg("mods/workspace-chrome/spinner.svg").size(12).flex_none().text_color(t.working).spin(900))
+        .child("working");
     if (st === "done") return svg("mods/workspace-chrome/check.svg").size(13).flex_none().text_color(t.done);
     return null;
   }
@@ -194,21 +261,48 @@ export default class Pane extends View {
     const dir = folderName(p.cwd);
     const shown = this.wt && dir === this.wt ? null : dir;
     // the dots go with the rest, so none dangles after the worktree or before the branch
-    const lead = [this.wt ? "" : null, shown, p.branch ? "" : null].filter((x) => x != null).join(" \u00b7 ").trim();
-    const tip = [folder(p.cwd), this.wt && this.wtRepo && `Linked worktree of ${folder(this.wtRepo)}`].filter(Boolean).join("\n");
-    return h_flex().id(`ph-where-${p.pane}`).flex_1().min_w(0).overflow_hidden().items_center().gap(4).text_color(t.dim)
-      .when(Boolean(tip), (el) => el.tooltip(tip))
-      .when(Boolean(this.wt), (el) => el
-        .child(svg("mods/pane-agent/worktree.svg").size(13).flex_none().text_color(t.dim))
-        .child(div().min_w(0).truncate().child(this.wt)))
-      // the branch name gives way before the folder and the dots (they barely shrink)
-      .child(h_flex().flex_1().min_w(0).overflow_hidden().items_center().gap(4)
-        // a lone dot never shrinks, so a cut-off branch still reads "worktree · ⑂"
-        .when(Boolean(lead), (el) => el.child(shown ? div().min_w(0).flex_shrink(0.01).truncate().child(lead) : div().flex_none().child(lead)))
-        .when(Boolean(p.branch), (el) => el
-          // the footer's branch icon (alp-status), muted like the text
-          .child(svg("mods/workspace-chrome/branch.svg").size(13).flex_none().text_color(t.dim))
-          .child(div().min_w(0).truncate().child(p.branch))));
+    const lead = [this.wt ? "" : null, shown, p.branch ? "" : null]
+      .filter((x) => x != null)
+      .join(" \u00b7 ")
+      .trim();
+    const tip = [folder(p.cwd), this.wt && this.wtRepo && `Linked worktree of ${folder(this.wtRepo)}`]
+      .filter(Boolean)
+      .join("\n");
+    return (
+      h_flex()
+        .id(`ph-where-${p.pane}`)
+        .flex_1()
+        .min_w(0)
+        .overflow_hidden()
+        .items_center()
+        .gap(4)
+        .text_color(t.dim)
+        .when(Boolean(tip), (el) => el.tooltip(tip))
+        .when(Boolean(this.wt), (el) =>
+          el
+            .child(svg("mods/pane-agent/worktree.svg").size(13).flex_none().text_color(t.dim))
+            .child(div().min_w(0).truncate().child(this.wt)),
+        )
+        // the branch name gives way before the folder and the dots (they barely shrink)
+        .child(
+          h_flex()
+            .flex_1()
+            .min_w(0)
+            .overflow_hidden()
+            .items_center()
+            .gap(4)
+            // a lone dot never shrinks, so a cut-off branch still reads "worktree · ⑂"
+            .when(Boolean(lead), (el) =>
+              el.child(shown ? div().min_w(0).flex_shrink(0.01).truncate().child(lead) : div().flex_none().child(lead)),
+            )
+            .when(Boolean(p.branch), (el) =>
+              el
+                // the footer's branch icon (alp-status), muted like the text
+                .child(svg("mods/workspace-chrome/branch.svg").size(13).flex_none().text_color(t.dim))
+                .child(div().min_w(0).truncate().child(p.branch)),
+            ),
+        )
+    );
   }
 
   /**
@@ -232,7 +326,9 @@ export default class Pane extends View {
     const reporting = REPORTING.has(key);
     // the status file belongs to whatever ran in this terminal last: only trust it for the same agent
     const info = reporting && this.info?.agent === key ? this.info : null;
-    const model = [info?.model && modelName(info.model), info?.effort && String(info.effort).toLowerCase()].filter(Boolean).join(" \u00b7 ");
+    const model = [info?.model && modelName(info.model), info?.effort && String(info.effort).toLowerCase()]
+      .filter(Boolean)
+      .join(" \u00b7 ");
     return h_flex()
       .id(`pane-head-${pane}`)
       .size_full()
@@ -244,22 +340,33 @@ export default class Pane extends View {
       .border_b(1)
       .border_color(t.border)
       .text_size(12)
-      .on_hover((hovered, cx) => { this.hovered = hovered; cx.notify(); })
+      .on_hover((hovered, cx) => {
+        this.hovered = hovered;
+        cx.notify();
+      })
       .on_click(() => run("pane.focus", { pane }))
-      .child(pic
-        ? div().id(`ph-icon-${pane}`).flex_none().flex().items_center().tooltip(name).child(pic)
-        // no icon in the program table: the name stands in, so the header never starts blank
-        : div().flex_none().truncate().max_w(260).font_medium().text_color(t.foreground).child(name))
-      .when(Boolean(state), el => el.child(state))
+      .child(
+        pic
+          ? div().id(`ph-icon-${pane}`).flex_none().flex().items_center().tooltip(name).child(pic)
+          : // no icon in the program table: the name stands in, so the header never starts blank
+            div().flex_none().truncate().max_w(260).font_medium().text_color(t.foreground).child(name),
+      )
+      .when(Boolean(state), (el) => el.child(state))
       .child(this.where(t, p))
-      .when(Boolean(model), el => el.child(this.chip(t, model, t.foreground)))
-      .when(info?.context_pct != null, el => el.child(this.ctx(t, info.context_pct)))
-      .when(this.hovered || p.focused, el => el
-        .child(h_flex().flex_none().items_center().gap(2)
-          .child(this.button(t, `ph-r-${pane}`, "split-right", "pane.split", { direction: "right", pane }))
-          .child(this.button(t, `ph-d-${pane}`, "split-down", "pane.split", { direction: "down", pane }))
-          .child(this.button(t, `ph-z-${pane}`, p.zoomed ? "unzoom" : "zoom", "pane.zoom", { pane }))
-          .child(div().w(1).h(14).mx(2).bg(t.border))
-          .child(this.button(t, `ph-x-${pane}`, "close", "pane.close", { pane }))));
+      .when(Boolean(model), (el) => el.child(this.chip(t, model, t.foreground)))
+      .when(info?.context_pct != null, (el) => el.child(this.ctx(t, info.context_pct)))
+      .when(this.hovered || p.focused, (el) =>
+        el.child(
+          h_flex()
+            .flex_none()
+            .items_center()
+            .gap(2)
+            .child(this.button(t, `ph-r-${pane}`, "split-right", "pane.split", { direction: "right", pane }))
+            .child(this.button(t, `ph-d-${pane}`, "split-down", "pane.split", { direction: "down", pane }))
+            .child(this.button(t, `ph-z-${pane}`, p.zoomed ? "unzoom" : "zoom", "pane.zoom", { pane }))
+            .child(div().w(1).h(14).mx(2).bg(t.border))
+            .child(this.button(t, `ph-x-${pane}`, "close", "pane.close", { pane })),
+        ),
+      );
   }
 }

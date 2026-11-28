@@ -121,7 +121,9 @@ const REPO_HEADER = `// Alp's config for this repo: the Run tab's runs. https://
  * @returns {Promise<void>}
  */
 async function ignoreLocalFile(root) {
-  const result = await exec("git", ["-C", root, "rev-parse", "--path-format=absolute", "--git-common-dir"]).catch(() => null);
+  const result = await exec("git", ["-C", root, "rev-parse", "--path-format=absolute", "--git-common-dir"]).catch(
+    () => null,
+  );
   if (result?.code !== 0) return;
   const path = `${result.stdout.trim()}/info/exclude`;
   const text = await readTextFile(path).catch(() => null);

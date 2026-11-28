@@ -149,7 +149,8 @@ function formatValue(value, indent) {
   if (Array.isArray(value)) {
     if (!value.length) return "[]";
     const flat = `[${value.map((item) => JSON.stringify(item)).join(", ")}]`;
-    if (value.every((item) => item === null || typeof item !== "object") && indent.length + flat.length <= 80) return flat;
+    if (value.every((item) => item === null || typeof item !== "object") && indent.length + flat.length <= 80)
+      return flat;
     return `[\n${value.map((item) => inner + formatValue(item, inner)).join(",\n")}\n${indent}]`;
   }
   if (value !== null && typeof value === "object") {

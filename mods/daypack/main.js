@@ -75,7 +75,9 @@ async function loadLaunch() {
     return {
       issue: account.launch?.issue ?? DEFAULT_ISSUE_PROMPT,
       pr: account.launch?.pr ?? DEFAULT_PR_PROMPT,
-      folders: Object.fromEntries(Object.entries(account.folders ?? {}).map(([repo, path]) => [repo, expandHome(path)])),
+      folders: Object.fromEntries(
+        Object.entries(account.folders ?? {}).map(([repo, path]) => [repo, expandHome(path)]),
+      ),
     };
   } catch (error) {
     console.log(`daypack: settings unreadable, no Claude buttons: ${error}`);
@@ -280,7 +282,11 @@ export default class Daypack extends View {
       cx.stop_propagation();
       onPress(cx);
     };
-    const lit = (style) => style.bg(t.hover).text_color(color ?? t.foreground).opacity(1);
+    const lit = (style) =>
+      style
+        .bg(t.hover)
+        .text_color(color ?? t.foreground)
+        .opacity(1);
     return h_flex()
       .id(id)
       .flex_none()
@@ -722,7 +728,9 @@ export default class Daypack extends View {
                     .text_color(row.key === this.filter ? t.accent : t.foreground)
                     .child(row.title),
                 )
-                .when(Boolean(row.sub), (el) => el.child(div().truncate().text_size(11.5).text_color(t.dim).child(row.sub))),
+                .when(Boolean(row.sub), (el) =>
+                  el.child(div().truncate().text_size(11.5).text_color(t.dim).child(row.sub)),
+                ),
             )
             .child(div().flex_none().text_size(11.5).text_color(t.dim).child(`${row.count} open`)),
         ),
@@ -769,7 +777,9 @@ export default class Daypack extends View {
               .text_color(this.grouped ? t.foreground : t.dim)
               .cursor_pointer()
               .hover((style) => style.bg(t.hover))
-              .tooltip(this.grouped ? "Showing a group per repo; click for PRs, issues and todos" : "Show a group per repo")
+              .tooltip(
+                this.grouped ? "Showing a group per repo; click for PRs, issues and todos" : "Show a group per repo",
+              )
               .on_click((_event, cx) => {
                 cx.stop_propagation();
                 this.toggleGrouped(cx);
@@ -898,17 +908,30 @@ export default class Daypack extends View {
       .when(!isTodo, (el) =>
         el
           .child(
-            this.iconButton(t, `ls-unpin-${item.id}`, svg(PIN_ICON).size(13), "Unpin from Today", (cx) => this.remove(item.id, cx), {
-              color: t.accent,
-            }),
+            this.iconButton(
+              t,
+              `ls-unpin-${item.id}`,
+              svg(PIN_ICON).size(13),
+              "Unpin from Today",
+              (cx) => this.remove(item.id, cx),
+              {
+                color: t.accent,
+              },
+            ),
           )
           .children([this.claudeButton(t, item)].filter(Boolean)),
       )
       .when(isTodo && !editing, (el) =>
-        el.child(this.iconButton(t, `ls-edit-${item.id}`, svg(EDIT_ICON).size(13), "Edit", (cx) => this.startEdit(item, cx))),
+        el.child(
+          this.iconButton(t, `ls-edit-${item.id}`, svg(EDIT_ICON).size(13), "Edit", (cx) => this.startEdit(item, cx)),
+        ),
       )
       .when(isTodo, (el) =>
-        el.child(this.iconButton(t, `ls-remove-${item.id}`, svg(CLOSE_ICON).size(13), "Remove", (cx) => this.remove(item.id, cx))),
+        el.child(
+          this.iconButton(t, `ls-remove-${item.id}`, svg(CLOSE_ICON).size(13), "Remove", (cx) =>
+            this.remove(item.id, cx),
+          ),
+        ),
       );
   }
 
@@ -931,10 +954,17 @@ export default class Daypack extends View {
     const groups = [
       ...(loose.length ? [{ title: "Todos", rows: loose }] : []),
       ...this.repos(items)
-        .map(({ repo }) => ({ title: shortRepo(repo), tooltip: repo, rows: byKind(items.filter((item) => repoOf(item) === repo)) }))
+        .map(({ repo }) => ({
+          title: shortRepo(repo),
+          tooltip: repo,
+          rows: byKind(items.filter((item) => repoOf(item) === repo)),
+        }))
         .filter((group) => group.rows.length),
     ];
-    return groups.flatMap((group) => [this.heading(t, group.title, group.rows, group.tooltip), ...group.rows.map((item) => this.row(t, item))]);
+    return groups.flatMap((group) => [
+      this.heading(t, group.title, group.rows, group.tooltip),
+      ...group.rows.map((item) => this.row(t, item)),
+    ]);
   }
 
   /**
@@ -966,10 +996,16 @@ export default class Daypack extends View {
               .items_center()
               .text_size(11.5)
               .child(div().font_semibold().text_color(t.dim).child("Today"))
-              .child(div().text_color(t.dim).child(`${open} open · ${items.length - open} done`))
+              .child(
+                div()
+                  .text_color(t.dim)
+                  .child(`${open} open · ${items.length - open} done`),
+              )
               .child(div().flex_1())
               .when(this.keyHidden, (el) =>
-                el.child(this.textButton(t, "daypack-key-show", "Key", (cx) => this.setKeyHidden(false, cx), "Show the key")),
+                el.child(
+                  this.textButton(t, "daypack-key-show", "Key", (cx) => this.setKeyHidden(false, cx), "Show the key"),
+                ),
               ),
           )
           .when(!this.keyHidden, (el) => el.child(this.key(t)))

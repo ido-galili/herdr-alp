@@ -84,7 +84,13 @@ export function StatusMark(t, status) {
   if (status === "working") return svg(SPINNER).size(12).flex_none().text_color(t.working).spin(900);
   if (status === "blocked") return Chip("Needs you", { color: t.blocked, fill: `${t.blocked}26` });
   if (status === "done") return div().size(7).mx(2).flex_none().rounded(4).bg(t.done);
-  return div().size(7).mx(2).flex_none().rounded(4).border(1.5).border_color(t.idle ?? t.dim);
+  return div()
+    .size(7)
+    .mx(2)
+    .flex_none()
+    .rounded(4)
+    .border(1.5)
+    .border_color(t.idle ?? t.dim);
 }
 
 /**
@@ -98,7 +104,12 @@ export function StatusMark(t, status) {
  */
 export function RoleIcon(t, id, role, color, size = 14) {
   const { icon, tooltip } = ROLE_ICONS[role];
-  return div().id(id).flex_none().text_color(color ?? t.muted).tooltip(tooltip).child(svg(icon).size(size));
+  return div()
+    .id(id)
+    .flex_none()
+    .text_color(color ?? t.muted)
+    .tooltip(tooltip)
+    .child(svg(icon).size(size));
 }
 
 /**
@@ -158,7 +169,13 @@ function TabPicker(t, sessionId, sessions, live, actions) {
           .cursor_pointer()
           .hover((style) => style.bg(t.hover))
           .on_click((_event, cx) => actions.link(sessionId, agent.address, cx))
-          .child(div().flex_1().min_w(0).truncate().child(`${agent.space_name} / ${agent.title || agent.tab_name}`))
+          .child(
+            div()
+              .flex_1()
+              .min_w(0)
+              .truncate()
+              .child(`${agent.space_name} / ${agent.title || agent.tab_name}`),
+          )
           .when(viewers.has(agent.address), (el) =>
             el.child(div().text_size(11.5).text_color(t.accent).child("shows a background session")),
           ),
@@ -188,7 +205,14 @@ export function linkTo(herd, member) {
 }
 
 // A space's stored color as the spaces mod paints it (the same table as the agents list).
-const MARK = { ansi6: "#22a99a", ansi3: "#e3814f", ansi4: "#5b8def", ansi5: "#8b7cf6", ansi2: "#3fae6a", ansi1: "#d9649a" };
+const MARK = {
+  ansi6: "#22a99a",
+  ansi3: "#e3814f",
+  ansi4: "#5b8def",
+  ansi5: "#8b7cf6",
+  ansi2: "#3fae6a",
+  ansi1: "#d9649a",
+};
 
 /**
  * The space colors to paint with: the demo's own in demo mode, else Herdr's.
@@ -323,7 +347,14 @@ export function SessionCard(t, session, live, actions, options) {
             .min_w(0)
             .children(lead ? [lead] : [])
             .child(
-              div().flex_1().min_w(0).truncate().text_size(text(12)).font_medium().text_color(t.foreground).child(session.name),
+              div()
+                .flex_1()
+                .min_w(0)
+                .truncate()
+                .text_size(text(12))
+                .font_medium()
+                .text_color(t.foreground)
+                .child(session.name),
             )
             .children(trail),
         )
@@ -333,7 +364,15 @@ export function SessionCard(t, session, live, actions, options) {
               .gap(Math.max(3, 6 * z))
               .items_center()
               .min_w(0)
-              .child(div().flex_1().min_w(0).truncate().text_size(text(11.5)).text_color(t.dim).child(sub ?? spaceAndBranch(session, live)))
+              .child(
+                div()
+                  .flex_1()
+                  .min_w(0)
+                  .truncate()
+                  .text_size(text(11.5))
+                  .text_color(t.dim)
+                  .child(sub ?? spaceAndBranch(session, live)),
+              )
               .children(extras.filter(Boolean)),
           ),
         ),
@@ -385,7 +424,11 @@ function SectionHeading(t, name, count, color) {
     .items_center()
     .text_size(11.5)
     .font_semibold()
-    .child(div().text_color(color ?? t.muted).child(name))
+    .child(
+      div()
+        .text_color(color ?? t.muted)
+        .child(name),
+    )
     .child(div().text_color(t.dim).child(String(count)));
 }
 
@@ -427,8 +470,16 @@ function CardsView(t, model, groups, live, actions) {
   const everyone = [...groups.herds.flatMap((herd) => [herd.herdsman, ...herd.members]), ...groups.grazing];
   const needsYou = sortedBySpace(everyone.filter(blocked), live, model);
   const grazing = groups.grazing.filter((session) => !blocked(session));
-  const withTab = sortedBySpace(grazing.filter((session) => live.has(session.terminal)), live, model);
-  const background = sortedBySpace(grazing.filter((session) => !live.has(session.terminal)), live, model);
+  const withTab = sortedBySpace(
+    grazing.filter((session) => live.has(session.terminal)),
+    live,
+    model,
+  );
+  const background = sortedBySpace(
+    grazing.filter((session) => !live.has(session.terminal)),
+    live,
+    model,
+  );
   const space = (session) => live.get(session.terminal)?.space_name;
   // Where a session that needs you belongs, since its card is not in its herd's row.
   const whereFrom = (session) =>
@@ -460,7 +511,10 @@ function CardsView(t, model, groups, live, actions) {
         .child(
           CardRow().children(
             needsYou.map((session) =>
-              ListCard(t, session, live, actions, { role: leads.has(session.id) ? "herdsman" : undefined, sub: whereFrom(session) }),
+              ListCard(t, session, live, actions, {
+                role: leads.has(session.id) ? "herdsman" : undefined,
+                sub: whereFrom(session),
+              }),
             ),
           ),
         ),
@@ -506,7 +560,11 @@ function CardsView(t, model, groups, live, actions) {
             .hover((style) => style.bg(t.hover).text_color(t.foreground))
             .tooltip("Sessions with no tab: in the background, in Claude Desktop, or their tab closed")
             .on_click((_event, cx) => canvas?.toggleBackground(cx))
-            .child(svg(`mods/workspace-chrome/chevron-${canvas?.backgroundOpen ? "down" : "right"}.svg`).size(12).flex_none())
+            .child(
+              svg(`mods/workspace-chrome/chevron-${canvas?.backgroundOpen ? "down" : "right"}.svg`)
+                .size(12)
+                .flex_none(),
+            )
             .child(`Background, no tab · ${background.length}`),
         )
         .when(Boolean(canvas?.backgroundOpen), (open) =>
@@ -549,7 +607,11 @@ function Pill(id, text, color, fill) {
  */
 function Key(t, canvas) {
   const entry = (mark, words) => h_flex().flex_none().gap(6).items_center().child(mark).child(words);
-  const icon = (path, color) => svg(path).size(13).flex_none().text_color(color ?? t.muted);
+  const icon = (path, color) =>
+    svg(path)
+      .size(13)
+      .flex_none()
+      .text_color(color ?? t.muted);
   return h_flex()
     .flex_wrap()
     .items_center()
@@ -568,7 +630,15 @@ function Key(t, canvas) {
     .child(entry(icon(ROLE_ICONS.fork.icon), "fork"))
     .child(entry(icon(ROLE_ICONS.agent.icon), "agent"))
     .child(entry(div().w(20).h(1).bg(t.muted), "messaged"))
-    .child(entry(h_flex().w(20).gap(4).children([0, 1, 2].map(() => div().w(4).h(1).bg(t.muted))), "made its worktree"))
+    .child(
+      entry(
+        h_flex()
+          .w(20)
+          .gap(4)
+          .children([0, 1, 2].map(() => div().w(4).h(1).bg(t.muted))),
+        "made its worktree",
+      ),
+    )
     .child(entry(BgTag(t, "herds-key-bg"), "runs in background"))
     .child(entry(div().w(3).h(14).rounded(1).bg(t.working), "space colour"))
     .child(div().flex_1())
@@ -596,7 +666,9 @@ export function Herds(model, actions) {
   const shown = [...herds.flatMap((herd) => [herd.herdsman, ...herd.members]), ...grazing];
   const working = shown.filter((session) => statusOf(session, live) === "working").length;
   const blocked = shown.filter((session) => statusOf(session, live) === "blocked").length;
-  const agentsWorking = shown.flatMap((session) => session.agents ?? []).filter((agent) => agent.status === "working").length;
+  const agentsWorking = shown
+    .flatMap((session) => session.agents ?? [])
+    .filter((agent) => agent.status === "working").length;
   const canvas = actions.canvas;
   const full = canvas.full;
   const onMap = canvas.view === "map";
@@ -635,7 +707,9 @@ export function Herds(model, actions) {
     .children(canvas.switcher())
     .children(onMap ? [div().w(1).h(16).mx(4).bg(t.border), ...canvas.mapControls(t)] : [])
     .when(canvas.keyHidden, (el) =>
-      el.child(TextButton("herds-key-show", "Key", (cx) => canvas.setKeyHidden(false, cx), { tooltip: "Show the key" })),
+      el.child(
+        TextButton("herds-key-show", "Key", (cx) => canvas.setKeyHidden(false, cx), { tooltip: "Show the key" }),
+      ),
     )
     .child(canvas.fullButton());
 
@@ -651,7 +725,10 @@ export function Herds(model, actions) {
             live,
             actions,
             // The key's row and its gap come off the map's height while it shows.
-            Math.max(220, (full ? (actions.fullHeight ?? 600) : (actions.canvasHeight ?? 520)) - (canvas.keyHidden ? 0 : KEY_ROOM)),
+            Math.max(
+              220,
+              (full ? (actions.fullHeight ?? 600) : (actions.canvasHeight ?? 520)) - (canvas.keyHidden ? 0 : KEY_ROOM),
+            ),
           ),
         )
         .when(others.length > 0, (el) =>

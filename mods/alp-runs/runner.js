@@ -29,7 +29,7 @@ async function loginShell() {
   if (shellPath) return shellPath;
   const script = [
     'case "${SHELL##*/}" in zsh|bash|sh|dash|ksh) [ -x "$SHELL" ] && { printf %s "$SHELL"; exit; };; esac',
-    "for s in /bin/zsh /usr/bin/zsh /bin/bash /usr/bin/bash; do [ -x \"$s\" ] && { printf %s \"$s\"; exit; }; done",
+    'for s in /bin/zsh /usr/bin/zsh /bin/bash /usr/bin/bash; do [ -x "$s" ] && { printf %s "$s"; exit; }; done',
     "printf /bin/sh",
   ].join("\n");
   const result = await exec("sh", ["-c", script]).catch(() => null);

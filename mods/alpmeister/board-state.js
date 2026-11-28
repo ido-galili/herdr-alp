@@ -56,7 +56,10 @@ const sameView = (one, other) => one.query.trim() === other.query.trim() && same
  * @param {{ query: string, statuses?: string[] }} view The filter, and the columns.
  * @returns {object} A copy; `ws` is not changed.
  */
-const withView = (ws, view) => ({ ...ws, boardView: { ...ws.boardView, query: view.query.trim(), statuses: view.statuses ?? ws.boardView.statuses } });
+const withView = (ws, view) => ({
+  ...ws,
+  boardView: { ...ws.boardView, query: view.query.trim(), statuses: view.statuses ?? ws.boardView.statuses },
+});
 
 /**
  * How a toast names a card: its number, or a draft's title.
@@ -173,7 +176,8 @@ export class BoardState {
       onCardPointer: (itemId, point) => (this.pointer = { itemId, ...point }),
       isClick: () => this.isClick(),
       onCardDown: (item, event) => this.dragStart(item, event),
-      onDragMove: (event, column, cardWidth, columnItems, cx) => this.dragMove(event, column, cardWidth, columnItems, cx),
+      onDragMove: (event, column, cardWidth, columnItems, cx) =>
+        this.dragMove(event, column, cardWidth, columnItems, cx),
       dropIndex: this.drag?.moved ? (this.drag.index ?? null) : null,
       onCardSize: (itemId, height) => this.measureCard(itemId, height),
       onHeaderSize: (height) => this.measureHeader(height),
@@ -328,7 +332,9 @@ export class BoardState {
       placeholder: "The board's filter, such as type:Bug iteration:@current",
       hint: "The chips write this. Enter updates the preview.",
       noun: ["card", "cards"],
-      now: this.view.model?.workspaces?.[ws.name]?.boardView ? items.filter((item) => pickedItem(item, this.picked(ws))).length : null,
+      now: this.view.model?.workspaces?.[ws.name]?.boardView
+        ? items.filter((item) => pickedItem(item, this.picked(ws))).length
+        : null,
       saveLabel: "Save for this board",
       demo: this.view.demo,
     };
@@ -369,7 +375,10 @@ export class BoardState {
       const target = withView(ws, view);
       if (this.view.demo) {
         const config = this.view.config;
-        this.view.config = { ...config, workspaces: config.workspaces.map((entry) => (entry.name === ws.name ? target : entry)) };
+        this.view.config = {
+          ...config,
+          workspaces: config.workspaces.map((entry) => (entry.name === ws.name ? target : entry)),
+        };
         this.putBoard(ws, demoBoardView(target));
       } else {
         const text = await readTextFile(configPath());
@@ -418,7 +427,9 @@ export class BoardState {
   toggleColumn(ws, draft, status) {
     const ticked = boardStatuses(withView(ws, draft));
     const current = ticked.length ? ticked : ws.statuses;
-    const next = current.includes(status) ? current.filter((entry) => entry !== status) : ws.statuses.filter((entry) => entry === status || current.includes(entry));
+    const next = current.includes(status)
+      ? current.filter((entry) => entry !== status)
+      : ws.statuses.filter((entry) => entry === status || current.includes(entry));
     if (!next.length) return "Keep at least one column.";
     const saved = this.saved(ws).statuses;
     const all = next.length === ws.statuses.length;
@@ -614,7 +625,7 @@ export class BoardState {
     const meta = this.meta(ws);
     if (!items || !meta) return cx.notify();
     const now = items.slice();
-    const before = move.order ? move.order[move.order.indexOf(item) - 1] ?? null : null;
+    const before = move.order ? (move.order[move.order.indexOf(item) - 1] ?? null) : null;
     const status = this.fieldChange(item, { status: move.from });
     const change = {
       apply: () => {
@@ -636,7 +647,11 @@ export class BoardState {
       cx,
       (cx) =>
         this.showToast(
-          { text: `Moved ${cardName(item)} back to`, status: move.from ?? NO_STATUS, tail: this.view.demo ? "(demo)" : "on GitHub" },
+          {
+            text: `Moved ${cardName(item)} back to`,
+            status: move.from ?? NO_STATUS,
+            tail: this.view.demo ? "(demo)" : "on GitHub",
+          },
           DONE_TOAST_MS,
           cx,
         ),
@@ -658,8 +673,12 @@ export class BoardState {
     const meta = this.meta(ws);
     if (!meta || to === item.status) return cx.notify();
     const from = item.status;
-    this.write(item, this.fieldChange(item, { status: to }), () => setStatus(meta, item, to), cx, (cx) =>
-      this.movedToast(ws, item, { from, to, order: null }, cx),
+    this.write(
+      item,
+      this.fieldChange(item, { status: to }),
+      () => setStatus(meta, item, to),
+      cx,
+      (cx) => this.movedToast(ws, item, { from, to, order: null }, cx),
     );
   }
 
@@ -796,7 +815,8 @@ export class BoardState {
     if (!items) return;
     const sameStatus = (item.status ?? NO_STATUS) === column;
     const at = items.indexOf(item);
-    if (sameStatus && (after ? items.indexOf(after) === at - 1 : before ? items.indexOf(before) === at + 1 : true)) return;
+    if (sameStatus && (after ? items.indexOf(after) === at - 1 : before ? items.indexOf(before) === at + 1 : true))
+      return;
     const meta = this.meta(ws);
     if (!meta) {
       this.writeError = "Refresh to load the board's ids before moving a card.";

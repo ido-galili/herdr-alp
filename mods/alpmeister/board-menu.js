@@ -28,15 +28,17 @@ const NO_STATUS = "No status";
  * @param {{ press(cx: object): void, right?: boolean, onBack?: (cx: object) => void }} keys
  * @returns {(event: object, cx: object) => void}
  */
-const rowKeys = ({ press, right = false, onBack }) => (event, cx) => {
-  if (event.key === "enter" || event.key === "space" || (right && event.key === "right")) {
-    cx.stop_propagation();
-    press(cx);
-  } else if (event.key === "left" && onBack) {
-    cx.stop_propagation();
-    onBack(cx);
-  }
-};
+const rowKeys =
+  ({ press, right = false, onBack }) =>
+  (event, cx) => {
+    if (event.key === "enter" || event.key === "space" || (right && event.key === "right")) {
+      cx.stop_propagation();
+      press(cx);
+    } else if (event.key === "left" && onBack) {
+      cx.stop_propagation();
+      onBack(cx);
+    }
+  };
 
 /**
  * Whether an iteration holds today.
@@ -88,7 +90,13 @@ function Row(t, id, { label, note, ticked, onPick, focus, onBack }) {
       cx.stop_propagation();
       onPick(cx);
     })
-    .child(div().w(12).text_size(11.5).text_color(t.accent).child(ticked ? "✓" : ""))
+    .child(
+      div()
+        .w(12)
+        .text_size(11.5)
+        .text_color(t.accent)
+        .child(ticked ? "✓" : ""),
+    )
     .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(t.foreground).child(label))
     .when(Boolean(note), (el) => el.child(div().flex_none().text_size(11.5).text_color(t.dim).child(note)));
 }
@@ -100,7 +108,17 @@ function Row(t, id, { label, note, ticked, onPick, focus, onBack }) {
  * @returns {object}
  */
 const Panel = (t, id) =>
-  v_flex().id(id).w(240).max_h(380).overflow_y_scrollbar().p(4).rounded(8).bg(t.background).border_1().border_color(t.border).shadow_lg();
+  v_flex()
+    .id(id)
+    .w(240)
+    .max_h(380)
+    .overflow_y_scrollbar()
+    .p(4)
+    .rounded(8)
+    .bg(t.background)
+    .border_1()
+    .border_color(t.border)
+    .shadow_lg();
 
 /**
  * A line of dim or red text in a menu.
@@ -109,7 +127,13 @@ const Panel = (t, id) =>
  * @param {string} [color] Its colour; dim by default.
  * @returns {object}
  */
-const Line = (t, text, color) => div().px(8).py(4).text_size(11.5).text_color(color ?? t.dim).child(text);
+const Line = (t, text, color) =>
+  div()
+    .px(8)
+    .py(4)
+    .text_size(11.5)
+    .text_color(color ?? t.dim)
+    .child(text);
 
 /**
  * A top-level row: its name, the card's current value, and a chevron. Pointing at it or
@@ -149,7 +173,13 @@ function SubmenuRow(t, id, { icon, label, value, open, onOpen, focus }) {
     .child(
       icon
         ? svg(icon).flex_none().size(13).text_color(t.muted)
-        : div().flex_none().size(13).flex().items_center().justify_center().child(div().size(8).rounded_full().border_1().border_color(t.muted)),
+        : div()
+            .flex_none()
+            .size(13)
+            .flex()
+            .items_center()
+            .justify_center()
+            .child(div().size(8).rounded_full().border_1().border_color(t.muted)),
     )
     .child(div().flex_none().text_size(12).text_color(t.foreground).child(label))
     .child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(t.dim).child(value))
@@ -227,7 +257,8 @@ function MilestoneMenu(t, id, item, options) {
   if (!milestones || milestones.loading) return Panel(t, id).child(Line(t, "Loading…"));
   if (milestones.error) return Panel(t, id).child(Line(t, milestones.error, t.blocked));
   const list = [...milestones.list];
-  if (item.milestone && !list.some((milestone) => milestone.id === item.milestone.id)) list.unshift({ ...item.milestone, dueOn: null });
+  if (item.milestone && !list.some((milestone) => milestone.id === item.milestone.id))
+    list.unshift({ ...item.milestone, dueOn: null });
   return Panel(t, id)
     .child(
       Row(t, `${id}-none`, {

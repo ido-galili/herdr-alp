@@ -4,7 +4,22 @@
 
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, layout } from "herdr";
+import {
+  agents,
+  terminals,
+  panes,
+  focused,
+  spaces,
+  run,
+  theme,
+  shared,
+  setShared,
+  setAgentOrder,
+  openOverlay,
+  closeOverlay,
+  props,
+  layout,
+} from "herdr";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -21,7 +36,11 @@ const narrow = () => (find(layout(), "sidebar")?.size?.px ?? Infinity) < 160;
 // Drops what an agent puts before its title: a status glyph or spinner and the separator
 // after it ("✦  Working", "⠋ - Thinking"), and Codex's blinking "[ ! ] " / "[ . ] " mark.
 // Stops at an opening bracket or quote, so a title that starts with one ("[web] login") keeps it.
-const clean = (s) => (s ?? "").replace(/^[^\p{L}\p{N}\p{Ps}\p{Pi}]+/u, "").replace(/^\[ [!.] \] /, "").trim();
+const clean = (s) =>
+  (s ?? "")
+    .replace(/^[^\p{L}\p{N}\p{Ps}\p{Pi}]+/u, "")
+    .replace(/^\[ [!.] \] /, "")
+    .trim();
 
 function leadPanes(all) {
   const leads = new Map();
@@ -29,7 +48,8 @@ function leadPanes(all) {
     if (!p.terminal) continue;
     const current = leads.get(p.tab);
     // First agent, else first focused terminal, else first terminal in the tab.
-    if (!current || (!current.program?.agent && (p.program?.agent || (!current.focused && p.focused)))) leads.set(p.tab, p);
+    if (!current || (!current.program?.agent && (p.program?.agent || (!current.focused && p.focused))))
+      leads.set(p.tab, p);
   }
   return leads;
 }
@@ -39,7 +59,13 @@ function title(tab, l) {
   const live = clean(l?.title);
   // clean() would strip a path's leading ~ or /: test the title with only its status glyph gone.
   const path = /^[~/]|^[A-Za-z]:\\/.test((l?.title ?? "").replace(/^[^\p{L}\p{N}~/]+/u, ""));
-  const telling = live && live !== (l?.terminal ?? l?.address) && live !== prog && !path && !live.includes("@") && live.toLowerCase() !== l?.program?.key;
+  const telling =
+    live &&
+    live !== (l?.terminal ?? l?.address) &&
+    live !== prog &&
+    !path &&
+    !live.includes("@") &&
+    live.toLowerCase() !== l?.program?.key;
   return (tab.name === prog || !tab.named) && telling ? live : tab.name;
 }
 const RANK = { blocked: 4, done: 3, working: 2, idle: 1 };
@@ -59,7 +85,10 @@ const sortOf = () => SORTS.find((s) => s.id === shared("agents.sort")) ?? SORTS[
 const SECTION = { 4: "Needs you", 3: "Done", 2: "Working", 1: "Idle" };
 const SECTION_STATUS = { 4: "blocked", 3: "done", 2: "working" };
 // A space header's summary, in this order: "· 1 working · 1 done".
-const SUMMARY = [[2, "working"], [3, "done"]];
+const SUMMARY = [
+  [2, "working"],
+  [3, "done"],
+];
 
 function duration(ms) {
   const m = Math.floor(ms / 60000);
@@ -70,7 +99,14 @@ function duration(ms) {
 }
 
 // What a stored color name looks like on a space avatar: the same table as the spaces mod.
-const MARK = { ansi6: "#22a99a", ansi3: "#e3814f", ansi4: "#5b8def", ansi5: "#8b7cf6", ansi2: "#3fae6a", ansi1: "#d9649a" };
+const MARK = {
+  ansi6: "#22a99a",
+  ansi3: "#e3814f",
+  ansi4: "#5b8def",
+  ansi5: "#8b7cf6",
+  ansi2: "#3fae6a",
+  ansi1: "#d9649a",
+};
 
 // A space as the spaces mod draws it: its first letter on the space's color.
 // At 18px it matches the spaces mod; smaller sizes scale the corner and letter with it.
@@ -81,11 +117,11 @@ function avatar(t, colors, key, space, name, size = 18) {
     .id(key)
     .size(size)
     .flex_none()
-    .rounded(Math.round(size * 5 / 18))
+    .rounded(Math.round((size * 5) / 18))
     .bg(fill)
     .items_center()
     .justify_center()
-    .text_size(size * 10.5 / 18)
+    .text_size((size * 10.5) / 18)
     .font_bold()
     .text_color("#ffffff")
     .child([...(name ?? "")][0]?.toUpperCase() ?? "?");
@@ -102,11 +138,23 @@ export default class Agents extends View {
     if (props()?.sortMenu) return;
     this.folded = new Set();
     // Spaces whose idle agents are unfolded (grouped view); folded is the default.
-    try { this.idleOpen = new Set(JSON.parse(localStorage.getItem("idle.open") ?? "[]")); } catch { this.idleOpen = new Set(); }
+    try {
+      this.idleOpen = new Set(JSON.parse(localStorage.getItem("idle.open") ?? "[]"));
+    } catch {
+      this.idleOpen = new Set();
+    }
     // Each agent's last state and when it changed (ms), kept across restarts.
-    try { this.changed = JSON.parse(localStorage.getItem("changed") ?? "{}"); } catch { this.changed = {}; }
+    try {
+      this.changed = JSON.parse(localStorage.getItem("changed") ?? "{}");
+    } catch {
+      this.changed = {};
+    }
     if (!this.changed || typeof this.changed !== "object" || Array.isArray(this.changed)) this.changed = {};
-    try { this.pendingPins = JSON.parse(localStorage.getItem("pins") ?? "[]"); } catch { this.pendingPins = []; }
+    try {
+      this.pendingPins = JSON.parse(localStorage.getItem("pins") ?? "[]");
+    } catch {
+      this.pendingPins = [];
+    }
     if (!Array.isArray(this.pendingPins)) this.pendingPins = [];
     if (!this.pendingPins.length) localStorage.removeItem("pins");
     this.migratingPins = new Set();
@@ -126,7 +174,8 @@ export default class Agents extends View {
     if (!dirty) return;
     // Gone and old: the list alone is empty right after a start.
     const listed = new Set(list.map((a) => a.address));
-    for (const [k, c] of Object.entries(this.changed)) if (!listed.has(k) && now - c.at > 30 * 86400000) delete this.changed[k];
+    for (const [k, c] of Object.entries(this.changed))
+      if (!listed.has(k) && now - c.at > 30 * 86400000) delete this.changed[k];
     localStorage.setItem("changed", JSON.stringify(this.changed));
   }
 
@@ -171,22 +220,28 @@ export default class Agents extends View {
       .bg(t.popover)
       .text_size(12.8)
       .child(div().px(8).pt(4).pb(6).text_size(11.5).text_color(t.dim).child("Show agents"))
-      .children(SORTS.map((s) => h_flex()
-        .id(`sort-${s.id}`)
-        .h(31)
-        .px(8)
-        .gap(9)
-        .rounded(7)
-        .items_center()
-        .text_color(t.foreground)
-        .hover((el) => el.bg(t.hover))
-        .on_click(() => {
-          setShared("agents.sort", s.id);
-          closeOverlay(props().overlay);
-        })
-        .child(svg(`mods/workspace-chrome/${s.icon}.svg`).size(14).flex_none().text_color(t.muted))
-        .child(div().flex_1().child(s.label))
-        .when(s.id === on, (el) => el.child(svg("mods/workspace-chrome/check.svg").size(14).flex_none().text_color(t.foreground)))));
+      .children(
+        SORTS.map((s) =>
+          h_flex()
+            .id(`sort-${s.id}`)
+            .h(31)
+            .px(8)
+            .gap(9)
+            .rounded(7)
+            .items_center()
+            .text_color(t.foreground)
+            .hover((el) => el.bg(t.hover))
+            .on_click(() => {
+              setShared("agents.sort", s.id);
+              closeOverlay(props().overlay);
+            })
+            .child(svg(`mods/workspace-chrome/${s.icon}.svg`).size(14).flex_none().text_color(t.muted))
+            .child(div().flex_1().child(s.label))
+            .when(s.id === on, (el) =>
+              el.child(svg("mods/workspace-chrome/check.svg").size(14).flex_none().text_color(t.foreground)),
+            ),
+        ),
+      );
   }
 
   peek(addr) {
@@ -198,10 +253,7 @@ export default class Agents extends View {
     const kids = all.filter((k) => k.parent === addr && k.state === "live");
     return kids.flatMap((k, i) => {
       const last = i === kids.length - 1;
-      return [
-        { t: k, lines: [...lead, last ? "└" : "├"] },
-        ...this.tree(all, k.address, [...lead, last ? "" : "│"]),
-      ];
+      return [{ t: k, lines: [...lead, last ? "└" : "├"] }, ...this.tree(all, k.address, [...lead, last ? "" : "│"])];
     });
   }
 
@@ -223,11 +275,27 @@ export default class Agents extends View {
       .when(on, (el) => el.bg(t.raised))
       .hover((s) => s.bg(t.hover))
       .on_click(() => (this.listed.has(k.address) ? run("pane.focus", { terminal: k.address }) : this.peek(k.address)))
-      .children(s.lines.map(l => div().self_start().mt(-4).w(9).h(17).mr(4).flex_none()
-        .when(Boolean(l), el => el.border_l(1.5).border_color(t.input))
-        .when(l === "└" || l === "├", el => el.border_b(1.5).rounded_bl(6))))
-      .when(Boolean(pic), el => el.child(div().mr(8).child(pic)))
-      .child(div().flex_1().truncate().text_color(on ? t.foreground : t.muted).child(k.name || k.template || k.program?.name || k.address))
+      .children(
+        s.lines.map((l) =>
+          div()
+            .self_start()
+            .mt(-4)
+            .w(9)
+            .h(17)
+            .mr(4)
+            .flex_none()
+            .when(Boolean(l), (el) => el.border_l(1.5).border_color(t.input))
+            .when(l === "└" || l === "├", (el) => el.border_b(1.5).rounded_bl(6)),
+        ),
+      )
+      .when(Boolean(pic), (el) => el.child(div().mr(8).child(pic)))
+      .child(
+        div()
+          .flex_1()
+          .truncate()
+          .text_color(on ? t.foreground : t.muted)
+          .child(k.name || k.template || k.program?.name || k.address),
+      )
       .children([this.status(t, { status: st }, compact)].filter(Boolean));
   }
 
@@ -240,10 +308,36 @@ export default class Agents extends View {
    * @returns {object | null}
    */
   status(t, a, compact = false) {
-    if (a.status === "working") return svg("mods/workspace-chrome/spinner.svg").size(12).mx(1).flex_none().text_color(t.working).spin(900);
-    if (a.status === "blocked" && compact) return div().size(14).flex_none().rounded(4).bg(t.blocked + "26").text_size(10.5).font_bold().text_color(t.blocked).flex().items_center().justify_center().child("!");
-    if (a.status === "blocked") return div().flex_none().px(6).h(18).rounded(5).bg(t.blocked + "26").text_size(11.5).font_semibold().text_color(t.blocked).flex().items_center().child("Needs you");
-    if (a.status === "done") return svg("mods/workspace-chrome/check.svg").size(12).mx(1).flex_none().text_color(t.done);
+    if (a.status === "working")
+      return svg("mods/workspace-chrome/spinner.svg").size(12).mx(1).flex_none().text_color(t.working).spin(900);
+    if (a.status === "blocked" && compact)
+      return div()
+        .size(14)
+        .flex_none()
+        .rounded(4)
+        .bg(t.blocked + "26")
+        .text_size(10.5)
+        .font_bold()
+        .text_color(t.blocked)
+        .flex()
+        .items_center()
+        .justify_center()
+        .child("!");
+    if (a.status === "blocked")
+      return div()
+        .flex_none()
+        .px(6)
+        .h(18)
+        .rounded(5)
+        .bg(t.blocked + "26")
+        .text_size(11.5)
+        .font_semibold()
+        .text_color(t.blocked)
+        .flex()
+        .items_center()
+        .child("Needs you");
+    if (a.status === "done")
+      return svg("mods/workspace-chrome/check.svg").size(12).mx(1).flex_none().text_color(t.done);
     return null;
   }
 
@@ -286,9 +380,15 @@ export default class Agents extends View {
     const tabCounts = new Map();
     for (const a of list) tabCounts.set(a.tab, (tabCounts.get(a.tab) ?? 0) + 1);
     const byPriority = sort.id === "priority";
-    const urgency = new Map(list.map((a) => [a.address, Math.max(this.rank(a), ...this.tree(all, a.address).map((s) => RANK[kidStatus(s.t, this.listed)] ?? 0))]));
+    const urgency = new Map(
+      list.map((a) => [
+        a.address,
+        Math.max(this.rank(a), ...this.tree(all, a.address).map((s) => RANK[kidStatus(s.t, this.listed)] ?? 0)),
+      ]),
+    );
     const rankOf = (a) => urgency.get(a.address);
-    if (byPriority) list = [...list].sort((x, y) => rankOf(y) - rankOf(x) || this.since(y) - this.since(x) || y.seq - x.seq);
+    if (byPriority)
+      list = [...list].sort((x, y) => rankOf(y) - rankOf(x) || this.since(y) - this.since(x) || y.seq - x.seq);
     const pinned = list.filter((a) => a.pinned);
     const rest = list.filter((a) => !a.pinned);
     list = [...pinned, ...rest];
@@ -328,7 +428,11 @@ export default class Agents extends View {
           open ? this.folded.add(a.address) : this.folded.delete(a.address);
           cx.notify();
         })
-        .child(svg(`mods/workspace-chrome/chevron-${open ? "down" : "right"}.svg`).size(11).flex_none())
+        .child(
+          svg(`mods/workspace-chrome/chevron-${open ? "down" : "right"}.svg`)
+            .size(11)
+            .flex_none(),
+        )
         .when(!open, (el) => el.child(String(subs.length)));
     };
 
@@ -336,17 +440,31 @@ export default class Agents extends View {
     // automatic tab number unless two rows would otherwise read the same.
     // Read the pane snapshot once: every host read copies the whole list into JS.
     const leads = leadPanes(panes());
-    const tabs = new Map(spaces().flatMap(s => s.tabs).map(tab => [tab.id, tab]));
-    const labels = new Map(list.map(a => {
-      const tab = tabs.get(a.tab);
-      const many = tabCounts.get(a.tab) > 1;
-      return [a.address, tab ? title(many ? { ...tab, named: false } : tab, many ? a : leads.get(a.tab)) : (a.title || a.program?.name || "")];
-    }));
+    const tabs = new Map(
+      spaces()
+        .flatMap((s) => s.tabs)
+        .map((tab) => [tab.id, tab]),
+    );
+    const labels = new Map(
+      list.map((a) => {
+        const tab = tabs.get(a.tab);
+        const many = tabCounts.get(a.tab) > 1;
+        return [
+          a.address,
+          tab
+            ? title(many ? { ...tab, named: false } : tab, many ? a : leads.get(a.tab))
+            : a.title || a.program?.name || "",
+        ];
+      }),
+    );
     const label = (a) => labels.get(a.address);
     const colors = shared("space.colors") ?? {};
-    const detail = new Map(list.map(a => [a.address, /^\d+$/.test(label(a)) ? null : label(a)]));
+    const detail = new Map(list.map((a) => [a.address, /^\d+$/.test(label(a)) ? null : label(a)]));
     const seen = {};
-    for (const a of list) { const k = `${a.space_name}\u0000${detail.get(a.address) ?? ""}`; seen[k] = (seen[k] ?? 0) + 1; }
+    for (const a of list) {
+      const k = `${a.space_name}\u0000${detail.get(a.address) ?? ""}`;
+      seen[k] = (seen[k] ?? 0) + 1;
+    }
     for (const a of list) {
       if (detail.get(a.address) == null && seen[`${a.space_name}\u0000`] > 1) detail.set(a.address, label(a));
     }
@@ -374,12 +492,22 @@ export default class Agents extends View {
         const fill = color.startsWith("#") ? color : (MARK[color] ?? t[color]);
         const quiet = a.status === "idle";
         const ring = a.focused ? t.selected : t.chrome;
-        const badge = a.status === "working"
-          ? div().absolute().top(-4).right(-4).size(12).rounded_full().bg(ring).flex().items_center().justify_center()
-            .child(svg("mods/workspace-chrome/spinner.svg").size(10).text_color(t.working).spin(900))
-          : a.status === "blocked" || a.status === "done"
-            ? div().absolute().top(-3).right(-3).size(9).rounded_full().border(2).border_color(ring).bg(t[a.status])
-            : null;
+        const badge =
+          a.status === "working"
+            ? div()
+                .absolute()
+                .top(-4)
+                .right(-4)
+                .size(12)
+                .rounded_full()
+                .bg(ring)
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(svg("mods/workspace-chrome/spinner.svg").size(10).text_color(t.working).spin(900))
+            : a.status === "blocked" || a.status === "done"
+              ? div().absolute().top(-3).right(-3).size(9).rounded_full().border(2).border_color(ring).bg(t[a.status])
+              : null;
         return h_flex()
           .id(`ag-${a.address}`)
           .h(30)
@@ -394,12 +522,24 @@ export default class Agents extends View {
           .when(a.focused, (el) => el.bg(t.selected))
           .when(!a.focused, (el) => el.hover((s) => s.bg(t.hover)))
           .on_click(() => run("pane.focus", { pane: a.pane }))
-          .child(div().relative().flex_none()
-            .child(h_flex().size(22).rounded(6).items_center().justify_center()
-              .bg(quiet ? fill + "33" : fill)
-              .text_size(11.5).font_bold().text_color(quiet ? fill : "#ffffff")
-              .child([...name].find((ch) => /[\p{L}\p{N}]/u.test(ch))?.toUpperCase() ?? "?"))
-            .when(Boolean(badge), (el) => el.child(badge)));
+          .child(
+            div()
+              .relative()
+              .flex_none()
+              .child(
+                h_flex()
+                  .size(22)
+                  .rounded(6)
+                  .items_center()
+                  .justify_center()
+                  .bg(quiet ? fill + "33" : fill)
+                  .text_size(11.5)
+                  .font_bold()
+                  .text_color(quiet ? fill : "#ffffff")
+                  .child([...name].find((ch) => /[\p{L}\p{N}]/u.test(ch))?.toUpperCase() ?? "?"),
+              )
+              .when(Boolean(badge), (el) => el.child(badge)),
+          );
       }
       const when = this.since(a);
       const idle = a.status === "idle" && !a.focused;
@@ -441,26 +581,65 @@ export default class Agents extends View {
           cx.notify();
         })
         .on_click(() => run("pane.focus", { pane: a.pane }))
-        .when(Boolean(pic), el => el.child(div().id(`agent-fold-${a.address}`).when(idle, el => el.opacity(0.5))
-          .when(subs.length > 0, el => el.on_click((_e, cx) => {
-            cx.stop_propagation();
-            this.folded.has(a.address) ? this.folded.delete(a.address) : this.folded.add(a.address);
-            cx.notify();
-          })).child(pic)))
-        .child(h_flex().flex_1().min_w(0).gap(7).items_center()
-          .when(full, el => el.child(avatar(t, colors, `ag-space-${a.address}`, a.space, a.space_name, 14).tooltip(a.space_name || "")))
-          .child(div().min_w(0).max_w(200).truncate().text_color(idle ? t.dim : t.foreground).child(name)))
-        .when(Boolean(machine), el => el.child(div().text_size(11.5).text_color(t.dim).child(machine)))
-        .when(subs.length > 0, el => el.child(fold(a, subs)))
-        .when(this.hovered === a.address, el => el.child(pin))
-        .children([this.hovered !== a.address && this.word(t, a, when ? duration(now - when) : null), this.status(t, a, kind === "section")].filter(Boolean));
+        .when(Boolean(pic), (el) =>
+          el.child(
+            div()
+              .id(`agent-fold-${a.address}`)
+              .when(idle, (el) => el.opacity(0.5))
+              .when(subs.length > 0, (el) =>
+                el.on_click((_e, cx) => {
+                  cx.stop_propagation();
+                  this.folded.has(a.address) ? this.folded.delete(a.address) : this.folded.add(a.address);
+                  cx.notify();
+                }),
+              )
+              .child(pic),
+          ),
+        )
+        .child(
+          h_flex()
+            .flex_1()
+            .min_w(0)
+            .gap(7)
+            .items_center()
+            .when(full, (el) =>
+              el.child(
+                avatar(t, colors, `ag-space-${a.address}`, a.space, a.space_name, 14).tooltip(a.space_name || ""),
+              ),
+            )
+            .child(
+              div()
+                .min_w(0)
+                .max_w(200)
+                .truncate()
+                .text_color(idle ? t.dim : t.foreground)
+                .child(name),
+            ),
+        )
+        .when(Boolean(machine), (el) => el.child(div().text_size(11.5).text_color(t.dim).child(machine)))
+        .when(subs.length > 0, (el) => el.child(fold(a, subs)))
+        .when(this.hovered === a.address, (el) => el.child(pin))
+        .children(
+          [
+            this.hovered !== a.address && this.word(t, a, when ? duration(now - when) : null),
+            this.status(t, a, kind === "section"),
+          ].filter(Boolean),
+        );
     };
 
     // Groups in list order: priority sections, or spaces after the same Needs you section.
     // Agents of a space are next to each other in agents(), so neighbours make a group.
     const sectionOf = (a) => rankOf(a) || RANK.idle;
-    const section = (r) => ({ id: `sec-${r}`, kind: "section", label: SECTION[r], status: SECTION_STATUS[r], members: [] });
-    const groups = pinned.length ? [{ id: "pinned", kind: "pinned", label: "Pinned", status: null, members: pinned }] : [];
+    const section = (r) => ({
+      id: `sec-${r}`,
+      kind: "section",
+      label: SECTION[r],
+      status: SECTION_STATUS[r],
+      members: [],
+    });
+    const groups = pinned.length
+      ? [{ id: "pinned", kind: "pinned", label: "Pinned", status: null, members: pinned }]
+      : [];
     if (byPriority) {
       for (const a of rest) {
         const r = sectionOf(a);
@@ -474,7 +653,16 @@ export default class Agents extends View {
       for (const a of rest) {
         if (sectionOf(a) === RANK.blocked) continue;
         const id = `sp-${a.space}`;
-        if (groups.at(-1)?.id !== id) groups.push({ id, kind: "space", label: a.space_name || "", space: a.space, status: null, members: [], idle: [] });
+        if (groups.at(-1)?.id !== id)
+          groups.push({
+            id,
+            kind: "space",
+            label: a.space_name || "",
+            space: a.space,
+            status: null,
+            members: [],
+            idle: [],
+          });
         const g = groups.at(-1);
         // An idle agent folds away, unless it's the one in view.
         if (sectionOf(a) === RANK.idle && !a.focused) g.idle.push(a);
@@ -493,7 +681,9 @@ export default class Agents extends View {
      */
     const summary = (g, open) => {
       const all = [...g.members, ...g.idle];
-      const parts = SUMMARY.map(([r, word]) => [all.filter((a) => sectionOf(a) === r).length, word]).filter(([n]) => n).map(([n, word]) => `${n} ${word}`);
+      const parts = SUMMARY.map(([r, word]) => [all.filter((a) => sectionOf(a) === r).length, word])
+        .filter(([n]) => n)
+        .map(([n, word]) => `${n} ${word}`);
       const idle = all.filter((a) => sectionOf(a) === RANK.idle).length;
       if (idle && !open) parts.push(`${idle} idle`);
       return parts.join(" · ");
@@ -523,14 +713,42 @@ export default class Agents extends View {
           cx.notify();
         })
         .when(space, (el) => el.child(avatar(t, colors, `${g.id}-avatar`, g.space, g.label, 16)))
-        .when(space, (el) => el.child(div().flex_shrink(1).min_w(SPACE_MIN).truncate().text_size(12.5).font_semibold().text_color(t.foreground).child(g.label))
-          .when(Boolean(said), (el) => el.child(div().flex_shrink(3).min_w(0).truncate().font_normal().text_color(t.dim).child(`· ${said}`))))
-        .when(!space, (el) => el.child(div().truncate().text_color(t[g.status] ?? t.dim).child(g.label))
-          .when(g.kind === "section" || byPriority || !open, (el) => el.child(div().text_color(t.dim).child(String(g.members.length)))))
+        .when(space, (el) =>
+          el
+            .child(
+              div()
+                .flex_shrink(1)
+                .min_w(SPACE_MIN)
+                .truncate()
+                .text_size(12.5)
+                .font_semibold()
+                .text_color(t.foreground)
+                .child(g.label),
+            )
+            .when(Boolean(said), (el) =>
+              el.child(div().flex_shrink(3).min_w(0).truncate().font_normal().text_color(t.dim).child(`· ${said}`)),
+            ),
+        )
+        .when(!space, (el) =>
+          el
+            .child(
+              div()
+                .truncate()
+                .text_color(t[g.status] ?? t.dim)
+                .child(g.label),
+            )
+            .when(g.kind === "section" || byPriority || !open, (el) =>
+              el.child(div().text_color(t.dim).child(String(g.members.length))),
+            ),
+        )
         .child(div().flex_1())
-        .when(!open, (el) => el
-          .when(g.kind === "pinned" && !byPriority && top && top !== "idle", (el) => el.child(this.status(t, { status: top }, true)))
-          .child(svg("mods/workspace-chrome/chevron-right.svg").size(11).flex_none().text_color(t.dim)));
+        .when(!open, (el) =>
+          el
+            .when(g.kind === "pinned" && !byPriority && top && top !== "idle", (el) =>
+              el.child(this.status(t, { status: top }, true)),
+            )
+            .child(svg("mods/workspace-chrome/chevron-right.svg").size(11).flex_none().text_color(t.dim)),
+        );
     };
 
     /**
@@ -558,7 +776,13 @@ export default class Agents extends View {
           localStorage.setItem("idle.open", JSON.stringify([...this.idleOpen]));
           cx.notify();
         })
-        .child(h_flex().w(16).flex_none().justify_center().child(svg(`mods/workspace-chrome/chevron-${open ? "down" : "right"}.svg`).size(11)))
+        .child(
+          h_flex()
+            .w(16)
+            .flex_none()
+            .justify_center()
+            .child(svg(`mods/workspace-chrome/chevron-${open ? "down" : "right"}.svg`).size(11)),
+        )
         .child(div().truncate().child(`${g.idle.length} idle`));
     };
 
@@ -569,7 +793,9 @@ export default class Agents extends View {
      */
     const body = (g) => [
       ...g.members.flatMap((a) => withKids(a, g.kind)),
-      ...(g.idle?.length ? [idleFold(g), ...(this.idleOpen.has(g.space) ? g.idle.flatMap((a) => withKids(a, g.kind)) : [])] : []),
+      ...(g.idle?.length
+        ? [idleFold(g), ...(this.idleOpen.has(g.space) ? g.idle.flatMap((a) => withKids(a, g.kind)) : [])]
+        : []),
     ];
     const rows = collapsed
       ? list.flatMap((a) => withKids(a, null))
@@ -605,15 +831,29 @@ export default class Agents extends View {
                 .text_size(11.5)
                 .text_color(t.muted)
                 .hover((s) => s.bg(t.hover).text_color(t.foreground))
-                .on_click(() => openOverlay({ mod: "alp-agents", kind: "popup", width: 200, height: 110, props: { sortMenu: true } }))
+                .on_click(() =>
+                  openOverlay({ mod: "alp-agents", kind: "popup", width: 200, height: 110, props: { sortMenu: true } }),
+                )
                 .child(sort.label)
                 .child(svg("mods/workspace-chrome/chevron-down.svg").size(10).flex_none()),
             ),
         ),
       )
       .when(list.length === 0 && !collapsed, (el) =>
-        el.child(div().px(12).text_size(12).text_color(t.dim).child("No agents yet. Claude Code sessions show up here.")),
+        el.child(
+          div().px(12).text_size(12).text_color(t.dim).child("No agents yet. Claude Code sessions show up here."),
+        ),
       )
-      .child(v_flex().id("ag-list").flex_1().min_h(0).px(collapsed ? 0 : 8).when(collapsed, (el) => el.pt(8).gap(2)).overflow_y_scrollbar().mode(collapsed ? "scrolling" : "always").children(rows));
+      .child(
+        v_flex()
+          .id("ag-list")
+          .flex_1()
+          .min_h(0)
+          .px(collapsed ? 0 : 8)
+          .when(collapsed, (el) => el.pt(8).gap(2))
+          .overflow_y_scrollbar()
+          .mode(collapsed ? "scrolling" : "always")
+          .children(rows),
+      );
   }
 }
