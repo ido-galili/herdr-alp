@@ -69,20 +69,33 @@ async function branchIn(folder) {
   return result?.code === 0 ? result.stdout.trim() || null : null;
 }
 
-/** The Herdr terminal of each Claude process, keyed by pid: Claude's pid is the terminal's foreground. */
+/**
+ * The Herdr terminal of each Claude process, keyed by pid. The terminal's foreground is Claude
+ * itself, or a shell that started it (a tab opened with `fish -ic … claude`), so each foreground's
+ * child processes map to its terminal too.
+ * @returns {Promise<Map<number, string>>} Terminal addresses by pid.
+ */
 async function terminalsByPid() {
   const claudes = agents().filter((agent) => agent.app === "claude-code" || agent.program?.name === "claude");
-  const found = await Promise.all(
-    claudes.map(async (agent) => {
-      const result = await hc(["get", agent.address, "--json"]).catch(() => null);
-      try {
-        return result?.code === 0 ? [JSON.parse(result.stdout).foreground?.pid, agent.address] : null;
-      } catch {
-        return null;
-      }
-    }),
-  );
-  return new Map(found.filter((pair) => pair?.[0]));
+  const [found, ps] = await Promise.all([
+    Promise.all(
+      claudes.map(async (agent) => {
+        const result = await hc(["get", agent.address, "--json"]).catch(() => null);
+        try {
+          return result?.code === 0 ? [JSON.parse(result.stdout).foreground?.pid, agent.address] : null;
+        } catch {
+          return null;
+        }
+      }),
+    ),
+    exec("ps", ["-e", "-o", "pid=,ppid="]).catch(() => null),
+  ]);
+  const byPid = new Map(found.filter((pair) => pair?.[0]));
+  for (const line of ps?.code === 0 ? ps.stdout.split("\n") : []) {
+    const [pid, ppid] = line.trim().split(/\s+/).map(Number);
+    if (pid && byPid.has(ppid) && !byPid.has(pid)) byPid.set(pid, byPid.get(ppid));
+  }
+  return byPid;
 }
 
 /** A path with `.` and `..` worked out. */
