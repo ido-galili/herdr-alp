@@ -286,15 +286,19 @@ in `alp-view`, shown from the pinned tab; it also opens as a tab with
       herdr-alp: the installed version and where it came from (`~/.config/alp/installed.json`,
       written by `sync.sh install`: a release, or a clone, shown as a `dev build` chip), a pill
       (`vX available` in accent, Up to date in `done`, Couldn't check in `blocked`), Notes (every
-      newer release's notes, by group, from the GitHub Release body git-cliff wrote) and Update.
-      Update asks in the page first, listing files edited in Herdr's home since the install (from
-      `installed.sha256`), then starts `alp-update.sh` detached: it downloads the release's source
-      with `gh release download`, runs that copy's `sync.sh install` and writes
-      `update-result.json`. The clone is never touched. Installing reloads Alp, so the result shows
-      after the reload, with one toast. A row for the alp plugin, from `claude plugin list
-      --json`: loaded from a folder (`from your clone`, nothing to update), or from the
-      marketplace with Update (`claude plugin marketplace update`, then `claude plugin update`;
-      running sessions load it on restart). "All releases on GitHub" at the foot.
+      newer release's notes, by group, from the GitHub Release body git-cliff wrote), Copy
+      prompt, and Update with Claude (hidden without Claude Code). Both hand the update to an
+      agent, as Herdr's AGENTS.md has agents add mods: Update with Claude runs `tab.new` ("Update
+      Alp", `argv: ["claude"]`, the prompt as its task) in the active space, Copy prompt
+      `cx.write_to_clipboard`s it. The prompt (`updatePrompt` in `updates-data.js`) carries the
+      installed version, the notes, and steps: say what changes, check `installed.sha256` and
+      ask before overwriting edits, `gh release download` into a temporary folder, its `sync.sh
+      install` (which records the version: the agent doesn't edit it), `herdr-app check` every
+      mod. Installing reloads Alp mid-way, which the agent's terminal doesn't notice. A row for
+      the alp plugin, from `claude plugin list --json`: loaded from a folder (`from your clone`,
+      nothing to update), or from the marketplace; when it's behind, herdr-alp's prompt updates
+      it too, and its own row gets the two buttons only when herdr-alp is up to date. "All
+      releases on GitHub" at the foot.
 - **How it behaves:** a click on a row opens it on GitHub. Pin adds the row to the Today list
   (Basecamp's Today tab). A
   pinned issue or PR checks itself once it closes or merges; each refresh reads every pick's
@@ -357,7 +361,7 @@ in `alp-view`, shown from the pinned tab; it also opens as a tab with
   `filter-dialog.js` (the filter dialog), `board-view.js`, `board-state.js`, `board-menu.js`,
   `board-actions.js` (the Board's writes) and `board-terms.js` (the board filter read as terms),
   `avatars.js`, `settings-data.js` (discovery, clones, save), `settings-view.js` (the form),
-  `updates-data.js`, `updates-view.js` and `alp-update.sh` (Settings › Updates),
+  `updates-data.js` and `updates-view.js` (Settings › Updates),
   `demo-data.js` (the demo's settings, GitHub data and pins), `ui.js`, and `main.js`.
   Herds:
   `herds-data.js` reads Claude Code's files (it never writes them): `~/.claude/sessions/*.json`
