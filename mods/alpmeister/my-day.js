@@ -226,7 +226,9 @@ export function Reviews(account, actions) {
 export function decisionChip(t, pr, prefix = "mp") {
   if (pr.reviewDecision === "APPROVED") return Chip("Approved", { color: t.done });
   if (pr.reviewDecision === "CHANGES_REQUESTED") {
-    return NeedsYou("Changes Requested").id(`${prefix}-rd-${itemKey(pr)}`).tooltip("A reviewer asked for changes");
+    return NeedsYou("Changes Requested")
+      .id(`${prefix}-rd-${itemKey(pr)}`)
+      .tooltip("A reviewer asked for changes");
   }
   if (pr.reviewDecision === "REVIEW_REQUIRED") return Chip("In Review", { color: t.muted });
   return null;

@@ -41,9 +41,7 @@ export function seeAll(count) {
  */
 export function Tile(id, label, value, sub, color, url, note, { github, outline, filter, settings } = {}) {
   const t = theme();
-  const mark =
-    github && url ? IconButton(`${id}-github`, ICONS.github, () => openUrl(url), { tooltip: github })
-      : null;
+  const mark = github && url ? IconButton(`${id}-github`, ICONS.github, () => openUrl(url), { tooltip: github }) : null;
   const gear = settings
     ? IconButton(`${id}-settings`, ICONS.settings, (cx) => settings.onPress(cx), { tooltip: settings.tooltip })
     : null;
@@ -73,7 +71,9 @@ export function Tile(id, label, value, sub, color, url, note, { github, outline,
         typeof line === "string" ? div().text_size(11.5).truncate().text_color(t.muted).child(line) : line,
       ),
     )
-    .when(corner.length > 0, (el) => el.child(div().absolute().top(7).right(7).child(h_flex().gap(2).children(corner))));
+    .when(corner.length > 0, (el) =>
+      el.child(div().absolute().top(7).right(7).child(h_flex().gap(2).children(corner))),
+    );
 }
 
 /**
@@ -83,7 +83,12 @@ export function Tile(id, label, value, sub, color, url, note, { github, outline,
  * @returns {object} The tiles.
  */
 export function TileRows(tiles, wide) {
-  const rows = wide ? [[0, tiles.length]] : [[0, 2], [2, tiles.length]];
+  const rows = wide
+    ? [[0, tiles.length]]
+    : [
+        [0, 2],
+        [2, tiles.length],
+      ];
   return v_flex()
     .gap(10)
     .children(rows.map(([from, to]) => h_flex().gap(10).items_stretch().children(tiles.slice(from, to))));
@@ -224,20 +229,11 @@ export function Tiles(config, model, { wide, onSettings, filter }) {
         settings: { tooltip: "Customer issues settings", onPress: (cx) => onSettings(cx, "customer") },
       },
     ),
-    Tile(
-      "tile-nightly",
-      "Nightly",
-      nightlyValue,
-      nightlySub,
-      nightlyColor,
-      model.nightly?.url ?? null,
-      "latest run",
-      {
-        github: "Open the run on GitHub",
-        settings: { tooltip: "Nightly settings", onPress: (cx) => onSettings(cx, "nightly") },
-        outline: failed ? `${t.blocked}80` : null,
-      },
-    ),
+    Tile("tile-nightly", "Nightly", nightlyValue, nightlySub, nightlyColor, model.nightly?.url ?? null, "latest run", {
+      github: "Open the run on GitHub",
+      settings: { tooltip: "Nightly settings", onPress: (cx) => onSettings(cx, "nightly") },
+      outline: failed ? `${t.blocked}80` : null,
+    }),
   ];
   return TileRows(tiles, wide);
 }

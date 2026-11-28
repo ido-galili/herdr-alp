@@ -151,7 +151,10 @@ function checkGroups(entries) {
  */
 export function sectionsOf(entries) {
   const seen = [...new Set(entries.map((entry) => entry.section))];
-  return [...SECTION_ORDER.filter((section) => seen.includes(section)), ...seen.filter((s) => !SECTION_ORDER.includes(s))];
+  return [
+    ...SECTION_ORDER.filter((section) => seen.includes(section)),
+    ...seen.filter((s) => !SECTION_ORDER.includes(s)),
+  ];
 }
 
 /**
@@ -206,7 +209,11 @@ export function commandsAsEdits(commands) {
     const root = saved.workspace ? expandHome(saved.workspace) : null;
     const id = root ?? "";
     if (!groups.has(id)) groups.set(id, { layer: root ? "local" : "you", root, edits: [] });
-    const run = { command: saved.command, ...(saved.cwd ? { cwd: saved.cwd } : {}), ...(saved.env ? { env: saved.env } : {}) };
+    const run = {
+      command: saved.command,
+      ...(saved.cwd ? { cwd: saved.cwd } : {}),
+      ...(saved.env ? { env: saved.env } : {}),
+    };
     groups.get(id).edits.push({ path: ["runs", saved.name], value: run });
     for (const input of saved.inputs ?? []) {
       if (!input?.id) continue;

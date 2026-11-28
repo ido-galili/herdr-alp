@@ -39,7 +39,8 @@ function branchChecks(t, repo) {
   if (repo.checks === "FAILURE" || repo.checks === "ERROR") {
     return NeedsYou(`${repo.branch} failing`).id(id).tooltip(`The last commit on ${repo.branch} failed a check`);
   }
-  if (repo.checks === "PENDING" || repo.checks === "EXPECTED") return Chip(`${repo.branch} running`, { color: t.working });
+  if (repo.checks === "PENDING" || repo.checks === "EXPECTED")
+    return Chip(`${repo.branch} running`, { color: t.working });
   if (repo.checks === "SUCCESS") return Chip(`${repo.branch} passing`, { color: t.done });
   return null;
 }
@@ -98,11 +99,17 @@ export function Repos(config, account, options) {
       .children(rows)
       .when(more > 0, (el) =>
         el.child(
-          TextButton("repos-more", open ? "Show less" : `Show ${more} more`, (cx) => options.onToggleGroup("repos", cx)),
+          TextButton("repos-more", open ? "Show less" : `Show ${more} more`, (cx) =>
+            options.onToggleGroup("repos", cx),
+          ),
         ),
       )
       .when(account.reposTotal > 100, (el) =>
-        el.child(div().pt(6).child(Note(`Showing your 100 most recently pushed of ${account.reposTotal}.`))),
+        el.child(
+          div()
+            .pt(6)
+            .child(Note(`Showing your 100 most recently pushed of ${account.reposTotal}.`)),
+        ),
       ),
   );
 }

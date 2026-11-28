@@ -120,8 +120,7 @@ const list = (value, fallback) => (Array.isArray(value) ? value : fallback);
 export function normalizeWorkspace(raw) {
   const base = copy(WORKSPACE_DEFAULTS);
   const repo = typeof raw.repo === "string" && /^[^/\s]+\/[^/\s]+$/.test(raw.repo) ? raw.repo : null;
-  const board =
-    raw.board?.owner && Number.isInteger(raw.board?.number) ? { ...BOARD_DEFAULTS, ...raw.board } : null;
+  const board = raw.board?.owner && Number.isInteger(raw.board?.number) ? { ...BOARD_DEFAULTS, ...raw.board } : null;
   return {
     ...base,
     ...raw,
@@ -135,7 +134,11 @@ export function normalizeWorkspace(raw) {
     bugs: { ...base.bugs, ...raw.bugs },
     spotlight: { ...base.spotlight, ...raw.spotlight },
     customer: { ...base.customer, ...raw.customer },
-    boardView: { ...base.boardView, ...raw.boardView, statuses: list(raw.boardView?.statuses, base.boardView.statuses) },
+    boardView: {
+      ...base.boardView,
+      ...raw.boardView,
+      statuses: list(raw.boardView?.statuses, base.boardView.statuses),
+    },
     nightly: raw.nightly?.workflow ? { branch: "main", events: ["schedule"], checks: [], ...raw.nightly } : null,
   };
 }
@@ -173,7 +176,8 @@ export function normalizeFiles(raw) {
   return {
     ...given,
     autoSave,
-    autoSaveDelay: Number.isFinite(delay) && delay > 0 ? Math.min(max, Math.max(min, delay)) : FILES_DEFAULTS.autoSaveDelay,
+    autoSaveDelay:
+      Number.isFinite(delay) && delay > 0 ? Math.min(max, Math.max(min, delay)) : FILES_DEFAULTS.autoSaveDelay,
   };
 }
 
@@ -188,7 +192,11 @@ function upgradeOneRepo(raw) {
   const { repo, project, launch = {}, queries = {}, files, ...rest } = raw;
   const { folder, ...prompts } = launch;
   const { triage, prs, review, mine, myPrs } = queries;
-  const workspace = { ...rest, repo, queries: Object.fromEntries(Object.entries({ triage, prs }).filter(([, value]) => value)) };
+  const workspace = {
+    ...rest,
+    repo,
+    queries: Object.fromEntries(Object.entries({ triage, prs }).filter(([, value]) => value)),
+  };
   if (project?.owner && Number.isInteger(project?.number)) workspace.board = project;
   return {
     account: {
@@ -251,7 +259,11 @@ export const IN_FLIGHT_DEFAULT = "milestone:@next";
  * The searches a workspace's Overview cards filter by, with their defaults: Open bugs and Triage
  * bugs, the part of a label's name Customer issues counts, and Team in flight's filter.
  */
-export const WORKSPACE_FILTER_DEFAULTS = { ...WORKSPACE_QUERY_DEFAULTS, customer: "customer", inFlight: IN_FLIGHT_DEFAULT };
+export const WORKSPACE_FILTER_DEFAULTS = {
+  ...WORKSPACE_QUERY_DEFAULTS,
+  customer: "customer",
+  inFlight: IN_FLIGHT_DEFAULT,
+};
 
 /**
  * Where a workspace keeps each card's search: `bugs.query`, `queries.triage`,

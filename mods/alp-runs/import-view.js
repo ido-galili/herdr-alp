@@ -122,7 +122,10 @@ export class ImportPart {
     const note = item.reason
       ? { text: `can't: it ${item.reason}`, color: t.dim }
       : exists
-        ? { text: on ? "replaces the one in Alp's config" : "already in Alp's config · tick to replace", color: warning(t) }
+        ? {
+            text: on ? "replaces the one in Alp's config" : "already in Alp's config · tick to replace",
+            color: warning(t),
+          }
         : { text: summary(item.run), color: t.dim };
     return h_flex()
       .id(`import-${item.key}`)
@@ -174,7 +177,8 @@ export class ImportPart {
     const t = theme();
     const fields = [];
     if (!this.items) fields.push(div().py(12).text_size(12).text_color(t.dim).child("Reading .vscode…"));
-    else if (!this.items.length) fields.push(div().py(12).text_size(12).text_color(t.dim).child("No launch configs or tasks in .vscode."));
+    else if (!this.items.length)
+      fields.push(div().py(12).text_size(12).text_color(t.dim).child("No launch configs or tasks in .vscode."));
     for (const [group, file] of [
       ["Launch", "launch.json"],
       ["Tasks", "tasks.json"],

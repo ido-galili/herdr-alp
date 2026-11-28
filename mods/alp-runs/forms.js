@@ -217,7 +217,8 @@ export class InputPart {
  * @param {string | string[] | undefined} command The run's `command`.
  * @returns {string}
  */
-const commandText = (command) => (Array.isArray(command) ? command.map((word) => quote(String(word))).join(" ") : (command ?? ""));
+const commandText = (command) =>
+  Array.isArray(command) ? command.map((word) => quote(String(word))).join(" ") : (command ?? "");
 
 export class SavePart {
   init(cx) {
@@ -270,13 +271,16 @@ export class SavePart {
         if (cwd) run.cwd = cwd;
         else delete run.cwd;
         const edits = [];
-        if (this.original && this.original !== name && !moved) edits.push({ path: ["runs", this.original], value: undefined });
+        if (this.original && this.original !== name && !moved)
+          edits.push({ path: ["runs", this.original], value: undefined });
         edits.push({ path: ["runs", name], value: run });
         for (const id of new Set(inputIds(`${command} ${cwd}`))) {
-          if (!merged.inputs?.[id]) edits.push({ path: ["inputs", id], value: { type: "promptString", description: id } });
+          if (!merged.inputs?.[id])
+            edits.push({ path: ["inputs", id], value: { type: "promptString", description: id } });
         }
         await writeLayer(this.layer, workspace, edits);
-        if (moved) await writeLayer(this.originalLayer, workspace, [{ path: ["runs", this.original], value: undefined }]);
+        if (moved)
+          await writeLayer(this.originalLayer, workspace, [{ path: ["runs", this.original], value: undefined }]);
         announceChange();
         closeOverlay(props().overlay);
       } catch (error) {

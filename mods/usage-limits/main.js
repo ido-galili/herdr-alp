@@ -31,7 +31,10 @@ function find(node, id) {
 const narrow = () => (find(layout(), "sidebar")?.size?.px ?? Infinity) < 160;
 
 const toSec = (v) => (v == null ? null : typeof v === "number" ? (v > 1e12 ? v / 1000 : v) : Date.parse(v) / 1000);
-const pct = (w) => { const v = w?.used_percentage ?? w?.percentUsed ?? w?.utilization; return v == null ? null : Math.max(0, Math.min(100, v)); };
+const pct = (w) => {
+  const v = w?.used_percentage ?? w?.percentUsed ?? w?.utilization;
+  return v == null ? null : Math.max(0, Math.min(100, v));
+};
 
 /**
  * The theme's warning colour (orange): a theme may not carry `warning`, so fall back to Alp's.
@@ -42,7 +45,9 @@ const warning = (t) => t.warning ?? "#ffb86c";
 
 function left(sec) {
   if (sec <= 0) return "now";
-  const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60);
+  const d = Math.floor(sec / 86400),
+    h = Math.floor((sec % 86400) / 3600),
+    m = Math.floor((sec % 3600) / 60);
   return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`;
 }
 
@@ -62,8 +67,15 @@ export default class UsageLimits extends View {
   load(cx) {
     readTextFile(`${home()}/.local/state/herdr-agents/limits.json`).then((txt) => {
       let next = null;
-      try { next = txt ? JSON.parse(txt)?.[this.agent] ?? null : null; } catch { next = null; }
-      if (JSON.stringify(next) !== JSON.stringify(this.data)) { this.data = next; cx.notify(); }
+      try {
+        next = txt ? (JSON.parse(txt)?.[this.agent] ?? null) : null;
+      } catch {
+        next = null;
+      }
+      if (JSON.stringify(next) !== JSON.stringify(this.data)) {
+        this.data = next;
+        cx.notify();
+      }
     });
   }
 
@@ -76,7 +88,12 @@ export default class UsageLimits extends View {
    */
   bar(t, frac, color) {
     const c = Math.max(0, Math.min(1, frac)) * 100;
-    return div().w_full().h(8).rounded(4).bg(t.border).overflow_hidden()
+    return div()
+      .w_full()
+      .h(8)
+      .rounded(4)
+      .bg(t.border)
+      .overflow_hidden()
       .child(div().h(8).w(`${c}%`).rounded(4).bg(color));
   }
 
@@ -120,17 +137,56 @@ export default class UsageLimits extends View {
     const { used, remain, color } = st;
     const usedText = used == null ? "–" : `${Math.round(used)}%`;
     const tip = this.tip(win, st);
-    const short = remain == null ? null : remain <= 0 ? "now" : remain >= 3600 ? `${Math.floor(remain / 3600)}h` : `${Math.floor(remain / 60)}m`;
-    return h_flex().flex_none().justify_center().child(
-      v_flex().id(`limit-${win.key}`).w(32).py(4).gap(3).items_center().rounded(6)
-        .hover((s) => s.bg(t.hover)).tooltip(tip)
-        .child(svg("mods/usage-limits/gauge.svg").size(14).flex_none().text_color(color))
-        .child(div().text_size(11.5).font_semibold().text_color(color).child(usedText))
-        .child(div().w(24).h(3).rounded(2).bg(t.border).overflow_hidden()
-          .child(div().h(3).w(`${used ?? 0}%`).rounded(2).bg(color)))
-        .when(short != null, (el) => el.child(h_flex().gap(2).items_center().text_size(9.5).text_color(t.dim)
-          .child(svg("mods/workspace-chrome/clock.svg").size(9).flex_none().text_color(t.dim))
-          .child(short))));
+    const short =
+      remain == null
+        ? null
+        : remain <= 0
+          ? "now"
+          : remain >= 3600
+            ? `${Math.floor(remain / 3600)}h`
+            : `${Math.floor(remain / 60)}m`;
+    return h_flex()
+      .flex_none()
+      .justify_center()
+      .child(
+        v_flex()
+          .id(`limit-${win.key}`)
+          .w(32)
+          .py(4)
+          .gap(3)
+          .items_center()
+          .rounded(6)
+          .hover((s) => s.bg(t.hover))
+          .tooltip(tip)
+          .child(svg("mods/usage-limits/gauge.svg").size(14).flex_none().text_color(color))
+          .child(div().text_size(11.5).font_semibold().text_color(color).child(usedText))
+          .child(
+            div()
+              .w(24)
+              .h(3)
+              .rounded(2)
+              .bg(t.border)
+              .overflow_hidden()
+              .child(
+                div()
+                  .h(3)
+                  .w(`${used ?? 0}%`)
+                  .rounded(2)
+                  .bg(color),
+              ),
+          )
+          .when(short != null, (el) =>
+            el.child(
+              h_flex()
+                .gap(2)
+                .items_center()
+                .text_size(9.5)
+                .text_color(t.dim)
+                .child(svg("mods/workspace-chrome/clock.svg").size(9).flex_none().text_color(t.dim))
+                .child(short),
+            ),
+          ),
+      );
   }
 
   /**
@@ -142,12 +198,29 @@ export default class UsageLimits extends View {
   row(t, win) {
     const st = this.stats(t, win);
     const { used, remain, color } = st;
-    return v_flex().id(`limit-row-${win.key}`).gap(4).tooltip(this.tip(win, st))
-      .child(h_flex().items_center().gap(6).text_size(11.5)
-        .child(div().text_color(t.foreground).font_medium().child(win.label))
-        .child(div().text_color(color).font_semibold().child(used == null ? "–" : `${Math.round(used)}%`))
-        .child(div().flex_1())
-        .child(div().text_color(t.dim).child(remain == null ? "" : remain <= 0 ? "resets now" : `${left(remain)} left`)))
+    return v_flex()
+      .id(`limit-row-${win.key}`)
+      .gap(4)
+      .tooltip(this.tip(win, st))
+      .child(
+        h_flex()
+          .items_center()
+          .gap(6)
+          .text_size(11.5)
+          .child(div().text_color(t.foreground).font_medium().child(win.label))
+          .child(
+            div()
+              .text_color(color)
+              .font_semibold()
+              .child(used == null ? "–" : `${Math.round(used)}%`),
+          )
+          .child(div().flex_1())
+          .child(
+            div()
+              .text_color(t.dim)
+              .child(remain == null ? "" : remain <= 0 ? "resets now" : `${left(remain)} left`),
+          ),
+      )
       .child(this.bar(t, (used ?? 0) / 100, color));
   }
 
@@ -161,10 +234,12 @@ export default class UsageLimits extends View {
     }
     const body = folded
       ? v_flex().w_full().pt(10).child(this.cell(t, WINDOWS[0]))
-      : v_flex().w_full().px(14).pt(10).gap(10).children(WINDOWS.map((w) => this.row(t, w)));
-    return v_flex().size_full().bg(t.chrome)
-      .child(body)
-      .child(div().flex_1())
-      .child(div().w_full().h(1).bg(t.border));
+      : v_flex()
+          .w_full()
+          .px(14)
+          .pt(10)
+          .gap(10)
+          .children(WINDOWS.map((w) => this.row(t, w)));
+    return v_flex().size_full().bg(t.chrome).child(body).child(div().flex_1()).child(div().w_full().h(1).bg(t.border));
   }
 }

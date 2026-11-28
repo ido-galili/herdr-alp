@@ -299,8 +299,17 @@ export class FilterDialog {
       });
     if (!this.session) {
       return root
-        .child(div().text_size(12).text_color(t.muted).child("This filter is gone (Alp was reloaded). Close and open it again."))
-        .child(h_flex().child(div().flex_1()).child(this.button(t, "cancel", "Close", () => this.dismiss(), "plain")));
+        .child(
+          div()
+            .text_size(12)
+            .text_color(t.muted)
+            .child("This filter is gone (Alp was reloaded). Close and open it again."),
+        )
+        .child(
+          h_flex()
+            .child(div().flex_1())
+            .child(this.button(t, "cancel", "Close", () => this.dismiss(), "plain")),
+        );
     }
     const draft = this.draft();
     const spec = this.session.spec(draft);
@@ -312,10 +321,18 @@ export class FilterDialog {
         h_flex()
           .gap(8)
           .items_center()
-          .child(div().flex_1().min_w(0).truncate().text_size(14).font_semibold().text_color(t.foreground).child(spec.title))
+          .child(
+            div().flex_1().min_w(0).truncate().text_size(14).font_semibold().text_color(t.foreground).child(spec.title),
+          )
           .child(this.button(t, "close", "✕", () => this.dismiss(), "icon", "Close without saving (Esc)")),
       )
-      .when(spec.groups.length > 0, (el) => el.child(v_flex().gap(10).children(spec.groups.map((group) => this.group(t, group)))))
+      .when(spec.groups.length > 0, (el) =>
+        el.child(
+          v_flex()
+            .gap(10)
+            .children(spec.groups.map((group) => this.group(t, group))),
+        ),
+      )
       .child(
         v_flex()
           .gap(5)
@@ -335,7 +352,12 @@ export class FilterDialog {
       )
       .child(this.countLine(t, spec, result))
       .when(Boolean(this.message), (el) =>
-        el.child(div().text_size(11.5).text_color(this.message.error ? t.blocked : t.dim).child(this.message.text)),
+        el.child(
+          div()
+            .text_size(11.5)
+            .text_color(this.message.error ? t.blocked : t.dim)
+            .child(this.message.text),
+        ),
       )
       .child(div().flex_1())
       .child(
@@ -345,11 +367,28 @@ export class FilterDialog {
           .items_center()
           .border_t_1()
           .border_color(t.border)
-          .child(this.button(t, "reset", "Reset to default", (cx) => this.setDraft(this.session.fallback, cx), "plain", "Fill in the default filter; Save keeps it"))
+          .child(
+            this.button(
+              t,
+              "reset",
+              "Reset to default",
+              (cx) => this.setDraft(this.session.fallback, cx),
+              "plain",
+              "Fill in the default filter; Save keeps it",
+            ),
+          )
           .child(div().flex_1())
           .child(this.button(t, "cancel", "Cancel", () => this.dismiss(), "plain", "Close without saving (Esc)"))
           .child(
-            this.button(t, "save", this.saving ? "Saving…" : spec.saveLabel, (cx) => this.save(cx), "primary", spec.demo ? "Demo: kept in this tab only, nothing is written" : null, refused || this.saving),
+            this.button(
+              t,
+              "save",
+              this.saving ? "Saving…" : spec.saveLabel,
+              (cx) => this.save(cx),
+              "primary",
+              spec.demo ? "Demo: kept in this tab only, nothing is written" : null,
+              refused || this.saving,
+            ),
           ),
       );
   }
@@ -367,10 +406,17 @@ export class FilterDialog {
     const line = h_flex().gap(6).items_center().text_size(12);
     if (result?.error) return line.child(div().min_w(0).text_color(t.blocked).child(result.error));
     if (!result || this.counting) {
-      return line.child(div().text_color(t.dim).child("Counting…")).when(Boolean(now), (el) => el.child(div().text_color(t.dim).child(`· ${now}`)));
+      return line
+        .child(div().text_color(t.dim).child("Counting…"))
+        .when(Boolean(now), (el) => el.child(div().text_color(t.dim).child(`· ${now}`)));
     }
     return line
-      .child(div().font_medium().text_color(t.foreground).child(`Shows ${counted(result.count, spec.noun)}`))
+      .child(
+        div()
+          .font_medium()
+          .text_color(t.foreground)
+          .child(`Shows ${counted(result.count, spec.noun)}`),
+      )
       .when(Boolean(now), (el) => el.child(div().text_color(t.dim).child(`· ${now}`)));
   }
 
@@ -393,7 +439,9 @@ export class FilterDialog {
           .gap(6)
           .items_center()
           .children(group.chips.map((chip) => this.chip(t, chip)))
-          .when(Boolean(group.note), (row) => row.child(div().h(24).flex().items_center().text_size(11.5).text_color(t.dim).child(group.note))),
+          .when(Boolean(group.note), (row) =>
+            row.child(div().h(24).flex().items_center().text_size(11.5).text_color(t.dim).child(group.note)),
+          ),
       );
   }
 
@@ -458,7 +506,12 @@ export class FilterDialog {
       .justify_center()
       .rounded(6)
       .text_size(12)
-      .when(primary, (el) => el.font_semibold().bg(t.accent).text_color(t.accent_foreground ?? t.background))
+      .when(primary, (el) =>
+        el
+          .font_semibold()
+          .bg(t.accent)
+          .text_color(t.accent_foreground ?? t.background),
+      )
       .when(!primary, (el) => el.text_color(t.muted).hover((style) => style.bg(t.hover).text_color(t.foreground)))
       .when(off, (el) => el.opacity(0.5))
       .cursor_pointer()

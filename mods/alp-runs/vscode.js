@@ -60,7 +60,8 @@ function fromLaunch(config) {
     order: dependsOn.length > 1 ? "sequence" : undefined,
     background: true,
   };
-  if (config.request && config.request !== "launch") return { run: null, reason: "attaches a debugger to a running program" };
+  if (config.request && config.request !== "launch")
+    return { run: null, reason: "attaches a debugger to a running program" };
   if (BROWSER_TYPES.has(config.type)) return { run: null, reason: "opens a browser under VS Code's debugger" };
   const args = Array.isArray(config.args) ? config.args.map(String) : [];
   if (config.type === "node-terminal") return { run: tidy({ ...base, command: config.command ?? "" }), reason: null };
@@ -105,7 +106,10 @@ function taskFields(task) {
   if (!command) return { fields: { cwd, env }, reason: names(task.dependsOn).length ? null : "has no command" };
   const args = (task.args ?? []).map(text);
   if (task.type === "process") return { fields: { command: [command, ...args], cwd, env }, reason: null };
-  return { fields: { command: [command, ...args.map((arg) => (/\s/.test(arg) ? word(arg) : arg))].join(" "), cwd, env }, reason: null };
+  return {
+    fields: { command: [command, ...args.map((arg) => (/\s/.test(arg) ? word(arg) : arg))].join(" "), cwd, env },
+    reason: null,
+  };
 }
 
 /**
@@ -129,7 +133,11 @@ function fromTask(raw) {
   for (const [vscodeKey, platform] of Object.entries(PLATFORMS)) {
     const own = raw[vscodeKey];
     if (!own) continue;
-    const merged = { ...raw, ...own, options: { ...raw.options, ...own.options, env: { ...raw.options?.env, ...own.options?.env } } };
+    const merged = {
+      ...raw,
+      ...own,
+      options: { ...raw.options, ...own.options, env: { ...raw.options?.env, ...own.options?.env } },
+    };
     const result = taskFields(merged);
     if (result.reason) continue;
     const diff = Object.fromEntries(
@@ -182,10 +190,16 @@ export async function readVscode(workspace, platform) {
       .map((compound) => ({
         group: "Launch",
         name: compound.name,
-        run: tidy({ section: "Launch", runs: names(compound.configurations), dependsOn: names(compound.preLaunchTask) }),
+        run: tidy({
+          section: "Launch",
+          runs: names(compound.configurations),
+          dependsOn: names(compound.preLaunchTask),
+        }),
         reason: null,
       })),
-    ...(launch.configurations ?? []).filter((config) => config?.name).map((config) => ({ group: "Launch", name: config.name, ...fromLaunch(config) })),
+    ...(launch.configurations ?? [])
+      .filter((config) => config?.name)
+      .map((config) => ({ group: "Launch", name: config.name, ...fromLaunch(config) })),
     ...(tasks.tasks ?? []).map((task) => ({ group: "Tasks", ...fromTask(task) })).filter((item) => item.name),
   ];
   const seen = new Set();

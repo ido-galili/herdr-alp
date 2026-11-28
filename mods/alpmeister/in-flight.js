@@ -36,7 +36,8 @@ const NEXT = "@next";
  * @param {{ field: string | null, values: string[] }} term The term, read.
  * @returns {boolean}
  */
-const milestoneTerm = (term) => term.field === "milestone" || (term.field === "no" && term.values.includes("milestone"));
+const milestoneTerm = (term) =>
+  term.field === "milestone" || (term.field === "no" && term.values.includes("milestone"));
 
 /**
  * Whether an issue in flight passes the filter. Every term must hold; a term it doesn't know
@@ -53,7 +54,9 @@ export function inFlightMatches(item, query, next) {
     .every((term) => {
       let hit;
       if (term.field === "milestone") {
-        hit = term.values.some((value) => (value === NEXT ? next === null || item.milestone === next : item.milestone === value));
+        hit = term.values.some((value) =>
+          value === NEXT ? next === null || item.milestone === next : item.milestone === value,
+        );
       } else if (term.field === "assignee") {
         hit = term.values.some((login) => item.assignees.includes(login));
       } else if (term.field === "no") {
@@ -194,7 +197,11 @@ export function InFlight(config, model, options) {
     .gap(2)
     .when(!groups.length, (el) =>
       el.child(
-        Note(items.length === all.length ? "Nothing in flight." : `Nothing in flight matches: ${inFlightWords(options.query, next)}.`),
+        Note(
+          items.length === all.length
+            ? "Nothing in flight."
+            : `Nothing in flight matches: ${inFlightWords(options.query, next)}.`,
+        ),
       ),
     )
     .children(

@@ -64,7 +64,14 @@ import {
 import { loadHerds, saveTabLink, sessionsDir } from "./herds-data.js";
 import { Herds } from "./herds-view.js";
 import { HerdsCanvas } from "./herds-canvas.js";
-import { InFlight, inFlightMatches, inFlightWords, milestoneTermOf, withAssigneeToggled, withMilestone } from "./in-flight.js";
+import {
+  InFlight,
+  inFlightMatches,
+  inFlightWords,
+  milestoneTermOf,
+  withAssigneeToggled,
+  withMilestone,
+} from "./in-flight.js";
 import { boardTerm } from "./board-terms.js";
 import { MyIssues, MyPrs, Reviews, filterChips, narrowAccount } from "./my-day.js";
 import { summaryWords, toggleTerm, tokenize } from "./search-terms.js";
@@ -120,7 +127,11 @@ const OPEN_SETTINGS_KEY = "alp.openSettings";
 /** The views' names, as the header's tabs and Settings' "Back to <view>" show them. */
 const VIEW_NAMES = { [TABS.dashboard]: "Overview", [TABS.board]: "Board", [TABS.herds]: "Herds" };
 /** The views' icons, left of their names on the header's tabs. */
-const VIEW_ICONS = { [TABS.dashboard]: ICONS.viewOverview, [TABS.board]: ICONS.viewBoard, [TABS.herds]: ICONS.viewHerds };
+const VIEW_ICONS = {
+  [TABS.dashboard]: ICONS.viewOverview,
+  [TABS.board]: ICONS.viewBoard,
+  [TABS.herds]: ICONS.viewHerds,
+};
 /** The Alp layout's stack that shows the terminals or, pinned in their place, Alpmeister. */
 const WORK_STACK = "work-stack";
 const WORK_BODY = "work-body";
@@ -435,7 +446,10 @@ export default class Alpmeister extends View {
           this.reloadHerds(cx);
           await new Promise((resolve) => {
             // Kept on the view: a dropped task would not fire.
-            this.agentWatches.set(folder, cx.timer.after(AGENT_WATCH_PAUSE, () => resolve()));
+            this.agentWatches.set(
+              folder,
+              cx.timer.after(AGENT_WATCH_PAUSE, () => resolve()),
+            );
           });
         }
         this.agentWatches.delete(folder);
@@ -667,7 +681,12 @@ export default class Alpmeister extends View {
    */
   filterTarget(id) {
     if (!id.startsWith("ws:")) {
-      return { ws: null, key: id, saved: this.config?.account.queries[id] ?? DEFAULT_QUERIES[id], fallback: DEFAULT_QUERIES[id] };
+      return {
+        ws: null,
+        key: id,
+        saved: this.config?.account.queries[id] ?? DEFAULT_QUERIES[id],
+        fallback: DEFAULT_QUERIES[id],
+      };
     }
     const key = id.slice(id.lastIndexOf(":") + 1);
     const name = id.slice(3, id.lastIndexOf(":"));
@@ -775,7 +794,9 @@ export default class Alpmeister extends View {
       title: `Filter: ${CARD_NAMES[key]}${where}`,
       groups,
       inputLabel: customer ? "Label contains" : "GitHub search",
-      placeholder: customer ? "Part of a label's name, such as customer" : "A GitHub search, such as is:issue is:open type:Bug",
+      placeholder: customer
+        ? "Part of a label's name, such as customer"
+        : "A GitHub search, such as is:issue is:open type:Bug",
       hint: customer
         ? "Counts open issues with a label whose name has this in it. Enter updates the preview."
         : "The chips write this. Enter updates the preview.",
@@ -800,7 +821,9 @@ export default class Alpmeister extends View {
   inFlightSpec(id, ws, draft, prefix, where) {
     const { items, next, milestones } = this.inFlightPart(ws);
     const terms = tokenize(draft.query).map(boardTerm);
-    const milestoneValues = terms.filter((term) => term.field === "milestone" && !term.negated).flatMap((term) => term.values);
+    const milestoneValues = terms
+      .filter((term) => term.field === "milestone" && !term.negated)
+      .flatMap((term) => term.values);
     const none = terms.some((term) => term.field === "no" && !term.negated && term.values.includes("milestone"));
     const anyMilestone = !milestoneValues.length && !none && !terms.some((term) => term.field === "milestone");
     const people = [...new Set(items.flatMap((item) => item.assignees))].sort();
@@ -827,7 +850,13 @@ export default class Alpmeister extends View {
               "milestone:@next: the open milestone due soonest, whichever that is",
             ),
             ...milestones.map((title, index) =>
-              milestoneChip(`m${index}`, title, milestoneValues.includes(title), milestoneTermOf(title), milestoneTermOf(title)),
+              milestoneChip(
+                `m${index}`,
+                title,
+                milestoneValues.includes(title),
+                milestoneTermOf(title),
+                milestoneTermOf(title),
+              ),
             ),
             milestoneChip("none", "No milestone", none, "no:milestone", "no:milestone"),
             {
@@ -915,7 +944,9 @@ export default class Alpmeister extends View {
     if (!ws) {
       const account = this.model.account;
       if (!account) return;
-      const next = this.demo ? demoCardSearch(account, key, query) : await loadCardSearch(this.config, account, key, query);
+      const next = this.demo
+        ? demoCardSearch(account, key, query)
+        : await loadCardSearch(this.config, account, key, query);
       this.model = { ...this.model, account: next };
       return;
     }
@@ -962,13 +993,19 @@ export default class Alpmeister extends View {
    */
   async saveCardFilter(id, query) {
     const { ws, key, saved, fallback } = this.filterTarget(id);
-    if (id.startsWith("ws:") && !ws) throw new Error("Save this workspace in Settings first: it isn't in the settings file yet.");
+    if (id.startsWith("ws:") && !ws)
+      throw new Error("Save this workspace in Settings first: it isn't in the settings file yet.");
     if (query === saved) return null;
     let written = null;
     if (this.demo) {
       const config = this.config;
       this.config = ws
-        ? { ...config, workspaces: config.workspaces.map((each) => (each.name === ws.name ? withWorkspaceSearch(each, key, query) : each)) }
+        ? {
+            ...config,
+            workspaces: config.workspaces.map((each) =>
+              each.name === ws.name ? withWorkspaceSearch(each, key, query) : each,
+            ),
+          }
         : { ...config, account: { ...config.account, queries: { ...config.account.queries, [key]: query } } };
     } else {
       written = await this.writeCardFilter(id, query === fallback ? null : query);
@@ -1328,30 +1365,27 @@ export default class Alpmeister extends View {
   tabs(t) {
     const tab = (name) => {
       const on = this.tab === name;
-      return h_flex()
-        .id(`tab-${name}`)
-        .h(34)
-        .px(4)
-        .gap(6)
-        .items_center()
-        .border_b_2()
-        .border_color(on ? t.accent : "#00000000")
-        .text_size(12.5)
-        .font_medium()
-        .cursor_pointer()
-        .text_color(on ? t.foreground : t.muted)
-        .hover((style) => style.text_color(t.foreground))
-        .on_click((_event, cx) => this.selectTab(name, cx))
-        // The icon takes the label's color, dim when the view isn't shown.
-        .child(svg(VIEW_ICONS[name]).size(13).flex_none())
-        .child(VIEW_NAMES[name]);
+      return (
+        h_flex()
+          .id(`tab-${name}`)
+          .h(34)
+          .px(4)
+          .gap(6)
+          .items_center()
+          .border_b_2()
+          .border_color(on ? t.accent : "#00000000")
+          .text_size(12.5)
+          .font_medium()
+          .cursor_pointer()
+          .text_color(on ? t.foreground : t.muted)
+          .hover((style) => style.text_color(t.foreground))
+          .on_click((_event, cx) => this.selectTab(name, cx))
+          // The icon takes the label's color, dim when the view isn't shown.
+          .child(svg(VIEW_ICONS[name]).size(13).flex_none())
+          .child(VIEW_NAMES[name])
+      );
     };
-    return h_flex()
-      .gap(14)
-      .items_center()
-      .child(tab(TABS.dashboard))
-      .child(tab(TABS.board))
-      .child(tab(TABS.herds));
+    return h_flex().gap(14).items_center().child(tab(TABS.dashboard)).child(tab(TABS.board)).child(tab(TABS.herds));
   }
 
   /**
@@ -1381,9 +1415,18 @@ export default class Alpmeister extends View {
         if (!busy) onRefresh(cx);
       })
       .when(Boolean(when) && !busy, (el) =>
-        el.child(div().text_color(stale ? warningColor(t) : t.dim).child(`${when} ·`)),
+        el.child(
+          div()
+            .text_color(stale ? warningColor(t) : t.dim)
+            .child(`${when} ·`),
+        ),
       )
-      .child(div().font_medium().text_color(t.accent).child(busy ? "Refreshing…" : "Refresh"))
+      .child(
+        div()
+          .font_medium()
+          .text_color(t.accent)
+          .child(busy ? "Refreshing…" : "Refresh"),
+      )
       .when(stale && !busy, (el) => el.tooltip("Over 2 hours old: Refresh fetches it again"));
   }
 
@@ -1602,7 +1645,9 @@ export default class Alpmeister extends View {
       .cursor_pointer()
       .on_click((_event, cx) => this.openSettings({ workspace }, cx))
       .child(div().text_size(12).text_color(t.dim).child(text))
-      .child(div().text_size(12).font_medium().text_color(t.accent).child(LinkLabel(ICONS.settings, "Open Settings →")));
+      .child(
+        div().text_size(12).font_medium().text_color(t.accent).child(LinkLabel(ICONS.settings, "Open Settings →")),
+      );
   }
 
   /**
@@ -1651,9 +1696,14 @@ export default class Alpmeister extends View {
           .flex_1()
           .min_w(0)
           .gap(3)
-          .child(div().text_size(13).font_semibold().text_color(t.foreground).child("This is every repo you can reach."))
           .child(
-            div().text_size(12).text_color(t.muted).child("Add a workspace to see one team's board, bugs and milestones."),
+            div().text_size(13).font_semibold().text_color(t.foreground).child("This is every repo you can reach."),
+          )
+          .child(
+            div()
+              .text_size(12)
+              .text_color(t.muted)
+              .child("Add a workspace to see one team's board, bugs and milestones."),
           ),
       )
       .child(
@@ -1673,7 +1723,11 @@ export default class Alpmeister extends View {
           .on_click((_event, cx) => this.addWorkspace({ picker: "ws-repo" }, cx))
           .child(LinkLabel(ICONS.settings, "Add a workspace")),
       )
-      .child(TextButton("first-run-dismiss", "Not now", dismiss, { tooltip: "Hide this; Settings adds a workspace any time" }));
+      .child(
+        TextButton("first-run-dismiss", "Not now", dismiss, {
+          tooltip: "Hide this; Settings adds a workspace any time",
+        }),
+      );
   }
 
   /**
@@ -1813,7 +1867,12 @@ export default class Alpmeister extends View {
     );
     if (!ws.repo) {
       content = content.child(
-        this.settingsLine(t, "add-repo", "Add a repository to this workspace to see bugs, milestones and the nightly.", ws.name),
+        this.settingsLine(
+          t,
+          "add-repo",
+          "Add a repository to this workspace to see bugs, milestones and the nightly.",
+          ws.name,
+        ),
       );
     }
     return content;
@@ -1989,12 +2048,25 @@ export default class Alpmeister extends View {
       this.scrollToPart(0, cx);
     }
     if (this.tab === TABS.settings || this.inSettings) {
-      return root.child(div().flex_none().px(18).pt(18).pb(this.inSettings ? 0 : 10).child(this.header(t))).child(this.settingsView(cx));
+      return root
+        .child(
+          div()
+            .flex_none()
+            .px(18)
+            .pt(18)
+            .pb(this.inSettings ? 0 : 10)
+            .child(this.header(t)),
+        )
+        .child(this.settingsView(cx));
     }
     const page = v_flex().id("alpmeister-page").size_full().overflow_y_scrollbar().track_scroll(this.scroll);
     // The Herds canvas in full tab hides the header too: the canvas takes the whole tab.
     const fullCanvas = this.tab === TABS.herds && this.herdsCanvas.full;
-    let content = v_flex().w_full().p(18).gap(14).when(!fullCanvas, (el) => el.child(this.header(t)));
+    let content = v_flex()
+      .w_full()
+      .p(18)
+      .gap(14)
+      .when(!fullCanvas, (el) => el.child(this.header(t)));
     if (this.tab === TABS.herds) {
       if (this.herdsFailure) content = content.child(Note(`Reading sessions failed: ${this.herdsFailure}`, t.blocked));
       content = content.child(
@@ -2024,7 +2096,11 @@ export default class Alpmeister extends View {
           Card(
             "settings",
             "Settings",
-            [TextButton("open-settings-card", "Open Settings", (cx) => this.openSettings({}, cx), { icon: ICONS.settings })],
+            [
+              TextButton("open-settings-card", "Open Settings", (cx) => this.openSettings({}, cx), {
+                icon: ICONS.settings,
+              }),
+            ],
             Note(this.configError, t.blocked),
           ),
         );

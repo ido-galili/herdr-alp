@@ -253,7 +253,10 @@ function workspaceMilestones(ws, repository, noMilestone, now) {
   const list = repository.open.nodes.map((milestone) => {
     const issues = milestone.issues.nodes.map((issue) => milestoneIssue(ws, issue));
     const previous = milestone.dueOn
-      ? dues.filter((other) => other.due < milestone.dueOn).sort((a, b) => a.due.localeCompare(b.due)).pop()
+      ? dues
+          .filter((other) => other.due < milestone.dueOn)
+          .sort((a, b) => a.due.localeCompare(b.due))
+          .pop()
       : null;
     const created = milestone.createdAt ? Date.parse(milestone.createdAt) : null;
     const previousDue = previous ? Date.parse(previous.due) : null;
@@ -390,7 +393,10 @@ function boardViewItem(ws, node) {
     iteration: node.iteration?.title ?? null,
     iterationId: node.iteration?.iterationId ?? null,
     milestone: content.milestone ? { id: content.milestone.id, title: content.milestone.title } : null,
-    assignees: (content.assignees?.nodes ?? []).map((assignee) => ({ login: assignee.login, avatar: assignee.avatarUrl ?? null })),
+    assignees: (content.assignees?.nodes ?? []).map((assignee) => ({
+      login: assignee.login,
+      avatar: assignee.avatarUrl ?? null,
+    })),
     reviewDecision: content.reviewDecision ?? null,
     prs: (content.closedByPullRequestsReferences?.nodes ?? []).filter((pr) => !pr.isDraft),
   };
@@ -404,7 +410,10 @@ function boardViewItem(ws, node) {
  */
 function boardMeta(project) {
   const status = project.statusMeta?.id
-    ? { fieldId: project.statusMeta.id, options: Object.fromEntries(project.statusMeta.options.map((option) => [option.name, option.id])) }
+    ? {
+        fieldId: project.statusMeta.id,
+        options: Object.fromEntries(project.statusMeta.options.map((option) => [option.name, option.id])),
+      }
     : null;
   const configuration = project.iterationMeta?.configuration;
   const iteration = project.iterationMeta?.id
@@ -444,7 +453,10 @@ export function boardFilter(ws) {
  *   Iteration field with the open and the completed iterations.
  */
 export async function loadBoardView(ws) {
-  const fields = { statusField: ws.board.statusField ?? "Status", iterationField: ws.board.iterationField ?? "Iteration" };
+  const fields = {
+    statusField: ws.board.statusField ?? "Status",
+    iterationField: ws.board.iterationField ?? "Iteration",
+  };
   const filter = boardFilter(ws);
   const items = [];
   let total = 0;
@@ -645,7 +657,8 @@ function cardRows(config, key, search, scoped) {
  * @param {{ issueCount: number }} search The search's result.
  * @returns {number}
  */
-const cardCount = (config, rows, search) => (Array.isArray(config.account.repos) ? rows.length : search?.issueCount ?? rows.length);
+const cardCount = (config, rows, search) =>
+  Array.isArray(config.account.repos) ? rows.length : (search?.issueCount ?? rows.length);
 
 /**
  * Fetches one Daypack card again with another search, for a filter edited on the card, and
@@ -728,7 +741,10 @@ export async function loadAll(config) {
   const [account, ...workspaces] = await Promise.all([
     part(errors, "account", loadAccount(config)),
     ...config.workspaces.map((ws) =>
-      loadWorkspace(ws).catch((error) => ({ fetchedAt: Date.now(), errors: { github: String(error.message ?? error) } })),
+      loadWorkspace(ws).catch((error) => ({
+        fetchedAt: Date.now(),
+        errors: { github: String(error.message ?? error) },
+      })),
     ),
   ]);
   return {
@@ -763,7 +779,9 @@ export async function loadPickStates(config, picks) {
   const byRepo = {};
   for (const pick of picks) (byRepo[pick.repo] ??= new Set()).add(pick.number);
   if (!Object.keys(byRepo).length) return {};
-  const { query, aliases } = pickStates(Object.fromEntries(Object.entries(byRepo).map(([repo, set]) => [repo, [...set]])));
+  const { query, aliases } = pickStates(
+    Object.fromEntries(Object.entries(byRepo).map(([repo, set]) => [repo, [...set]])),
+  );
   const data = await graphql(query, {}, { partial: true });
   const states = {};
   for (const [repo, numbers] of Object.entries(byRepo)) {

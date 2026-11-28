@@ -60,7 +60,10 @@ function demoAgents() {
  * @param {number} now The time to measure from.
  * @returns {object}
  */
-function agent({ id, description, type, fork = false, background = false, parent = null, age, doneAgo = null, quiet = false }, now) {
+function agent(
+  { id, description, type, fork = false, background = false, parent = null, age, doneAgo = null, quiet = false },
+  now,
+) {
   const finished = doneAgo !== null;
   return {
     id,

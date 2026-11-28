@@ -74,7 +74,8 @@ const initials = (login) => (login.split("-").filter(Boolean).pop() ?? login).sl
  * @param {string} text The text.
  * @returns {object}
  */
-const IconLabel = (icon, text) => h_flex().gap(4).items_center().min_w(0).child(svg(icon).flex_none().size(11)).child(text);
+const IconLabel = (icon, text) =>
+  h_flex().gap(4).items_center().min_w(0).child(svg(icon).flex_none().size(11)).child(text);
 
 /**
  * The column under the pointer: the columns share the row's width equally, with a gap between.
@@ -116,7 +117,12 @@ function Avatar(t, person, id, avatarPath, size = AVATAR_SIZE) {
     .border_1()
     .border_color(t.background)
     .tooltip(person.login);
-  if (path) return frame.child(image(path).size(size - 2).rounded_full());
+  if (path)
+    return frame.child(
+      image(path)
+        .size(size - 2)
+        .rounded_full(),
+    );
   return frame
     .bg(t.selected)
     .flex()
@@ -168,7 +174,9 @@ function ItemCard(t, item, options) {
   const id = `bv-${item.repo}#${item.number ?? item.title}`;
   const linked = item.kind !== "draft" && item.number != null;
   const session = linked ? sessionTab(item) : null;
-  const chips = (item.kind === "pr" ? [decisionChip(t, item, "bv")] : item.prs.map((pr) => prChip(t, item, pr, "bv"))).filter(Boolean);
+  const chips = (
+    item.kind === "pr" ? [decisionChip(t, item, "bv")] : item.prs.map((pr) => prChip(t, item, pr, "bv"))
+  ).filter(Boolean);
   const current = Boolean(item.iteration) && item.iteration === options.iteration;
   const asked =
     options.filterIteration === "@current" ? current : options.filterIteration === item.iteration?.toLowerCase();
@@ -182,7 +190,9 @@ function ItemCard(t, item, options) {
     );
   }
   if (item.milestone) {
-    chips.push(Chip(IconLabel(ICONS.milestone, item.milestone.title), { color: t.muted, id: `${id}-ms`, tooltip: "Milestone" }));
+    chips.push(
+      Chip(IconLabel(ICONS.milestone, item.milestone.title), { color: t.muted, id: `${id}-ms`, tooltip: "Milestone" }),
+    );
   }
   const people = item.assignees.filter((person) => person.login);
   const card = v_flex()
@@ -197,9 +207,7 @@ function ItemCard(t, item, options) {
     .border_color(options.ghost || options.menuFor === item.itemId ? t.accent : t.border)
     .hover((style) => style.border_color(t.accent))
     .when(options.writing.has(item.itemId), (el) => el.opacity(0.6))
-    .when(!options.ghost, (el) =>
-      el.on_mouse_move((event) => options.onCardPointer(item.itemId, event.local_position)),
-    )
+    .when(!options.ghost, (el) => el.on_mouse_move((event) => options.onCardPointer(item.itemId, event.local_position)))
     .on_mouse_down("left", (event) => options.onCardDown(item, event))
     .on_mouse_down("right", (event, cx) => {
       cx.stop_propagation();
@@ -230,11 +238,18 @@ function ItemCard(t, item, options) {
                   .truncate()
                   .text_size(11.5)
                   .text_color(t.dim)
-                  .child(`${item.kind === "pr" ? "PR " : ""}${item.repo === options.repo ? "" : shortRepo(item.repo)}#${item.number}`),
+                  .child(
+                    `${item.kind === "pr" ? "PR " : ""}${item.repo === options.repo ? "" : shortRepo(item.repo)}#${item.number}`,
+                  ),
               ),
             )
             .when(Boolean(item.type), (el) =>
-              el.child(Chip(item.type, { color: typeColor(t, item.type) }).flex_shrink(1).min_w(0).truncate()),
+              el.child(
+                Chip(item.type, { color: typeColor(t, item.type) })
+                  .flex_shrink(1)
+                  .min_w(0)
+                  .truncate(),
+              ),
             )
             .when(item.kind === "draft", (el) => el.child(Chip("Draft", { color: t.dim }))),
         )
@@ -354,7 +369,8 @@ export function peopleOf(items) {
     }
   }
   return [...people.values()].sort(
-    (a, b) => (a.login === UNASSIGNED) - (b.login === UNASSIGNED) || b.count - a.count || a.login.localeCompare(b.login),
+    (a, b) =>
+      (a.login === UNASSIGNED) - (b.login === UNASSIGNED) || b.count - a.count || a.login.localeCompare(b.login),
   );
 }
 
@@ -383,7 +399,8 @@ export function pickedItem(item, picked) {
 function PeoplePicker(t, people, options) {
   const picked = options.picked;
   const shown = [...people];
-  for (const login of picked) if (!shown.some((person) => person.login === login)) shown.push({ login, avatar: null, count: 0 });
+  for (const login of picked)
+    if (!shown.some((person) => person.login === login)) shown.push({ login, avatar: null, count: 0 });
   if (!shown.length) return null;
   return h_flex()
     .flex_wrap()
@@ -406,16 +423,24 @@ function PeoplePicker(t, people, options) {
           .cursor_pointer()
           .when(picked.size > 0 && !on, (el) => el.opacity(0.5))
           .hover((style) => style.border_color(t.accent))
-          .tooltip(`${label}: ${person.count} item${person.count === 1 ? "" : "s"}. Click to ${on ? "unpick" : "pick"}.`)
+          .tooltip(
+            `${label}: ${person.count} item${person.count === 1 ? "" : "s"}. Click to ${on ? "unpick" : "pick"}.`,
+          )
           .on_click((_event, cx) => options.onTogglePerson(person.login, cx))
           .child(
             person.login
               ? Avatar(t, person, `bv-pick-av-${key}`, options.avatarPath, PICKER_SIZE - 6)
-              : div().size(PICKER_SIZE - 6).rounded_full().border_1().border_color(t.dim),
+              : div()
+                  .size(PICKER_SIZE - 6)
+                  .rounded_full()
+                  .border_1()
+                  .border_color(t.dim),
           );
       }),
     )
-    .when(picked.size > 0, (el) => el.child(TextButton("bv-pick-clear", "Everyone", (cx) => options.onClearPeople(cx))));
+    .when(picked.size > 0, (el) =>
+      el.child(TextButton("bv-pick-clear", "Everyone", (cx) => options.onClearPeople(cx))),
+    );
 }
 
 /**
@@ -538,7 +563,9 @@ export function Board(ws, wsModel, options) {
   const view = wsModel?.boardView;
   const items = view ? view.items.filter((item) => pickedItem(item, options.picked)) : [];
   const extras = [
-    view ? Chip(items.length === view.total ? String(view.total) : `${items.length} of ${view.total}`, { color: t.dim }) : null,
+    view
+      ? Chip(items.length === view.total ? String(view.total) : `${items.length} of ${view.total}`, { color: t.dim })
+      : null,
     options.filter,
     TextButton("bv-choose-columns", "Choose columns ▾", (cx) => options.onChooseColumns(cx), {
       tooltip: "Pick the board's columns, with its filter",
@@ -590,7 +617,13 @@ export function Board(ws, wsModel, options) {
         .when(ghost !== null, (el) => el.cursor_grabbing())
         .on_mouse_move((event, cx) => {
           const column = columnAt(event, columns);
-          options.onDragMove(event, column, columnWidth(event, columns.length) - 2 * COLUMN_PADDING, shownIn(column), cx);
+          options.onDragMove(
+            event,
+            column,
+            columnWidth(event, columns.length) - 2 * COLUMN_PADDING,
+            shownIn(column),
+            cx,
+          );
         })
         .on_mouse_up("left", (_event, cx) => options.onDrop(cx))
         .on_hover((hovered, cx) => {

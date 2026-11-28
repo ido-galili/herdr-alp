@@ -38,8 +38,17 @@ const RAW_CONFIG = {
       mineHidden: ["Backlog", "Done", "On Hold"],
       boardView: { query: "iteration:@current", statuses: ["Todo", "In Progress", "In Review", "QA", "Done"] },
       queries: { triage: "is:issue is:open type:Bug label:triage" },
-      bugs: { query: "is:issue is:open type:Bug", priorityField: "Priority", priorities: ["Blocker", "Critical", "Major", "Minor"] },
-      spotlight: { milestones: 2, labels: ["product-prioritized"], featureTypes: ["Epic", "Story", "Improvement"], holdStatus: "On Hold" },
+      bugs: {
+        query: "is:issue is:open type:Bug",
+        priorityField: "Priority",
+        priorities: ["Blocker", "Critical", "Major", "Minor"],
+      },
+      spotlight: {
+        milestones: 2,
+        labels: ["product-prioritized"],
+        featureTypes: ["Epic", "Story", "Improvement"],
+        holdStatus: "On Hold",
+      },
       customer: { labelMatch: "customer" },
       nightly: {
         workflow: "nightly.yml",
@@ -112,7 +121,15 @@ function pr(
   repo,
   number,
   title,
-  { author = VIEWER, reviewDecision = null, checks = "SUCCESS", isDraft = false, ago = HOUR, labels = [], reviewRequested = [] } = {},
+  {
+    author = VIEWER,
+    reviewDecision = null,
+    checks = "SUCCESS",
+    isDraft = false,
+    ago = HOUR,
+    labels = [],
+    reviewRequested = [],
+  } = {},
 ) {
   return {
     kind: "pr",
@@ -138,8 +155,34 @@ function pr(
  * @param {object} more `status`, `assignees` (logins), `type`, `labels`, `priority`, `closed`, `subIssues`.
  * @returns {object} The issue.
  */
-function issue(repo, number, title, { status = null, assignees = [], type = "Task", labels = [], priority = null, closed = false, subIssues = { total: 0, completed: 0 } } = {}) {
-  return { repo, number, title, url: `https://github.com/${repo}/issues/${number}`, closed, status, assignees, type, parent: null, labels, priority, subIssues };
+function issue(
+  repo,
+  number,
+  title,
+  {
+    status = null,
+    assignees = [],
+    type = "Task",
+    labels = [],
+    priority = null,
+    closed = false,
+    subIssues = { total: 0, completed: 0 },
+  } = {},
+) {
+  return {
+    repo,
+    number,
+    title,
+    url: `https://github.com/${repo}/issues/${number}`,
+    closed,
+    status,
+    assignees,
+    type,
+    parent: null,
+    labels,
+    priority,
+    subIssues,
+  };
 }
 
 /**
@@ -152,9 +195,27 @@ function issue(repo, number, title, { status = null, assignees = [], type = "Tas
  *   `now` to tell an overdue one.
  * @returns {object} The milestone.
  */
-function milestone(repo, number, title, { due = null, start = null, startFrom = null, total, closed, byStatus, issues = [], onHold = null, now }) {
+function milestone(
+  repo,
+  number,
+  title,
+  { due = null, start = null, startFrom = null, total, closed, byStatus, issues = [], onHold = null, now },
+) {
   const overdue = due != null && new Date(due).toISOString().slice(0, 10) < new Date(now).toISOString().slice(0, 10);
-  return { title, url: `https://github.com/${repo}/milestone/${number}`, due, overdue, start, startFrom, total, closed, openCount: total - closed, byStatus, issues, onHold };
+  return {
+    title,
+    url: `https://github.com/${repo}/milestone/${number}`,
+    due,
+    overdue,
+    start,
+    startFrom,
+    total,
+    closed,
+    openCount: total - closed,
+    byStatus,
+    issues,
+    onHold,
+  };
 }
 
 /**
@@ -165,7 +226,21 @@ function milestone(repo, number, title, { due = null, start = null, startFrom = 
  * @param {object} more `kind`, `status`, `iteration` (a demo iteration or null), `type`, `assignees` (logins), `milestone`, `reviewDecision`, `prs`.
  * @returns {object} The card.
  */
-function card(repo, number, title, { kind = "issue", status, iteration = null, type = "Task", assignees = [], milestone = null, reviewDecision = null, prs = [] }) {
+function card(
+  repo,
+  number,
+  title,
+  {
+    kind = "issue",
+    status,
+    iteration = null,
+    type = "Task",
+    assignees = [],
+    milestone = null,
+    reviewDecision = null,
+    prs = [],
+  },
+) {
   return {
     kind,
     itemId: `demo-item-${repo}-${number}`,
@@ -195,7 +270,10 @@ function card(repo, number, title, { kind = "issue", status, iteration = null, t
 function meta(statuses, its) {
   return {
     projectId: "demo-project",
-    status: { fieldId: "demo-status", options: Object.fromEntries(statuses.map((status) => [status, `demo-opt-${status}`])) },
+    status: {
+      fieldId: "demo-status",
+      options: Object.fromEntries(statuses.map((status) => [status, `demo-opt-${status}`])),
+    },
     iteration: { fieldId: "demo-iteration", iterations: its },
   };
 }
@@ -251,14 +329,22 @@ const REPO_LABELS = {
  *   triage count, and the customer labels with their count and search.
  */
 function repoTiles(ws) {
-  const pool = (REPO_ISSUES[ws.repo] ?? []).map(([number, type, priority, labels]) => ({ kind: "issue", number, type, priority, labels }));
+  const pool = (REPO_ISSUES[ws.repo] ?? []).map(([number, type, priority, labels]) => ({
+    kind: "issue",
+    number,
+    type,
+    priority,
+    labels,
+  }));
   const bugs = pool.filter((item) => matchesSearch(item, ws.bugs.query, VIEWER));
   const counts = Object.fromEntries([...ws.bugs.priorities, "Unset"].map((priority) => [priority, 0]));
   for (const bug of bugs) counts[ws.bugs.priorities.includes(bug.priority) ? bug.priority : "Unset"] += 1;
   const match = ws.customer.labelMatch.toLowerCase();
   const labels = (REPO_LABELS[ws.repo] ?? []).filter((label) => label.toLowerCase().includes(match));
   const customers = pool.filter((item) => item.labels.some((label) => labels.includes(label)));
-  const query = labels.length ? `repo:${ws.repo} is:issue is:open label:${labels.map((label) => `"${label}"`).join(",")}` : null;
+  const query = labels.length
+    ? `repo:${ws.repo} is:issue is:open label:${labels.map((label) => `"${label}"`).join(",")}`
+    : null;
   return {
     bugs: { total: bugs.length, read: bugs.length, counts },
     triage: pool.filter((item) => matchesSearch(item, ws.queries.triage, VIEWER)).length,
@@ -278,19 +364,87 @@ function website(ws, now) {
   const m24 = "v2.4";
   const m25 = "v2.5";
   const items = [
-    card(WEB, 412, "Cart total rounds the wrong way for CHF", { status: "Todo", iteration: current, type: "Bug", assignees: ["tobi-s"], milestone: m24 }),
-    card(WEB, 418, "Empty state for saved carts", { status: "Todo", iteration: current, assignees: [], milestone: m24 }),
-    card(WEB, 421, "Price badges overlap on narrow screens", { status: "Todo", iteration: current, type: "Bug", assignees: ["lena-k"] }),
-    card(WEB, 397, "Retry failed payment webhooks", { status: "In Progress", iteration: current, assignees: [VIEWER], milestone: m24, prs: [{ number: 431, reviewDecision: null }] }),
-    card(WEB, 405, "Checkout: remember the last address", { status: "In Progress", iteration: current, type: "Story", assignees: ["mara-v", "tobi-s"], milestone: m24 }),
-    card(WEB, 409, "Gateway drops idle sockets after 60s", { status: "In Progress", iteration: previous, type: "Bug", assignees: ["lena-k"], milestone: m24 }),
-    card(WEB, 433, "Pricing page v2", { kind: "pr", status: "In Review", iteration: current, assignees: ["mara-v"], reviewDecision: "CHANGES_REQUESTED" }),
-    card(WEB, 401, "Flaky checkout e2e on Safari", { status: "In Review", iteration: current, type: "Bug", assignees: ["tobi-s"], milestone: m24, prs: [{ number: 428, reviewDecision: "APPROVED" }] }),
+    card(WEB, 412, "Cart total rounds the wrong way for CHF", {
+      status: "Todo",
+      iteration: current,
+      type: "Bug",
+      assignees: ["tobi-s"],
+      milestone: m24,
+    }),
+    card(WEB, 418, "Empty state for saved carts", {
+      status: "Todo",
+      iteration: current,
+      assignees: [],
+      milestone: m24,
+    }),
+    card(WEB, 421, "Price badges overlap on narrow screens", {
+      status: "Todo",
+      iteration: current,
+      type: "Bug",
+      assignees: ["lena-k"],
+    }),
+    card(WEB, 397, "Retry failed payment webhooks", {
+      status: "In Progress",
+      iteration: current,
+      assignees: [VIEWER],
+      milestone: m24,
+      prs: [{ number: 431, reviewDecision: null }],
+    }),
+    card(WEB, 405, "Checkout: remember the last address", {
+      status: "In Progress",
+      iteration: current,
+      type: "Story",
+      assignees: ["mara-v", "tobi-s"],
+      milestone: m24,
+    }),
+    card(WEB, 409, "Gateway drops idle sockets after 60s", {
+      status: "In Progress",
+      iteration: previous,
+      type: "Bug",
+      assignees: ["lena-k"],
+      milestone: m24,
+    }),
+    card(WEB, 433, "Pricing page v2", {
+      kind: "pr",
+      status: "In Review",
+      iteration: current,
+      assignees: ["mara-v"],
+      reviewDecision: "CHANGES_REQUESTED",
+    }),
+    card(WEB, 401, "Flaky checkout e2e on Safari", {
+      status: "In Review",
+      iteration: current,
+      type: "Bug",
+      assignees: ["tobi-s"],
+      milestone: m24,
+      prs: [{ number: 428, reviewDecision: "APPROVED" }],
+    }),
     card(WEB, 389, "Onboarding copy pass", { status: "QA", iteration: current, assignees: ["lena-k"], milestone: m24 }),
-    card(WEB, 447, "Gift card balance API", { status: "In Progress", iteration: current, assignees: ["tobi-s"], milestone: m25 }),
-    card(WEB, 371, "3-D Secure fallback for old cards", { status: "In Review", iteration: previous, type: "Bug", assignees: ["lena-k"], milestone: "v2.3" }),
-    card(WEB, 377, "Move images to the CDN", { status: "Done", iteration: current, assignees: [VIEWER], milestone: m24 }),
-    card(WEB, 380, "Lighthouse budget in CI", { status: "Done", iteration: current, type: "Improvement", assignees: ["mara-v"] }),
+    card(WEB, 447, "Gift card balance API", {
+      status: "In Progress",
+      iteration: current,
+      assignees: ["tobi-s"],
+      milestone: m25,
+    }),
+    card(WEB, 371, "3-D Secure fallback for old cards", {
+      status: "In Review",
+      iteration: previous,
+      type: "Bug",
+      assignees: ["lena-k"],
+      milestone: "v2.3",
+    }),
+    card(WEB, 377, "Move images to the CDN", {
+      status: "Done",
+      iteration: current,
+      assignees: [VIEWER],
+      milestone: m24,
+    }),
+    card(WEB, 380, "Lighthouse budget in CI", {
+      status: "Done",
+      iteration: current,
+      type: "Improvement",
+      assignees: ["mara-v"],
+    }),
   ];
   const tiles = repoTiles(ws);
   const inFlight = items
@@ -308,14 +462,39 @@ function website(ws, now) {
       prs: item.prs,
     }));
   const v24 = [
-    issue(WEB, 397, "Retry failed payment webhooks", { status: "In Progress", assignees: [VIEWER], priority: "Critical" }),
-    issue(WEB, 412, "Cart total rounds the wrong way for CHF", { status: "Todo", assignees: ["tobi-s"], type: "Bug", priority: "Blocker" }),
-    issue(WEB, 405, "Checkout: remember the last address", { status: "In Progress", assignees: ["mara-v"], type: "Story", subIssues: { total: 5, completed: 3 } }),
-    issue(WEB, 390, "Saved carts", { status: "In Progress", assignees: ["mara-v"], type: "Epic", labels: ["product-prioritized"], subIssues: { total: 8, completed: 5 } }),
+    issue(WEB, 397, "Retry failed payment webhooks", {
+      status: "In Progress",
+      assignees: [VIEWER],
+      priority: "Critical",
+    }),
+    issue(WEB, 412, "Cart total rounds the wrong way for CHF", {
+      status: "Todo",
+      assignees: ["tobi-s"],
+      type: "Bug",
+      priority: "Blocker",
+    }),
+    issue(WEB, 405, "Checkout: remember the last address", {
+      status: "In Progress",
+      assignees: ["mara-v"],
+      type: "Story",
+      subIssues: { total: 5, completed: 3 },
+    }),
+    issue(WEB, 390, "Saved carts", {
+      status: "In Progress",
+      assignees: ["mara-v"],
+      type: "Epic",
+      labels: ["product-prioritized"],
+      subIssues: { total: 8, completed: 5 },
+    }),
     issue(WEB, 418, "Empty state for saved carts", { status: "Todo", type: "Improvement" }),
   ];
   const v25 = [
-    issue(WEB, 440, "Gift cards", { status: "Backlog", type: "Epic", labels: ["product-prioritized"], subIssues: { total: 6, completed: 0 } }),
+    issue(WEB, 440, "Gift cards", {
+      status: "Backlog",
+      type: "Epic",
+      labels: ["product-prioritized"],
+      subIssues: { total: 6, completed: 0 },
+    }),
     issue(WEB, 446, "Store locator map", { status: "Todo", assignees: ["lena-k"], type: "Story" }),
   ];
   return {
@@ -348,7 +527,14 @@ function website(ws, now) {
           total: 14,
           closed: 12,
           byStatus: { Done: 12, "In Review": 1, Todo: 1 },
-          issues: [issue(WEB, 371, "3-D Secure fallback for old cards", { status: "In Review", assignees: ["lena-k"], type: "Bug", priority: "Major" })],
+          issues: [
+            issue(WEB, 371, "3-D Secure fallback for old cards", {
+              status: "In Review",
+              assignees: ["lena-k"],
+              type: "Bug",
+              priority: "Major",
+            }),
+          ],
           onHold: [],
         }),
         milestone(WEB, 12, m24, {
@@ -371,7 +557,9 @@ function website(ws, now) {
           closed: 3,
           byStatus: { Backlog: 3, Todo: 4, "In Progress": 1, Done: 3 },
           issues: v25,
-          onHold: [issue(WEB, 414, "Apple Pay on the web", { status: "On Hold", type: "Story", assignees: ["tobi-s"] })],
+          onHold: [
+            issue(WEB, 414, "Apple Pay on the web", { status: "On Hold", type: "Story", assignees: ["tobi-s"] }),
+          ],
         }),
         milestone(WEB, 14, "v2.6", {
           now,
@@ -379,14 +567,25 @@ function website(ws, now) {
           total: 4,
           closed: 0,
           byStatus: { Backlog: 4 },
-          issues: [issue(WEB, 455, "Wish lists", { status: "Backlog", type: "Epic", labels: ["product-prioritized"], subIssues: { total: 4, completed: 0 } })],
+          issues: [
+            issue(WEB, 455, "Wish lists", {
+              status: "Backlog",
+              type: "Epic",
+              labels: ["product-prioritized"],
+              subIssues: { total: 4, completed: 0 },
+            }),
+          ],
           onHold: [],
         }),
       ],
     },
     counts: { triage: tiles.triage },
     boardUrl: `https://github.com/orgs/${ORG}/projects/4`,
-    iteration: { title: current.title, start: Date.parse(`${current.startDate}T00:00:00`), end: Date.parse(`${current.startDate}T00:00:00`) + 14 * DAY },
+    iteration: {
+      title: current.title,
+      start: Date.parse(`${current.startDate}T00:00:00`),
+      end: Date.parse(`${current.startDate}T00:00:00`) + 14 * DAY,
+    },
     inFlightTotal: inFlight.length,
     inFlight,
   };
@@ -421,8 +620,16 @@ function herdrCore(ws, now) {
           closed: 4,
           byStatus: { Open: 8, Closed: 4 },
           issues: [
-            issue(CORE, 188, "Remote machines", { type: "Epic", assignees: ["mara-v"], subIssues: { total: 7, completed: 2 } }),
-            issue(CORE, 201, "Crash when a pane closes mid-resize", { type: "Bug", priority: "Critical", assignees: ["tobi-s"] }),
+            issue(CORE, 188, "Remote machines", {
+              type: "Epic",
+              assignees: ["mara-v"],
+              subIssues: { total: 7, completed: 2 },
+            }),
+            issue(CORE, 201, "Crash when a pane closes mid-resize", {
+              type: "Bug",
+              priority: "Critical",
+              assignees: ["tobi-s"],
+            }),
           ],
         }),
         milestone(CORE, 4, "0.3", {
@@ -431,7 +638,9 @@ function herdrCore(ws, now) {
           total: 5,
           closed: 0,
           byStatus: { Open: 5 },
-          issues: [issue(CORE, 230, "Plugins from a registry", { type: "Epic", subIssues: { total: 5, completed: 0 } })],
+          issues: [
+            issue(CORE, 230, "Plugins from a registry", { type: "Epic", subIssues: { total: 5, completed: 0 } }),
+          ],
         }),
       ],
     },
@@ -449,9 +658,27 @@ function alphorn(ws, now) {
   const its = iterations(now);
   const current = its[2];
   const items = [
-    card(HORN, 61, "Push notifications for Needs you", { status: "Todo", iteration: current, type: "Story", assignees: ["lena-k"] }),
-    card(HORN, 58, "Pair a phone with a QR code", { status: "In Progress", iteration: current, type: "Story", assignees: [VIEWER], milestone: "1.0" }),
-    card(HORN, 63, "Reconnect after the phone sleeps", { status: "In Review", iteration: current, type: "Bug", assignees: ["tobi-s"], prs: [{ number: 64, reviewDecision: null }], milestone: "1.0" }),
+    card(HORN, 61, "Push notifications for Needs you", {
+      status: "Todo",
+      iteration: current,
+      type: "Story",
+      assignees: ["lena-k"],
+    }),
+    card(HORN, 58, "Pair a phone with a QR code", {
+      status: "In Progress",
+      iteration: current,
+      type: "Story",
+      assignees: [VIEWER],
+      milestone: "1.0",
+    }),
+    card(HORN, 63, "Reconnect after the phone sleeps", {
+      status: "In Review",
+      iteration: current,
+      type: "Bug",
+      assignees: ["tobi-s"],
+      prs: [{ number: 64, reviewDecision: null }],
+      milestone: "1.0",
+    }),
     card(HORN, 55, "Read a terminal's last 200 lines", { status: "Done", iteration: current, assignees: [VIEWER] }),
   ];
   const inFlight = items
@@ -477,7 +704,11 @@ function alphorn(ws, now) {
     customer: null,
     boardView: { filter: boardFilter(ws), total: items.length, items, meta: meta(ws.statuses, its) },
     boardUrl: `https://github.com/orgs/${ORG}/projects/7`,
-    iteration: { title: current.title, start: Date.parse(`${current.startDate}T00:00:00`), end: Date.parse(`${current.startDate}T00:00:00`) + 14 * DAY },
+    iteration: {
+      title: current.title,
+      start: Date.parse(`${current.startDate}T00:00:00`),
+      end: Date.parse(`${current.startDate}T00:00:00`) + 14 * DAY,
+    },
     inFlightTotal: inFlight.length,
     inFlight,
   };
@@ -495,22 +726,120 @@ function account(config, now) {
   // Every made-up PR and issue the Daypack's searches pick from: each card shows those its
   // search matches, so an edited filter filters them too.
   const prs = [
-    pr(WEB, 433, "Pricing page v2", { author: "mara-v", reviewDecision: "CHANGES_REQUESTED", checks: "SUCCESS", ago: 35 * MIN, labels: ["frontend"], reviewRequested: me }),
-    pr(CORE, 212, "Terminal: keep scrollback across reloads", { author: "lena-k", reviewDecision: "REVIEW_REQUIRED", checks: "SUCCESS", ago: 2 * HOUR, labels: ["backend"], reviewRequested: me }),
-    pr(HORN, 64, "Reconnect after the phone sleeps", { author: "tobi-s", checks: "PENDING", ago: 5 * HOUR, labels: ["backend"], reviewRequested: me }),
-    pr(WEB, 436, "WIP: one-page checkout", { author: "tobi-s", isDraft: true, checks: null, ago: 7 * HOUR, labels: ["frontend"], reviewRequested: me }),
-    pr(WEB, 431, "Retry failed payment webhooks", { reviewDecision: "APPROVED", checks: "SUCCESS", ago: 20 * MIN, labels: ["backend"] }),
+    pr(WEB, 433, "Pricing page v2", {
+      author: "mara-v",
+      reviewDecision: "CHANGES_REQUESTED",
+      checks: "SUCCESS",
+      ago: 35 * MIN,
+      labels: ["frontend"],
+      reviewRequested: me,
+    }),
+    pr(CORE, 212, "Terminal: keep scrollback across reloads", {
+      author: "lena-k",
+      reviewDecision: "REVIEW_REQUIRED",
+      checks: "SUCCESS",
+      ago: 2 * HOUR,
+      labels: ["backend"],
+      reviewRequested: me,
+    }),
+    pr(HORN, 64, "Reconnect after the phone sleeps", {
+      author: "tobi-s",
+      checks: "PENDING",
+      ago: 5 * HOUR,
+      labels: ["backend"],
+      reviewRequested: me,
+    }),
+    pr(WEB, 436, "WIP: one-page checkout", {
+      author: "tobi-s",
+      isDraft: true,
+      checks: null,
+      ago: 7 * HOUR,
+      labels: ["frontend"],
+      reviewRequested: me,
+    }),
+    pr(WEB, 431, "Retry failed payment webhooks", {
+      reviewDecision: "APPROVED",
+      checks: "SUCCESS",
+      ago: 20 * MIN,
+      labels: ["backend"],
+    }),
     pr(CORE, 215, "hc: --json for every command", { checks: "PENDING", ago: 40 * MIN, labels: ["backend"] }),
-    pr(WEB, 425, "Bump the image CDN client", { reviewDecision: "CHANGES_REQUESTED", checks: "FAILURE", ago: DAY, labels: ["frontend"] }),
+    pr(WEB, 425, "Bump the image CDN client", {
+      reviewDecision: "CHANGES_REQUESTED",
+      checks: "FAILURE",
+      ago: DAY,
+      labels: ["frontend"],
+    }),
     pr(HORN, 66, "WIP: dark mode", { isDraft: true, checks: null, ago: 2 * DAY, labels: ["frontend"] }),
   ];
   const issues = [
-    { repo: WEB, number: 397, title: "Retry failed payment webhooks", workspace: "Website", status: "In Progress", iteration: sprint, milestone: "v2.4", type: "Task", labels: ["backend"] },
-    { repo: HORN, number: 58, title: "Pair a phone with a QR code", workspace: "Alphorn", status: "In Progress", iteration: sprint, milestone: null, type: "Story", labels: ["frontend"] },
-    { repo: WEB, number: 377, title: "Move images to the CDN", workspace: "Website", status: "Done", iteration: sprint, milestone: "v2.4", type: "Task", labels: ["frontend"] },
-    { repo: WEB, number: 452, title: "Spike: server-side cart", workspace: "Website", status: "Todo", iteration: sprint, milestone: "v2.5", type: "Task", labels: ["backend"] },
-    { repo: CORE, number: 220, title: "Document the mod API", workspace: null, status: null, iteration: null, milestone: "0.2", type: "Task", labels: ["docs"] },
-    { repo: WEB, number: 412, title: "Cart rounds CHF wrong", workspace: "Website", status: "Todo", iteration: sprint, milestone: "v2.4", type: "Bug", labels: ["backend"], assignees: ["tobi-s"] },
+    {
+      repo: WEB,
+      number: 397,
+      title: "Retry failed payment webhooks",
+      workspace: "Website",
+      status: "In Progress",
+      iteration: sprint,
+      milestone: "v2.4",
+      type: "Task",
+      labels: ["backend"],
+    },
+    {
+      repo: HORN,
+      number: 58,
+      title: "Pair a phone with a QR code",
+      workspace: "Alphorn",
+      status: "In Progress",
+      iteration: sprint,
+      milestone: null,
+      type: "Story",
+      labels: ["frontend"],
+    },
+    {
+      repo: WEB,
+      number: 377,
+      title: "Move images to the CDN",
+      workspace: "Website",
+      status: "Done",
+      iteration: sprint,
+      milestone: "v2.4",
+      type: "Task",
+      labels: ["frontend"],
+    },
+    {
+      repo: WEB,
+      number: 452,
+      title: "Spike: server-side cart",
+      workspace: "Website",
+      status: "Todo",
+      iteration: sprint,
+      milestone: "v2.5",
+      type: "Task",
+      labels: ["backend"],
+    },
+    {
+      repo: CORE,
+      number: 220,
+      title: "Document the mod API",
+      workspace: null,
+      status: null,
+      iteration: null,
+      milestone: "0.2",
+      type: "Task",
+      labels: ["docs"],
+    },
+    {
+      repo: WEB,
+      number: 412,
+      title: "Cart rounds CHF wrong",
+      workspace: "Website",
+      status: "Todo",
+      iteration: sprint,
+      milestone: "v2.4",
+      type: "Bug",
+      labels: ["backend"],
+      assignees: ["tobi-s"],
+    },
   ].map((row, index) => ({
     kind: "issue",
     url: `https://github.com/${row.repo}/issues/${row.number}`,
@@ -564,7 +893,12 @@ const demoSearch = (pool, query) => pool.filter((item) => matchesSearch(item, qu
 export function demoCardSearch(account, key, query) {
   const list = { review: "reviews", myPrs: "myPrs", mine: "mine" }[key];
   const rows = demoSearch(account.pool ?? [], query);
-  const next = { ...account, [list]: rows, counts: { ...account.counts, [list]: rows.length }, queries: { ...account.queries, [key]: query } };
+  const next = {
+    ...account,
+    [list]: rows,
+    counts: { ...account.counts, [list]: rows.length },
+    queries: { ...account.queries, [key]: query },
+  };
   if (key === "myPrs") next.redPrs = rows.filter((row) => row.checks === "FAILURE").length;
   return next;
 }
@@ -629,7 +963,10 @@ export function demoModel(config) {
     errors: {},
     account: account(config, now),
     workspaces: Object.fromEntries(
-      config.workspaces.map((ws) => [ws.name, WORKSPACES[ws.name] ? filteredBoard(WORKSPACES[ws.name](ws, now), ws) : { fetchedAt: now, errors: {} }]),
+      config.workspaces.map((ws) => [
+        ws.name,
+        WORKSPACES[ws.name] ? filteredBoard(WORKSPACES[ws.name](ws, now), ws) : { fetchedAt: now, errors: {} },
+      ]),
     ),
   };
 }
@@ -642,9 +979,40 @@ export function demoModel(config) {
 export function demoFocus() {
   const earlier = isoDate(Date.now() - 3 * DAY);
   return [
-    { id: `issue-${WEB}#397`, kind: "issue", repo: WEB, number: 397, title: "Retry failed payment webhooks", url: `https://github.com/${WEB}/issues/397`, status: "In Progress", done: false, added: today() },
-    { id: `pr-${WEB}#433`, kind: "pr", repo: WEB, number: 433, title: "Pricing page v2", url: `https://github.com/${WEB}/pull/433`, review: "CHANGES_REQUESTED", done: false, added: today() },
-    { id: `pr-${CORE}#212`, kind: "pr", repo: CORE, number: 212, title: "Terminal: keep scrollback across reloads", url: `https://github.com/${CORE}/pull/212`, review: "APPROVED", state: "MERGED", done: true, added: today() },
+    {
+      id: `issue-${WEB}#397`,
+      kind: "issue",
+      repo: WEB,
+      number: 397,
+      title: "Retry failed payment webhooks",
+      url: `https://github.com/${WEB}/issues/397`,
+      status: "In Progress",
+      done: false,
+      added: today(),
+    },
+    {
+      id: `pr-${WEB}#433`,
+      kind: "pr",
+      repo: WEB,
+      number: 433,
+      title: "Pricing page v2",
+      url: `https://github.com/${WEB}/pull/433`,
+      review: "CHANGES_REQUESTED",
+      done: false,
+      added: today(),
+    },
+    {
+      id: `pr-${CORE}#212`,
+      kind: "pr",
+      repo: CORE,
+      number: 212,
+      title: "Terminal: keep scrollback across reloads",
+      url: `https://github.com/${CORE}/pull/212`,
+      review: "APPROVED",
+      state: "MERGED",
+      done: true,
+      added: today(),
+    },
     { id: "todo-demo-1", kind: "todo", text: "Write the 2.4 release notes", done: false, added: earlier },
     { id: "todo-demo-2", kind: "todo", text: "1:1 with Lena about the gateway", done: true, added: today() },
   ];
@@ -662,7 +1030,13 @@ export function demoDiscovery(config) {
     { owner: ORG, number: 7, title: "Alphorn app", closed: false, key: `${ORG}#7` },
     { owner: ORG, number: 2, title: "Ops (archived)", closed: true, key: `${ORG}#2` },
   ];
-  const repos = config.account.repos.map((repo) => ({ repo, isArchived: false, isPrivate: repo.endsWith("infra"), isFork: false, branch: "main" }));
+  const repos = config.account.repos.map((repo) => ({
+    repo,
+    isArchived: false,
+    isPrivate: repo.endsWith("infra"),
+    isFork: false,
+    branch: "main",
+  }));
   const workflows = [
     { name: "CI", file: "ci.yml" },
     { name: "Nightly", file: "nightly.yml" },
@@ -678,9 +1052,20 @@ export function demoDiscovery(config) {
   return {
     discovery: { login: VIEWER, repos, boards, warning: null },
     details: Object.fromEntries(
-      config.workspaces.filter((ws) => ws.repo).map((ws) => [ws.repo, { boards: ws.board ? [boards.find((board) => board.number === ws.board.number)] : [], branch: "main", workflows }]),
+      config.workspaces
+        .filter((ws) => ws.repo)
+        .map((ws) => [
+          ws.repo,
+          {
+            boards: ws.board ? [boards.find((board) => board.number === ws.board.number)] : [],
+            branch: "main",
+            workflows,
+          },
+        ]),
     ),
-    fields: Object.fromEntries(config.workspaces.filter((ws) => ws.board).map((ws) => [`${ws.board.owner}#${ws.board.number}`, fieldsOf(ws)])),
+    fields: Object.fromEntries(
+      config.workspaces.filter((ws) => ws.board).map((ws) => [`${ws.board.owner}#${ws.board.number}`, fieldsOf(ws)]),
+    ),
     clones: { [WEB]: "~/code/website", [CORE]: "~/code/herdr-core", [HORN]: "~/code/alphorn" },
   };
 }
@@ -697,12 +1082,23 @@ export function demoNoMilestone(ws) {
       openCount: 3,
       byStatus: { Open: 3 },
       open: [],
-      issues: [issue(CORE, 236, "Wayland: drag a tab to another window", { type: "Bug", priority: "Minor", assignees: ["lena-k"] })],
+      issues: [
+        issue(CORE, 236, "Wayland: drag a tab to another window", {
+          type: "Bug",
+          priority: "Minor",
+          assignees: ["lena-k"],
+        }),
+      ],
       onHold: null,
     };
   }
   const issues = [
-    issue(WEB, 421, "Price badges overlap on narrow screens", { status: "Todo", type: "Bug", priority: "Major", assignees: ["lena-k"] }),
+    issue(WEB, 421, "Price badges overlap on narrow screens", {
+      status: "Todo",
+      type: "Bug",
+      priority: "Major",
+      assignees: ["lena-k"],
+    }),
     issue(WEB, 430, "Dark mode for the account pages", { status: "Backlog", type: "Story" }),
     issue(WEB, 452, "Spike: server-side cart", { status: "Todo", assignees: [VIEWER] }),
   ];

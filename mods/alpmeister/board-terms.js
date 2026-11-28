@@ -101,7 +101,11 @@ function termWords(term) {
  */
 export function boardSummary(query, columns, statusCount, people) {
   const words = tokenize(query).map((token) => termWords(boardTerm(token)));
-  words.push(!columns.length || columns.length >= statusCount ? "all columns" : `${columns.length} column${columns.length === 1 ? "" : "s"}`);
+  words.push(
+    !columns.length || columns.length >= statusCount
+      ? "all columns"
+      : `${columns.length} column${columns.length === 1 ? "" : "s"}`,
+  );
   const names = people.map((login) => login || "unassigned");
   if (names.length > 2) words.push(`${names.length} people`);
   else if (names.length) words.push(names.join(", "));
@@ -129,15 +133,26 @@ export function matchesBoard(item, query, { viewer, iteration }) {
     if (!term.field) hit = lower(item.title).includes(lower(term.values[0]));
     else if (term.field === "type") hit = any((value) => value === lower(item.type));
     else if (term.field === "status") hit = any((value) => value === lower(item.status));
-    else if (term.field === "iteration") hit = any((value) => (value === "@current" ? item.iteration === iteration : value === lower(item.iteration)));
+    else if (term.field === "iteration")
+      hit = any((value) => (value === "@current" ? item.iteration === iteration : value === lower(item.iteration)));
     else if (term.field === "assignee") hit = any((value) => logins.includes(value === "@me" ? lower(viewer) : value));
     else if (term.field === "milestone") hit = any((value) => value === lower(item.milestone?.title));
     else if (term.field === "no") {
-      const empty = { assignee: !logins.length, type: !item.type, status: !item.status, iteration: !item.iteration, milestone: !item.milestone };
+      const empty = {
+        assignee: !logins.length,
+        type: !item.type,
+        status: !item.status,
+        iteration: !item.iteration,
+        milestone: !item.milestone,
+      };
       hit = any((value) => empty[value] ?? true);
     } else if (term.field === "is") {
       hit = any((value) =>
-        value === "issue" || value === "pr" ? item.kind === value : value === "open" || value === "closed" ? lower(item.state ?? "open") === value : true,
+        value === "issue" || value === "pr"
+          ? item.kind === value
+          : value === "open" || value === "closed"
+            ? lower(item.state ?? "open") === value
+            : true,
       );
     }
     return term.negated ? !hit : hit;

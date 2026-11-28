@@ -10,7 +10,10 @@
       "description": "What the Run tab lists, by name.",
       "type": "object",
       "additionalProperties": {
-        "oneOf": [{ "$ref": "#/definitions/run" }, { "type": "null", "description": "Removes a run another file defines." }]
+        "oneOf": [
+          { "$ref": "#/definitions/run" },
+          { "type": "null", "description": "Removes a run another file defines." }
+        ]
       }
     },
     "inputs": {
@@ -30,7 +33,10 @@
       "type": "object",
       "properties": {
         "command": { "$ref": "#/definitions/command" },
-        "cwd": { "type": "string", "description": "The folder it runs in, relative to the repo root. The root by default." },
+        "cwd": {
+          "type": "string",
+          "description": "The folder it runs in, relative to the repo root. The root by default."
+        },
         "env": { "type": "object", "additionalProperties": { "type": ["string", "number", "boolean", "null"] } },
         "envFile": { "type": "string", "description": "A dotenv file, relative to the repo root." }
       }
@@ -43,14 +49,24 @@
         "cwd": { "type": "string" },
         "env": { "type": "object" },
         "envFile": { "type": "string" },
-        "section": { "type": "string", "description": "The heading it's listed under. \"Runs\" by default; Launch and Tasks come first." },
+        "section": {
+          "type": "string",
+          "description": "The heading it's listed under. \"Runs\" by default; Launch and Tasks come first."
+        },
         "dependsOn": {
           "description": "Runs started first. One that isn't background must exit 0 before this starts.",
           "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }]
         },
         "order": { "enum": ["parallel", "sequence"], "description": "How dependsOn starts. parallel by default." },
-        "background": { "type": "boolean", "description": "Keeps running, like a dev server: runs that depend on it don't wait for it to exit." },
-        "runs": { "type": "array", "items": { "type": "string" }, "description": "A group: starts each of these runs instead of a command." },
+        "background": {
+          "type": "boolean",
+          "description": "Keeps running, like a dev server: runs that depend on it don't wait for it to exit."
+        },
+        "runs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "A group: starts each of these runs instead of a command."
+        },
         "macos": { "$ref": "#/definitions/fields", "description": "Fields used on macOS instead." },
         "linux": { "$ref": "#/definitions/fields", "description": "Fields used on Linux instead." },
         "windows": { "$ref": "#/definitions/fields", "description": "Fields used on Windows instead." }
@@ -69,7 +85,11 @@
           "items": {
             "oneOf": [
               { "type": "string" },
-              { "type": "object", "properties": { "label": { "type": "string" }, "value": { "type": "string" } }, "required": ["value"] }
+              {
+                "type": "object",
+                "properties": { "label": { "type": "string" }, "value": { "type": "string" } },
+                "required": ["value"]
+              }
             ]
           }
         }

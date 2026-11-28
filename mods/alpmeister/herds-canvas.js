@@ -11,7 +11,19 @@ import { div, svg, PathBuilder } from "gpui-kit";
 import { h_flex, v_flex, Popup } from "gpui-base";
 import { run, settings } from "herdr";
 import { agentChildren, agentsByAge } from "./herds-data.js";
-import { BgTag, CARD, LinkButton, RoleIcon, SessionCard, StatusMark, agentLine, linkLine, linkTo, sortedBySpace, statusOf } from "./herds-view.js";
+import {
+  BgTag,
+  CARD,
+  LinkButton,
+  RoleIcon,
+  SessionCard,
+  StatusMark,
+  agentLine,
+  linkLine,
+  linkTo,
+  sortedBySpace,
+  statusOf,
+} from "./herds-view.js";
 import { ICONS, IconButton, Segmented, TextButton, ago, formatTime } from "./ui.js";
 
 /** Card sizes on the canvas at 100%: a session's is the one card both views draw. */
@@ -175,7 +187,9 @@ function Menu(t, id, heading, rows, onClose) {
     .bg(t.popover ?? t.background)
     .shadow_lg()
     .on_mouse_down_out((_event, cx) => onClose(cx))
-    .when(Boolean(heading), (el) => el.child(div().px(8).py(3).text_size(11.5).font_semibold().text_color(t.dim).child(heading)))
+    .when(Boolean(heading), (el) =>
+      el.child(div().px(8).py(3).text_size(11.5).font_semibold().text_color(t.dim).child(heading)),
+    )
     .children(
       rows.map((row) =>
         h_flex()
@@ -187,7 +201,7 @@ function Menu(t, id, heading, rows, onClose) {
           .rounded(5)
           .text_size(12)
           .text_color(row.ticked ? t.foreground : t.muted)
-          .bg(row.ticked ? t.hover : t.popover ?? t.background)
+          .bg(row.ticked ? t.hover : (t.popover ?? t.background))
           .cursor_pointer()
           .hover((style) => style.bg(t.hover).text_color(t.foreground))
           .on_click((_event, cx) => {
@@ -198,7 +212,9 @@ function Menu(t, id, heading, rows, onClose) {
             div()
               .w(12)
               .flex_none()
-              .when(Boolean(row.ticked), (el) => el.child(svg("mods/workspace-chrome/check.svg").size(12).text_color(t.done))),
+              .when(Boolean(row.ticked), (el) =>
+                el.child(svg("mods/workspace-chrome/check.svg").size(12).text_color(t.done)),
+              ),
           )
           .when(Boolean(row.icon), (el) => el.child(svg(row.icon).size(15).flex_none()))
           .child(div().flex_1().min_w(0).truncate().child(row.label)),
@@ -227,7 +243,7 @@ function MenuButton(t, id, label, open, onClick, tooltip) {
     .rounded(6)
     .text_size(11.5)
     .text_color(open ? t.foreground : t.muted)
-    .bg(open ? t.selected ?? t.hover : t.background)
+    .bg(open ? (t.selected ?? t.hover) : t.background)
     .cursor_pointer()
     .hover((style) => style.bg(t.hover).text_color(t.foreground))
     .tooltip(tooltip)
@@ -289,7 +305,13 @@ export class HerdsCanvas {
     try {
       localStorage.setItem(
         STORE_KEY,
-        JSON.stringify({ edges: this.edges, moved: this.moved, nested: true, views: this.views, keyHidden: this.keyHidden }),
+        JSON.stringify({
+          edges: this.edges,
+          moved: this.moved,
+          nested: true,
+          views: this.views,
+          keyHidden: this.keyHidden,
+        }),
       );
     } catch (error) {
       console.log(`alpmeister: canvas not remembered: ${error}`);
@@ -361,7 +383,9 @@ export class HerdsCanvas {
   toggleOutline(herds, live, actions, cx) {
     this.outlineBlocked = !this.outlineBlocked;
     if (this.outlineBlocked && this.view === "map") {
-      const first = this.cards.find((card) => card.node.kind === "session" && statusOf(card.node.session, live) === "blocked");
+      const first = this.cards.find(
+        (card) => card.node.kind === "session" && statusOf(card.node.session, live) === "blocked",
+      );
       if (first) this.scrollTo(first);
     }
     cx.notify();
@@ -414,7 +438,10 @@ export class HerdsCanvas {
     const wide = (bounds.right - bounds.left) * zoom;
     this.zoom = zoom;
     this.pan = {
-      x: wide <= this.size.width - FIT_PAD * 2 ? (this.size.width - wide) / 2 - bounds.left * zoom : FIT_PAD - bounds.left * zoom,
+      x:
+        wide <= this.size.width - FIT_PAD * 2
+          ? (this.size.width - wide) / 2 - bounds.left * zoom
+          : FIT_PAD - bounds.left * zoom,
       y: FIT_PAD - bounds.top * zoom,
     };
     this.menu = null;
@@ -443,7 +470,9 @@ export class HerdsCanvas {
   fullButton() {
     return this.full
       ? IconButton("herds-full", ICONS.exitFullTab, (cx) => this.setFull(false, cx), { tooltip: "Exit full tab" })
-      : IconButton("herds-full", ICONS.fullTab, (cx) => this.setFull(true, cx), { tooltip: "Full tab: fill the whole tab with Herds" });
+      : IconButton("herds-full", ICONS.fullTab, (cx) => this.setFull(true, cx), {
+          tooltip: "Full tab: fill the whole tab with Herds",
+        });
   }
 
   /**
@@ -495,11 +524,21 @@ export class HerdsCanvas {
       TextButton("herds-fit", "Fit", (cx) => this.fit(cx), { tooltip: "Fit: show the herds" }),
       Popup.new(
         "herds-zoom",
-        MenuButton(t, "herds-zoom-button", `${percent}%`, this.menu === "zoom", toggle("zoom"), "Zoom (or Cmd-scroll on the map)"),
+        MenuButton(
+          t,
+          "herds-zoom-button",
+          `${percent}%`,
+          this.menu === "zoom",
+          toggle("zoom"),
+          "Zoom (or Cmd-scroll on the map)",
+        ),
       )
         .anchor("top_right")
         .when(this.menu === "zoom", (el) => el.content(zoomMenu)),
-      Popup.new("herds-lines", MenuButton(t, "herds-lines-button", "Lines", this.menu === "lines", toggle("lines"), "How the lines are drawn"))
+      Popup.new(
+        "herds-lines",
+        MenuButton(t, "herds-lines-button", "Lines", this.menu === "lines", toggle("lines"), "How the lines are drawn"),
+      )
         .anchor("top_right")
         .when(this.menu === "lines", (el) => el.content(linesMenu)),
       Object.keys(this.moved).length
@@ -597,7 +636,8 @@ export class HerdsCanvas {
       const mid = (from.y + to.y) / 2;
       const dx = to.x - from.x;
       const r = Math.min(8 * this.zoom, Math.abs(dx) / 2, Math.abs(to.y - from.y) / 2);
-      if (Math.abs(dx) < 1 || r <= 0) return path.move_to(from.x, from.y).line_to(from.x, mid).line_to(to.x, mid).line_to(to.x, to.y);
+      if (Math.abs(dx) < 1 || r <= 0)
+        return path.move_to(from.x, from.y).line_to(from.x, mid).line_to(to.x, mid).line_to(to.x, to.y);
       const sx = Math.sign(dx);
       const sy = Math.sign(to.y - from.y) || 1;
       return path
@@ -721,10 +761,17 @@ export class HerdsCanvas {
       z,
       role: node.role,
       compact,
-      tooltip: hasTab ? "Click to open its tab · drag to move it and what's under it" : "Drag to move it and what's under it",
+      tooltip: hasTab
+        ? "Click to open its tab · drag to move it and what's under it"
+        : "Drag to move it and what's under it",
       extras: [
         earlier > 0 ? this.earlierToggle(t, session, earlier, open, actions, Math.max(8, 11.5 * z)) : null,
-        link ? div().flex_none().on_mouse_down("left", (_event, cx) => cx.stop_propagation()).child(link) : null,
+        link
+          ? div()
+              .flex_none()
+              .on_mouse_down("left", (_event, cx) => cx.stop_propagation())
+              .child(link)
+          : null,
       ],
     })
       .absolute()
@@ -859,73 +906,75 @@ export class HerdsCanvas {
       this.refit = false;
       this.fit();
     }
-    return div()
-      .id("herds-canvas")
-      .relative()
-      .w_full()
-      .h(height)
-      .overflow_hidden()
-      .rounded(8)
-      .border_1()
-      .border_color(t.border)
-      .bg(t.canvas)
-      .when(this.drag?.kind === "pan", (el) => el.cursor_grabbing())
-      .on_size_change((size, cx) => {
-        // The size comes unzoomed while the cards are laid out zoomed: at the app's 150% the
-        // canvas holds 1/1.5 as much, so Fit measures it in zoomed units.
-        const appZoom = Number(settings().zoom) || 1;
-        this.size = { width: size.width / appZoom, height: size.height / appZoom };
-        this.refit = true;
-        cx.notify();
-      })
-      .on_mouse_down("left", (event, cx) => {
-        // A press on a card set its drag first, on the way up from the card; keep that one.
-        if (!this.drag) this.drag = { kind: "pan", start: event.position, origin: { ...this.pan }, moved: false };
-        cx.notify();
-      })
-      .on_mouse_move((event, cx) => {
-        const drag = this.drag;
-        if (!drag) return;
-        const dx = event.position.x - drag.start.x;
-        const dy = event.position.y - drag.start.y;
-        if (!drag.moved && Math.hypot(dx, dy) < CLICK_SLOP) return;
-        drag.moved = true;
-        if (drag.kind === "pan") this.pan = { x: drag.origin.x + dx, y: drag.origin.y + dy };
-        else this.moved[drag.key] = { dx: drag.origin.dx + dx / this.zoom, dy: drag.origin.dy + dy / this.zoom };
-        cx.notify();
-      })
-      .on_mouse_up("left", (_event, cx) => this.endDrag(cx))
-      // Letting go outside the canvas never reaches it: leaving it ends the drag instead.
-      .on_hover((hovered, cx) => {
-        if (!hovered && this.drag) this.endDrag(cx);
-      })
-      .on_scroll_wheel((event, cx) => {
-        // Scrolling pans; with Cmd or Ctrl held it zooms around the pointer. The page under the
-        // canvas does not scroll along.
-        cx.stop_propagation();
-        if (event.modifiers.platform || event.modifiers.control) {
-          const step = clamp(event.delta.y, -40, 40);
-          this.zoomBy(Math.exp(step * 0.01), cx, event.local_position ?? undefined);
-          return;
-        }
-        this.pan = { x: this.pan.x + event.delta.x, y: this.pan.y + event.delta.y };
-        cx.notify();
-      })
-      .children(this.paintedLines(t, lines))
-      .children(this.labels(t, lines))
-      .children(cards.map((card) => this.card(t, card, live, actions)))
-      .child(
-        div()
-          .absolute()
-          .right(10)
-          .bottom(8)
-          .px(6)
-          .py(2)
-          .rounded(5)
-          .bg(t.background)
-          .text_size(11.5)
-          .text_color(t.dim)
-          .child("drag to pan · scroll to pan · Cmd-scroll to zoom · drag a card to move it and what's under it"),
-      );
+    return (
+      div()
+        .id("herds-canvas")
+        .relative()
+        .w_full()
+        .h(height)
+        .overflow_hidden()
+        .rounded(8)
+        .border_1()
+        .border_color(t.border)
+        .bg(t.canvas)
+        .when(this.drag?.kind === "pan", (el) => el.cursor_grabbing())
+        .on_size_change((size, cx) => {
+          // The size comes unzoomed while the cards are laid out zoomed: at the app's 150% the
+          // canvas holds 1/1.5 as much, so Fit measures it in zoomed units.
+          const appZoom = Number(settings().zoom) || 1;
+          this.size = { width: size.width / appZoom, height: size.height / appZoom };
+          this.refit = true;
+          cx.notify();
+        })
+        .on_mouse_down("left", (event, cx) => {
+          // A press on a card set its drag first, on the way up from the card; keep that one.
+          if (!this.drag) this.drag = { kind: "pan", start: event.position, origin: { ...this.pan }, moved: false };
+          cx.notify();
+        })
+        .on_mouse_move((event, cx) => {
+          const drag = this.drag;
+          if (!drag) return;
+          const dx = event.position.x - drag.start.x;
+          const dy = event.position.y - drag.start.y;
+          if (!drag.moved && Math.hypot(dx, dy) < CLICK_SLOP) return;
+          drag.moved = true;
+          if (drag.kind === "pan") this.pan = { x: drag.origin.x + dx, y: drag.origin.y + dy };
+          else this.moved[drag.key] = { dx: drag.origin.dx + dx / this.zoom, dy: drag.origin.dy + dy / this.zoom };
+          cx.notify();
+        })
+        .on_mouse_up("left", (_event, cx) => this.endDrag(cx))
+        // Letting go outside the canvas never reaches it: leaving it ends the drag instead.
+        .on_hover((hovered, cx) => {
+          if (!hovered && this.drag) this.endDrag(cx);
+        })
+        .on_scroll_wheel((event, cx) => {
+          // Scrolling pans; with Cmd or Ctrl held it zooms around the pointer. The page under the
+          // canvas does not scroll along.
+          cx.stop_propagation();
+          if (event.modifiers.platform || event.modifiers.control) {
+            const step = clamp(event.delta.y, -40, 40);
+            this.zoomBy(Math.exp(step * 0.01), cx, event.local_position ?? undefined);
+            return;
+          }
+          this.pan = { x: this.pan.x + event.delta.x, y: this.pan.y + event.delta.y };
+          cx.notify();
+        })
+        .children(this.paintedLines(t, lines))
+        .children(this.labels(t, lines))
+        .children(cards.map((card) => this.card(t, card, live, actions)))
+        .child(
+          div()
+            .absolute()
+            .right(10)
+            .bottom(8)
+            .px(6)
+            .py(2)
+            .rounded(5)
+            .bg(t.background)
+            .text_size(11.5)
+            .text_color(t.dim)
+            .child("drag to pan · scroll to pan · Cmd-scroll to zoom · drag a card to move it and what's under it"),
+        )
+    );
   }
 }

@@ -111,9 +111,15 @@ export default class Basecamp extends View {
    */
   tab(t, item, { on = false, count, icons, measure = false }) {
     const running = item.child === "basecamp-run";
-    const tip = count > 0 && (item.child === "changes"
-      ? (count === 1 ? "1 changed file" : `${count} changed files`)
-      : running ? `${count} running` : `${count} open`);
+    const tip =
+      count > 0 &&
+      (item.child === "changes"
+        ? count === 1
+          ? "1 changed file"
+          : `${count} changed files`
+        : running
+          ? `${count} running`
+          : `${count} open`);
     return h_flex()
       .id(`basecamp-tab-${item.child}${measure ? "-measure" : ""}`)
       .h(26)
@@ -183,7 +189,9 @@ export default class Basecamp extends View {
           .overflow_hidden()
           .relative()
           .on_size_change((size, cx) => this.measured("room", size.width, cx))
-          .children(tabs.map((item) => this.tab(t, item, { on: item.child === active, count: counts[item.child] ?? 0, icons })))
+          .children(
+            tabs.map((item) => this.tab(t, item, { on: item.child === active, count: counts[item.child] ?? 0, icons })),
+          )
           // The hidden copy: every tab with its icon, to tell whether they fit.
           .child(
             h_flex()
@@ -195,7 +203,9 @@ export default class Basecamp extends View {
               .items_center()
               .opacity(0)
               .on_size_change((size, cx) => this.measured("full", size.width, cx))
-              .children(tabs.map((item) => this.tab(t, item, { count: counts[item.child] ?? 0, icons: true, measure: true }))),
+              .children(
+                tabs.map((item) => this.tab(t, item, { count: counts[item.child] ?? 0, icons: true, measure: true })),
+              ),
           ),
       )
       .child(

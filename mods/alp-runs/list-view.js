@@ -460,7 +460,9 @@ export class ListPart {
             .rounded(5)
             .text_color(running ? t.blocked : t.accent)
             .hover((style) => style.bg(t.selected))
-            .tooltip(running ? (terminating ? "Stop again: terminate" : `Stop ${entry.name} (Ctrl-C)`) : `Run ${entry.name}`)
+            .tooltip(
+              running ? (terminating ? "Stop again: terminate" : `Stop ${entry.name} (Ctrl-C)`) : `Run ${entry.name}`,
+            )
             .on_click(play)
             .child(
               starting

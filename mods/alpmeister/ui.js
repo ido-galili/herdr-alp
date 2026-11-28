@@ -324,7 +324,11 @@ export function IconButton(id, icon, onClick, { tooltip, color, picture = false,
     onClick(cx);
   };
   const tip = label && !(tooltip ?? "").startsWith(label) ? (tooltip ? `${label}: ${tooltip}` : label) : tooltip;
-  const lit = (style) => style.bg(t.hover).text_color(color ?? t.foreground).opacity(1);
+  const lit = (style) =>
+    style
+      .bg(t.hover)
+      .text_color(color ?? t.foreground)
+      .opacity(1);
   return h_flex()
     .id(id)
     .flex_none()
@@ -591,7 +595,6 @@ export const pressOnKey = (press) => (event, cx) => {
   cx.stop_propagation();
   press(cx);
 };
-
 
 /**
  * The words a card's filter shows on hover, or on the Board's button: what it shows, and

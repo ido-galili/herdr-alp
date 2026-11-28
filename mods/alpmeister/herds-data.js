@@ -112,7 +112,10 @@ function normalize(path) {
 export function worktreeFolder(command, cwd) {
   const match = command.match(/git\s+worktree\s+add\s+([^;&|\n]+)/);
   if (!match) return null;
-  const tokens = match[1].trim().split(/\s+/).map((token) => token.replace(/^["']|["']$/g, ""));
+  const tokens = match[1]
+    .trim()
+    .split(/\s+/)
+    .map((token) => token.replace(/^["']|["']$/g, ""));
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index];
     if (["-b", "-B", "--reason"].includes(token)) index += 1;
@@ -366,9 +369,7 @@ export async function loadHerds() {
  */
 export function herdsOf({ sessions, links }) {
   const showing = new Set(sessions.filter((session) => session.shownIn).map((session) => session.terminal));
-  const visible = sessions.filter(
-    (session) => session.shownIn || !session.terminal || !showing.has(session.terminal),
-  );
+  const visible = sessions.filter((session) => session.shownIn || !session.terminal || !showing.has(session.terminal));
   const ids = new Set(visible.map((session) => session.id));
   const kept = links.filter((link) => ids.has(link.from) && ids.has(link.to));
   const neighbors = new Map(visible.map((session) => [session.id, new Set()]));
