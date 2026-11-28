@@ -3,6 +3,12 @@
 Every release of herdr-alp: the layout, theme and mods, and the `alp` Claude Code plugin, which
 share one version. Made by git-cliff from the titles of merged pull requests.
 
+## [0.7.0](https://github.com/ido-galili/herdr-alp/releases/tag/v0.7.0) - 2026-11-28
+
+### Breaking
+
+- every shipped mod is named alp or alp-…, and alpmeister.json is settings.json ([#48](https://github.com/ido-galili/herdr-alp/pull/48))
+
 ## [0.6.0](https://github.com/ido-galili/herdr-alp/releases/tag/v0.6.0) - 2026-11-28
 
 ### Added
