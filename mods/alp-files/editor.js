@@ -3,7 +3,7 @@
 // switches file, and a file with unsaved edits stays open as a chip until it's saved or dropped.
 // Local files are editable (ctrl-s saves); remote and oversized ones stay read-only.
 // Alp: auto save, as VS Code's `files.autoSave`, comes from Alp's Settings (the `files` section
-// of ~/.config/alp/alpmeister.json): off, a moment after the last edit, or on leaving the file.
+// of ~/.config/alp/settings.json): off, a moment after the last edit, or on leaving the file.
 import { div, svg } from "gpui-kit";
 import { v_flex, h_flex, Editor, EditorState, Scrollbar, v_virtual_list } from "gpui-base";
 import { exec, home, readTextFile, writeTextFile, theme, settings, window, panes, run, shared, setShared } from "herdr";
@@ -36,7 +36,7 @@ function followSettings(cx) {
   cx.spawn(async (cx) => {
     let files = {};
     try {
-      files = JSON.parse((await readTextFile(`${home()}/.config/alp/alpmeister.json`)) || "{}")?.files ?? {};
+      files = JSON.parse((await readTextFile(`${home()}/.config/alp/settings.json`)) || "{}")?.files ?? {};
     } catch {}
     const delay = Math.round(Number(files.autoSaveDelay));
     AUTO.mode = AUTO_MODES.includes(files.autoSave) ? files.autoSave : "off";

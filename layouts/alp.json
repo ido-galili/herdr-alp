@@ -33,7 +33,7 @@
                 "px": 96
               },
               "content": {
-                "mod": "usage-limits"
+                "mod": "alp-usage-limits"
               }
             },
             {
@@ -113,7 +113,7 @@
                     "pane": {
                       "header": {
                         "content": {
-                          "mod": "pane-agent"
+                          "mod": "alp-pane-agent"
                         },
                         "reveal": "always",
                         "height": 30,
@@ -139,10 +139,10 @@
               "gap": 8
             },
             {
-              "id": "alpmeister-view",
+              "id": "alp-view",
               "type": "block",
               "content": {
-                "mod": "alpmeister"
+                "mod": "alp"
               }
             }
           ],
@@ -230,7 +230,7 @@
           "id": "basecamp-header",
           "type": "block",
           "content": {
-            "mod": "basecamp"
+            "mod": "alp-basecamp"
           },
           "size": {
             "px": 42
@@ -261,7 +261,7 @@
               "id": "basecamp-daypack",
               "type": "block",
               "content": {
-                "mod": "daypack"
+                "mod": "alp-daypack"
               }
             },
             {

@@ -158,7 +158,7 @@ export default class UsageLimits extends View {
           .rounded(6)
           .hover((s) => s.bg(t.hover))
           .tooltip(tip)
-          .child(svg("mods/usage-limits/gauge.svg").size(14).flex_none().text_color(color))
+          .child(svg("mods/alp-usage-limits/gauge.svg").size(14).flex_none().text_color(color))
           .child(div().text_size(11.5).font_semibold().text_color(color).child(usedText))
           .child(
             div()

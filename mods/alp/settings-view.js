@@ -1,4 +1,4 @@
-// The Settings tab: every setting in ~/.config/alp/alpmeister.json as a form, with the choices
+// The Settings tab: every setting in ~/.config/alp/settings.json as a form, with the choices
 // read from GitHub (your repositories, boards, a board's statuses and fields, a repository's
 // workflows) and from your disk (local clones). Edits stay in a draft until Save.
 //
@@ -673,7 +673,7 @@ export class SettingsForm {
           el.child(
             h_flex().child(
               TextButton("st-reset", "Start from the defaults", (cx) => options.onReset(cx), {
-                tooltip: "Edit fresh settings; Save keeps the broken file as alpmeister.json.bak",
+                tooltip: "Edit fresh settings; Save keeps the broken file as settings.json.bak",
               }),
             ),
           ),
@@ -840,7 +840,7 @@ export class SettingsForm {
    */
   saveBar(t, options) {
     const changes = this.changeCount();
-    const idle = this.demo ? "Demo settings: Save writes nothing" : "~/.config/alp/alpmeister.json";
+    const idle = this.demo ? "Demo settings: Save writes nothing" : "~/.config/alp/settings.json";
     return h_flex()
       .flex_none()
       .w_full()
@@ -2116,7 +2116,7 @@ export class SettingsForm {
                   ? ws.nightly.checks.map((check) => check.name).join(" · ")
                   : "None: the tile shows the run's overall result.",
               ),
-              "One row per job or step: edit them in alpmeister.json (see alpmeister.example.json).",
+              "One row per job or step: edit them in settings.json (see settings.example.json).",
             ),
           ),
       );

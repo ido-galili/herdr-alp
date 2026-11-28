@@ -1,5 +1,5 @@
 // A made-up herd for demos and screenshots, opened with `props.demo`:
-//   herdr-app do tab.new '{"mod":"alpmeister","props":{"tab":"herds","demo":true}}'
+//   herdr-app do tab.new '{"mod":"alp","props":{"tab":"herds","demo":true}}'
 // A release lead that messaged two sessions and made a worktree for a third, a session leading
 // only its own agents, sessions and agents in every status, four sessions grazing alone,
 // spread over four spaces, and three with no tab (one in the background). Nothing here reads

@@ -17,15 +17,15 @@ What's inside:
 |---|---|
 | `layouts/alp.json` | the Herdr layout |
 | `themes/alp.json` | its built-in theme: Dracula |
-| `mods/usage-limits/` | sidebar block: session (5h) and weekly (7d) usage, with time to reset |
-| `mods/pane-agent/` | pane header: icon, name, folder, model/effort/context chips, worktree, branch, status, split/zoom/close |
+| `mods/alp-usage-limits/` | sidebar block: session (5h) and weekly (7d) usage, with time to reset |
+| `mods/alp-pane-agent/` | pane header: icon, name, folder, model/effort/context chips, worktree, branch, status, split/zoom/close |
 | `mods/alp-files/` | Files: Basecamp's file tree, and the editor a file opens in, as a pane beside the terminals: `ctrl-s` saves, edits survive switching files, and a file another program changed asks before it's overwritten (Herdr's `files`, cloned) |
 | `mods/alp-chrome/` | sidebar brand row and footer: Herdr's `workspace-chrome`, with a 60px rail whose unfold button sits at the top |
 | `mods/alp-spaces/` | sidebar spaces list: Herdr's `spaces`, with each space's avatar on the folded rail |
 | `mods/alp-agents/` | sidebar agents list: grouped or priority views, sub-agents under their parent, each Space shown by its avatar |
-| `mods/alpmeister/` | Alp, a team lead's start-of-day tab: an Overview of all your repos or one workspace (bugs by priority, triage, customer issues, nightly, Waiting for your review, Your open PRs, Your issues, milestone, team in flight), a Board, Herds (sessions and their agents) and Settings |
-| `mods/basecamp/` | Basecamp (Files, Changes, Today and Run): the one dock on the right, beside the terminals; its tab strip. Shown or hidden from its button at the end of the tab bar, and remembered per space |
-| `mods/daypack/` | Today: Basecamp's tab with the Today list (the issues and PRs you Pin to Today in Alp, and the todos you type there), grouped or filtered by repo |
+| `mods/alp/` | Alp, a team lead's start-of-day tab: an Overview of all your repos or one workspace (bugs by priority, triage, customer issues, nightly, Waiting for your review, Your open PRs, Your issues, milestone, team in flight), a Board, Herds (sessions and their agents) and Settings |
+| `mods/alp-basecamp/` | Basecamp (Files, Changes, Today and Run): the one dock on the right, beside the terminals; its tab strip. Shown or hidden from its button at the end of the tab bar, and remembered per space |
+| `mods/alp-daypack/` | Today: Basecamp's tab with the Today list (the issues and PRs you Pin to Today in Alp, and the todos you type there), grouped or filtered by repo |
 | `mods/alp-runs/` | Runs: Basecamp's Run tab (the runs in Alp's config, `.herdr/alp.json` and your own, each with a play button, and an import from VS Code) and the bottom panel with each run's output and the Runs list |
 | `mods/alp-status/` | the status bar: Herdr's, with a Runs button that shows or hides the bottom panel |
 | `mods/alp-tabs/` | the tab bar: an Alp tab pinned before the space's tabs, then the tabs, +, and the Basecamp button |
@@ -92,14 +92,13 @@ Restart running Claude sessions after installing or changing the plugin.
 
 ## Alp
 
-In an alp cooperative, the Alpmeister plans the season and oversees the alp, while the senn
-works the herd. The `alpmeister` mod is that view for a team lead; it shows as **Alp**. Its tab is
-pinned first in the tab bar, before the space's tabs, and belongs to no space. Click it and Alp
-takes the whole work area in place of the terminals. Click it again, pick a tab, open one or
-switch spaces to get the terminals back. It can also open as a tab of its own in a space:
+In an alp cooperative, the senn works the herd. The `alp` mod is the team lead's view of the
+whole alp; it shows as **Alp**. Its tab is pinned first in the tab bar, before the space's tabs,
+and belongs to no space. Click it and Alp takes the whole work area in place of the terminals.
+Click it again, pick a tab, open one or switch spaces to get the terminals back. It can also open as a tab of its own in a space:
 
 ```sh
-herdr-app do tab.new '{"mod":"alpmeister","name":"Alp"}'
+herdr-app do tab.new '{"mod":"alp","name":"Alp"}'
 ```
 
 It has three views: Overview, Board and Herds, as tabs after its name (each with its icon: a
@@ -177,7 +176,7 @@ the Overview starts on all your repositories, with a card that offers to add a w
   tab picked with Link a tab. It reads Claude Code's files (`~/.claude/sessions`, the
   sessions' transcripts and agent files) and redraws when a session starts, ends or changes
   status, and every few seconds while its agents work. Open it
-  directly with `herdr-app do tab.new '{"mod":"alpmeister","props":{"tab":"herds"}}'`.
+  directly with `herdr-app do tab.new '{"mod":"alp","props":{"tab":"herds"}}'`.
 - **Settings:** everything below, as a form (see [Settings](#settings)), shown in place of the
   view, with "Back to Overview" (or the view you came from). A side list picks the page, and the
   save bar stays at the bottom: "2 unsaved changes · Revert · Save". Edits you haven't saved stay
@@ -187,7 +186,7 @@ the Overview starts on all your repositories, with a card that offers to add a w
   old, and from "Updated 3h ago · Refresh", which turns orange after 2 hours.
 - **Pinned:** shown in place of the terminals (the Alp layout's pinned tab), the header ends in
   "Back to terminals".
-- **Today** lives in Basecamp's Today tab (the `daypack` mod), its open count on the tab: the
+- **Today** lives in Basecamp's Today tab (the `alp-daypack` mod), its open count on the tab: the
   rows you Pin to Today here and the todos you type there ("Add a todo and press Enter"),
   carried over the next day. A key says what the Claude mark and the pin do ("set it in
   Settings" opens Alp's Settings while a prompt is missing; "Hide key" is remembered). Each row
@@ -199,25 +198,26 @@ the Overview starts on all your repositories, with a card that offers to add a w
 - **Open on a tab or workspace:** `props.tab` (`dashboard` or `overview` for the Overview,
   `board`, `herds`, `settings`; the old `today` opens the Overview) and
   `props.workspace` (a workspace's name, `""` for All repos):
-  `herdr-app do tab.new '{"mod":"alpmeister","props":{"tab":"dashboard","workspace":"Team"}}'`.
+  `herdr-app do tab.new '{"mod":"alp","props":{"tab":"dashboard","workspace":"Team"}}'`.
 - **Demo:** `props.demo` fills every tab with made-up data, for demos and screenshots: an
   org with three workspaces (a repository and a board, a repository only, a board only), every
   bug priority, a failing nightly, cards in every status, PRs in every review state, pins
   and a herd on Herds. It calls no GitHub and writes nothing: not the settings, the cache or the
   Today list, and Board moves only change what it shows. Its Settings button shows demo settings whose Save
   writes nothing:
-  `herdr-app do tab.new '{"mod":"alpmeister","props":{"tab":"dashboard","workspace":"Website","demo":true}}'`.
+  `herdr-app do tab.new '{"mod":"alp","props":{"tab":"dashboard","workspace":"Website","demo":true}}'`.
 - **State:** `~/.local/state/alp/focus.json` holds the Today list and
-  `~/.local/state/alp/alpmeister-cache.json` the last result.
+  `~/.local/state/alp/cache.json` the last result.
 
 ### Settings
 
-The settings tab edits `~/.config/alp/alpmeister.json`. Its choices come from GitHub through
-the `gh` CLI (your repositories, your account's and organizations' project boards, a board's
+The settings tab edits `~/.config/alp/settings.json` (`alpmeister.json` before the mod was renamed
+`alp`: the first `./sync.sh install` after that renames it, and moves the mod's other files too).
+Its choices come from GitHub through the `gh` CLI (your repositories, your account's and organizations' project boards, a board's
 statuses and fields, a repository's workflows) and from your disk (local clones). Only the Board
 writes to GitHub: a card's status, its place in the column, its iteration and its milestone; the
 rest of Alp only reads. Nothing is saved until Save, in the bar at the bottom, which keeps the
-previous file as `alpmeister.json.bak`; Revert drops the unsaved changes.
+previous file as `settings.json.bak`; Revert drops the unsaved changes.
 
 A side list picks the page: **You** (GitHub, Local folders, Claude buttons, Card filters, Files),
 then a page per workspace and "+ Add workspace", then **Alp** › [Updates](#updates).
@@ -231,7 +231,7 @@ then a page per workspace and "+ Add workspace", then **Alp** › [Updates](#upd
 | Workspace: *name* | its name, repository and project board, then sections that fold, each with a line saying what it is set to: Board columns (per status: what it means and whether the Board shows it; "More per-status options" adds hidden from Your issues and on hold; the status and iteration fields), Nightly (the workflow, its branch and the runs that count), Bugs and triage, Milestone issues (what the Milestone card lists under Issues) and Customer issues |
 
 Nightly checks (one row per job or step) are edited in the file: see
-`mods/alpmeister/alpmeister.example.json` for every key. A file in the earlier one-repo shape
+`mods/alp/settings.example.json` for every key. A file in the earlier one-repo shape
 (top-level `repo` and `project`) still works: it reads as one workspace, and Save writes it in
 the new shape.
 
@@ -334,9 +334,9 @@ The labels are `alp.run` (the entry's name), `alp.run.kind` (launch, task or sav
 The plugin and the mods talk through files in `~/.local/state/herdr-agents/`. They are written per agent, so other agents can report later without changing the mods:
 
 - `<herdr terminal>.json`: `{ "agent": "claude", "model", "effort", "context_pct", "ts" }`. Empty when the agent has exited. The pane header shows the chips only when `agent` matches the program running in the pane.
-- `limits.json`: `{ "<agent>": { "five_hour": { "used_percentage", "resets_at" }, "seven_day": {…}, "ts" } }`. Each agent replaces only its own key. `usage-limits` takes `props: { "agent": "…" }` (default `claude`).
+- `limits.json`: `{ "<agent>": { "five_hour": { "used_percentage", "resets_at" }, "seven_day": {…}, "ts" } }`. Each agent replaces only its own key. `alp-usage-limits` takes `props: { "agent": "…" }` (default `claude`).
 
-To add another agent: make it write these files, then add its program key to `REPORTING` in `mods/pane-agent/main.js`.
+To add another agent: make it write these files, then add its program key to `REPORTING` in `mods/alp-pane-agent/main.js`.
 
 ## Updates
 
@@ -362,7 +362,7 @@ Herdr hot-reloads its home, so the quickest loop is to edit there and pull back:
 ```sh
 ./sync.sh pull      # ~/.config/herdr-app -> repo
 ./sync.sh install   # repo -> ~/.config/herdr-app
-herdr-app check ~/.config/herdr-app/mods/pane-agent
+herdr-app check ~/.config/herdr-app/mods/alp-pane-agent
 ```
 
 `npm install` sets up the dev tools and a pre-commit hook that runs oxlint and oxfmt on the
@@ -382,7 +382,7 @@ type(scope)!: a breaking change
 - **Types:** a change to shipped code (`mods/`, `layouts/`, `themes/`, `plugins/`, `sync.sh`,
   `setup.sh`) is `feat` (Added), `fix` (Fixed), `perf` (Faster) or `refactor` (Changed). `docs`,
   `test`, `ci` and `chore` stay out of the changelog. `release` is the release PR's own.
-- **Scopes:** a mod folder (`alpmeister`, `alp-runs`, …), a part people know by name (`overview`,
+- **Scopes:** a mod folder (`alp`, `alp-runs`, …), a part people know by name (`overview`,
   `board`, `herds`, `today`, `settings`, `updates`, `files`, `runs`, `tabs`, `sidebar`,
   `filters`, `pane-header`, `demo`, `alp`), or `plugin`, `layout`, `theme`, `setup`, `deps`.
   Several are comma-separated; none is fine too.

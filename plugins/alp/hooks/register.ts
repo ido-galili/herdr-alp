@@ -3,8 +3,8 @@ import type { Register } from "claude-code";
 // Feeds Herdr's agent status files, shared by every agent that reports to Herdr:
 //   ~/.local/state/herdr-agents/<herdr terminal>.json  { agent, model, effort, context_pct, ts }
 //   ~/.local/state/herdr-agents/limits.json            { <agent>: { five_hour, seven_day, ts } }
-// The pane-agent mod polls the per-terminal file every 3 seconds and shows the
-// chips when its `agent` matches the program in the pane; usage-limits reads
+// The alp-pane-agent mod polls the per-terminal file every 3 seconds and shows the
+// chips when its `agent` matches the program in the pane; alp-usage-limits reads
 // its agent's entry in limits.json.
 
 const AGENT = "claude";

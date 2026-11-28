@@ -5,7 +5,7 @@
 import { exec, home } from "herdr";
 
 /** The avatars folder, relative to Herdr's home, as `image()` takes it. */
-const AVATAR_DIR = "data/alpmeister/avatars";
+const AVATAR_DIR = "data/alp/avatars";
 const EXTENSIONS = { "image/jpeg": "jpg", "image/png": "png", "image/gif": "gif" };
 
 /** The file stem for a login: GitHub logins hold letters, digits and dashes. */
@@ -89,7 +89,7 @@ export class Avatars {
       this.files.set(key, `${key}.${extension}`);
     } catch (error) {
       this.failed.add(key);
-      console.log(`alpmeister: avatar for ${key} failed: ${error.message ?? error}`);
+      console.log(`alp: avatar for ${key} failed: ${error.message ?? error}`);
     } finally {
       this.busy.delete(key);
     }

@@ -22,7 +22,7 @@ import { valuesOf } from "./search-terms.js";
 import { openFilterDialog } from "./filter-dialog.js";
 import { FilterButton } from "./ui.js";
 
-const PICKED_KEY = "alpmeister.boardPeople";
+const PICKED_KEY = "alp.boardPeople";
 /** A press that moves less than this is a click (open the card), not a drag. */
 const DRAG_SLOP = 5;
 /** A card's height before it has been measured. */
@@ -89,7 +89,7 @@ function withBoardView(raw, name, view) {
 
 export class BoardState {
   /**
-   * @param {object} view The Alpmeister view: its config, model, cache and settings.
+   * @param {object} view The Alp tab's view: its config, model, cache and settings.
    */
   constructor(view) {
     this.view = view;
@@ -137,7 +137,7 @@ export class BoardState {
     try {
       this.pickedByWorkspace = JSON.parse(localStorage.getItem(PICKED_KEY) ?? "{}") ?? {};
     } catch (error) {
-      console.log(`alpmeister: picked people not read: ${error}`);
+      console.log(`alp: picked people not read: ${error}`);
     }
   }
 
@@ -358,7 +358,7 @@ export class BoardState {
   /**
    * The filter dialog's Save: keeps the people on this computer, and writes the board filter and
    * the columns to the settings file (`boardView.query`, `boardView.statuses`) through
-   * `saveSettings`, which keeps the old file as alpmeister.json.bak; unchanged, nothing is
+   * `saveSettings`, which keeps the old file as settings.json.bak; unchanged, nothing is
    * written. A filter GitHub refuses is not saved. In the demo the settings change for this copy
    * only, and nothing is written.
    * @param {object} ws The workspace.
@@ -518,7 +518,7 @@ export class BoardState {
     try {
       localStorage.setItem(PICKED_KEY, JSON.stringify(this.pickedByWorkspace));
     } catch (error) {
-      console.log(`alpmeister: picked people not remembered: ${error}`);
+      console.log(`alp: picked people not remembered: ${error}`);
     }
   }
 

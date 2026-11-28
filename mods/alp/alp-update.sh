@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Installs a herdr-alp release into Herdr's home, for Alp's Settings > Updates. Alpmeister starts
-# it detached: installing replaces every mod, Alpmeister too, so Herdr reloads it mid-update.
+# Installs a herdr-alp release into Herdr's home, for Alp's Settings > Updates. Settings starts
+# it detached: installing replaces every mod, alp too, so Herdr reloads it mid-update.
 # The reloaded page reads the outcome from ~/.config/alp/update-result.json.
 #   alp-update.sh <tag> <Herdr's home>
 # Your clone is never used: the release's own source is downloaded and its sync.sh installs it.

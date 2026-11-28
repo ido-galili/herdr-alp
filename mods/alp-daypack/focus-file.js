@@ -1,7 +1,7 @@
-// Today's trail items, read from and written to the focus file Alpmeister keeps at
+// Today's trail items, read from and written to the focus file the Alp tab keeps at
 // ~/.local/state/alp/focus.json: `{ items: [item, ...] }`. Mods cannot import across folders,
 // so this is the Daypack's own small reader and writer of that format: keep it in step with
-// Alpmeister's focus.js.
+// mods/alp/focus.js.
 
 import { exec, home, readTextFile, writeTextFile } from "herdr";
 
@@ -32,7 +32,7 @@ export function daysSinceAdded(item) {
 }
 
 /**
- * The list from a file that kept one list per day, as Alpmeister reads it: the latest day's
+ * The list from a file that kept one list per day, as the Alp tab reads it: the latest day's
  * items, then the unchecked items of the day before it, each dated by the first day it appears on.
  */
 function fromDays(days) {
@@ -61,7 +61,7 @@ export class FocusFile {
       const data = text ? JSON.parse(text) : {};
       this.list = data.items ?? fromDays(data.days ?? {});
     } catch (error) {
-      console.log(`daypack: focus.json unreadable: ${error}`);
+      console.log(`alp-daypack: focus.json unreadable: ${error}`);
       this.list = [];
     }
   }
@@ -78,7 +78,7 @@ export class FocusFile {
       this.snapshot = text;
       return true;
     } catch (error) {
-      console.log(`daypack: focus.json changed elsewhere, reloading: ${error}`);
+      console.log(`alp-daypack: focus.json changed elsewhere, reloading: ${error}`);
       await this.load();
       return false;
     }

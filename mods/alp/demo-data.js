@@ -1,6 +1,6 @@
 // Made-up settings, GitHub data and a focus list for demos and screenshots, opened with
-// `props.demo` on any Alpmeister tab:
-//   herdr-app do tab.new '{"mod":"alpmeister","props":{"tab":"dashboard","demo":true}}'
+// `props.demo` on any Alp tab:
+//   herdr-app do tab.new '{"mod":"alp","props":{"tab":"dashboard","demo":true}}'
 // Three workspaces show every Dashboard layout: one with a repository and a board, one with a
 // repository only, one with a board only. Between them they hold bugs at every priority, a
 // failing nightly, milestones in every state (overdue, next and behind schedule, later, without a

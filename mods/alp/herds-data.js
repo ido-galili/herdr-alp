@@ -1,7 +1,7 @@
 // Herds: the Claude Code sessions on this machine, the Herdr tab each runs in, the links
 // between them, and the agents each one started. A link is a SendMessage from one session to
 // another, or a worktree one session made for another. Read from Claude Code's own files, which
-// Alpmeister never writes:
+// The Alp tab never writes:
 //   ~/.claude/sessions/<pid>.json        the live sessions: name, pid, folder, status
 //   ~/.claude/jobs/<id>/state.json       a background session's state
 //   ~/.claude/projects/*/<session>.jsonl a session's transcript, for the links it made
@@ -37,7 +37,7 @@ async function readJson(path) {
   try {
     return text ? JSON.parse(text) : null;
   } catch (error) {
-    console.log(`alpmeister: ${path} unreadable: ${error}`);
+    console.log(`alp: ${path} unreadable: ${error}`);
     return null;
   }
 }

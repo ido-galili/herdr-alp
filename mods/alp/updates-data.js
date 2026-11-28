@@ -221,7 +221,7 @@ export async function readResult() {
  * @throws {Error} When the updater couldn't be started.
  */
 export async function startUpdate(tag) {
-  const script = `${appHome()}/mods/alpmeister/alp-update.sh`;
+  const script = `${appHome()}/mods/alp/alp-update.sh`;
   // setsid where there is one (Linux), so the updater outlives this mod's reload; nohup on macOS.
   const launch =
     'if command -v setsid >/dev/null; then setsid -f bash "$0" "$1" "$2" </dev/null >/dev/null 2>&1;' +

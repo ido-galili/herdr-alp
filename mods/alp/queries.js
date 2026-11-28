@@ -1,4 +1,4 @@
-// The GraphQL documents Alpmeister sends through `gh api graphql`. Plain strings with no
+// The GraphQL documents the Alp tab sends through `gh api graphql`. Plain strings with no
 // imports, so they can be tried from a shell as they are.
 
 const STATUS_VALUE = `... on ProjectV2ItemFieldSingleSelectValue { name updatedAt }`;

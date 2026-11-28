@@ -15,10 +15,10 @@ Left to right:
   - **Footer**, 41px: `alp-chrome` in footer mode (Settings alone; Add machine is in the Spaces "+" menu).
 - **Work area**:
   - **Tabs**, 42px: Alp's tab bar (`alp-tabs`, the shipped `tabs` with the Alp tab and buttons added). Drags the window. Left to right: the pinned Alp tab, a 1px line, the tabs, +, a 1px line, Basecamp (icon-only), then the window buttons where the platform draws none.
-  - **Body**, a stack of the terminals and Alp (`alpmeister-view`), swapped from the pinned tab. The terminals, 8px padding and gap: the active tab's panes, each a card with `background` fill, 1px `border` outline (1px `accent` when focused), 10px radius, 8px between cards, framed even when alone.
+  - **Body**, a stack of the terminals and Alp (`alp-view`), swapped from the pinned tab. The terminals, 8px padding and gap: the active tab's panes, each a card with `background` fill, 1px `border` outline (1px `accent` when focused), 10px radius, 8px between cards, framed even when alone.
   - **Runs panel**, 280px (140–720), hidden at first, between the body and the status bar: a 34px bar, then the selected run's terminal beside a 220px Runs list (see Runs, below).
   - **Status bar**, 28px: `alp-status`, the shipped `workspace-status` with a Runs button after the commands hint, at the right end.
-- **Basecamp**, the one right dock, 360px (300–900), hidden at first, the root row's last child, on `chrome`: a 42px tab strip (`basecamp`) over a stack of Files, Changes, Today and Run (see Basecamp, below).
+- **Basecamp**, the one right dock, 360px (300–900), hidden at first, the root row's last child, on `chrome`: a 42px tab strip (`alp-basecamp`) over a stack of Files, Changes, Today and Run (see Basecamp, below).
 - Theme: Dracula, shipped as the layout's own theme `themes/alp.json` (background `#282a36`, chrome `#21222c`, border `#44475a`, hover `#343746`, muted `#bfbfd0`, dim `#8b95c9`, accent `#bd93f9`, working `#f1fa8c`, warning `#ffb86c`, blocked `#ff5555`, done `#50fa7b`) and set as the root's `theme`. Every color below is a theme name, so another theme from the picker restyles it all. One meaning per color: `working` (yellow) is working or running only, `warning` (orange) marks warnings (usage and context over 70%, stale data, unsaved edits, unassigned, close deadlines, changed on disk); mods fall back to `#ffb86c` when a theme has no `warning`. No text under 11.5px but glyphs in tiny fixed boxes.
 - Window: `canvas` background, no title bar (traffic lights at 12,16), 1px `border` dividers, terminal padding 14×12.
 
@@ -45,39 +45,39 @@ An Alp page that is its tab's only pane (a `tab.new` copy) gets no header: the s
 
 ## Built from
 
-- **Layout** `layouts/alp.json`, cloned from the shipped `main` (0.1.14): `root` row with `"theme": "alp"` → `sidebar` column (`brand` block, `sidebar-lists` column of `limits` / `spaces` / `agents` blocks, `sidebar-footer` block) and `work` column (`tabs` block showing `alp-tabs`, `work-stack` stack (active `work-body`) of the `work-body` row (the `main` block) and the `alpmeister-view` block showing `alpmeister`, hidden `bottom-panel` column, `status` block showing `alp-status`) and the hidden `basecamp` column (the dock: `basecamp-header` block, `basecamp-body` stack of `files` / `changes` / `basecamp-daypack` / `basecamp-run`). `main` shows `{ "tab": "active" }` with a `pane` frame whose `header` is `{ "content": { "mod": "pane-agent" }, "reveal": "always", "height": 30, "position": "top" }`.
+- **Layout** `layouts/alp.json`, cloned from the shipped `main` (0.1.14): `root` row with `"theme": "alp"` → `sidebar` column (`brand` block, `sidebar-lists` column of `limits` / `spaces` / `agents` blocks, `sidebar-footer` block) and `work` column (`tabs` block showing `alp-tabs`, `work-stack` stack (active `work-body`) of the `work-body` row (the `main` block) and the `alp-view` block showing `alp`, hidden `bottom-panel` column, `status` block showing `alp-status`) and the hidden `basecamp` column (the dock: `basecamp-header` block, `basecamp-body` stack of `files` / `changes` / `basecamp-daypack` / `basecamp-run`). `main` shows `{ "tab": "active" }` with a `pane` frame whose `header` is `{ "content": { "mod": "alp-pane-agent" }, "reveal": "always", "height": 30, "position": "top" }`.
 - **Shipped mods used**: `changes`. Cloned with Alp's changes: `alp-chrome` from `workspace-chrome` (brand, and footer with `props: { footer: true }`), `alp-spaces` from `spaces`, `alp-agents` from `agents`. Art borrowed from `workspace-chrome`: `clock.svg`, `spinner.svg`, `check.svg`, `branch.svg`.
 - **`mods/alp-tabs`**, cloned from the shipped `tabs` (0.1.16) with `mod.clone`, which rewrote its own art paths. Added, marked at the top of `main.js`:
-  - First, before the tabs: a pinned Alp tab, drawn like a tab (`dashboard.svg` at 14px, then "Alp"), raised while `work-stack` shows `alpmeister-view`, then a 1px line. A click runs `layout.select {stack: "work-stack", child: "alpmeister-view"}`, or `work-body` when it already shows (tooltip "Show Alp" or "Back to the terminals"). While it shows, the space's tabs are greyed. Clicking a tab selects `work-body` on that tab, and so does any change of the active space or tab (a key, + or a tab Alp opens), so that tab shows.
+  - First, before the tabs: a pinned Alp tab, drawn like a tab (`dashboard.svg` at 14px, then "Alp"), raised while `work-stack` shows `alp-view`, then a 1px line. A click runs `layout.select {stack: "work-stack", child: "alp-view"}`, or `work-body` when it already shows (tooltip "Show Alp" or "Back to the terminals"). While it shows, the space's tabs are greyed. Clicking a tab selects `work-body` on that tab, and so does any change of the active space or tab (a key, + or a tab Alp opens), so that tab shows.
   - The space's tabs shrink evenly to a minimum width (48px of name, at most 170), then "+N" lists the rest (a red "!" on it when one needs you). A tab that needs you shows a red "!", a done one a green check, a zoomed one an expand icon (tooltip "Zoomed: one pane fills this tab. Click to show all panes."; a click unzooms). The active tab has a ⋯, the same menu as a right-click: Rename, Show all panes (when zoomed), Move left, Move right, New tab, then Put away (`tab.settle`, its tooltip saying what that does) and Close; the pointer and the arrow keys move one highlight, Enter and Esc work in it.
   - After + and a 1px × 16px `border` line (5px each side), icon buttons, each a 26px square with a 15px Lucide icon (copied into `mods/alp-tabs/`): `muted` on `chrome` while off, `foreground` on `selected` while on, `foreground` on `hover` under the pointer. The shipped labelled Files and Changes pills are gone: Files and Changes are tabs of the dock.
-  - Alp (`dashboard.svg`, layout-dashboard), only when the layout has no `work-stack` with `alpmeister-view`, in place of the pinned tab: a click goes to the tab of the space's Alp pane (`panes()` with `mod: "alpmeister"`) or runs `tab.new {mod: "alpmeister", name: "Alp"}`. On while that tab shows. Tooltip "Open Alp" or "Go to Alp". The Alp tab itself shows the same icon at 14px before its name (`foreground` while active, `muted` otherwise).
+  - Alp (`dashboard.svg`, layout-dashboard), only when the layout has no `work-stack` with `alp-view`, in place of the pinned tab: a click goes to the tab of the space's Alp pane (`panes()` with `mod: "alp"`) or runs `tab.new {mod: "alp", name: "Alp"}`. On while that tab shows. Tooltip "Open Alp" or "Go to Alp". The Alp tab itself shows the same icon at 14px before its name (`foreground` while active, `muted` otherwise).
   - Basecamp (`panel-right.svg`), last, only when the layout has a `basecamp` node: on while the dock shows; it shows the dock on the tab it last showed, or hides it. Its tooltip names the dock's tabs with their counts: "Show Basecamp: Files, Changes (2 changed), Today (1 open) and Run (1 running)", counting changed files (the read-only `git status` the Changes tab runs, at most every 10 s, also shared as `alp.changedFiles` for the dock's strip and drawn as an `accent` badge on the icon), open Today items (from `~/.local/state/alp/focus.json`, again whenever `shared("alp.focusStamp")` changes) and running runs (a live terminal with an `alp.run` label and no `alp.run.exit`).
   - The dock is remembered per space in `localStorage` `dock` (null, or the stack child it shows): switching to a space shows its choice; a space with none leaves the dock as it is. The first time, it is made from the older `panels` key (a space whose Files or Changes panel was open opens the dock on that tab; the others get Basecamp's state).
-- **`mods/usage-limits`**: a `View` reading `~/.local/state/herdr-agents/limits.json` with `readTextFile(home() + …)`, picking the entry for `props.agent` (default `"claude"`). Uses `theme()` and `layout()` (sidebar width for the rail), and `run("layout.resize", { id: "limits", px })` when the fold state changes. Props: `agent`, `block` (default `"limits"`), `height` (96), `foldedHeight` (82). Art: `gauge.svg`.
-- **`mods/pane-agent`**, cloned from the shipped `pane` (0.1.14): `panes()` + `props().pane` for its pane; `readTextFile` of `~/.local/state/herdr-agents/<terminal>.json` every 3 seconds; `exec("git", ["rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir"])` in the pane's folder (a worktree when the two differ; the worktree name is the git dir's last part); `run("pane.focus" | "pane.split" | "pane.zoom" | "pane.close")`; `on_hover` for the buttons. Art: `close`, `split-down`, `split-right`, `zoom`, `unzoom`, `worktree` SVGs.
+- **`mods/alp-usage-limits`**: a `View` reading `~/.local/state/herdr-agents/limits.json` with `readTextFile(home() + …)`, picking the entry for `props.agent` (default `"claude"`). Uses `theme()` and `layout()` (sidebar width for the rail), and `run("layout.resize", { id: "limits", px })` when the fold state changes. Props: `agent`, `block` (default `"limits"`), `height` (96), `foldedHeight` (82). Art: `gauge.svg`.
+- **`mods/alp-pane-agent`**, cloned from the shipped `pane` (0.1.14): `panes()` + `props().pane` for its pane; `readTextFile` of `~/.local/state/herdr-agents/<terminal>.json` every 3 seconds; `exec("git", ["rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir"])` in the pane's folder (a worktree when the two differ; the worktree name is the git dir's last part); `run("pane.focus" | "pane.split" | "pane.zoom" | "pane.close")`; `on_hover` for the buttons. Art: `close`, `split-down`, `split-right`, `zoom`, `unzoom`, `worktree` SVGs.
 - **`plugins/alp`**: a Claude Code plugin (hooks module) that writes the status files; nothing in Claude's own status line. Inside a Herdr terminal (`HC_TERMINAL_ID` set) it writes `<terminal>.json` as `{ agent: "claude", model, effort, context_pct, ts }` on `session.start`, on each main-thread `turn.step` (model, effort) and on `session.measure` (context); on `session.end` it empties the file, or after `/clear` only drops `context_pct`. On `session.measure` with rate limits it rewrites only its own entry in `limits.json`: `{ "claude": { five_hour: { used_percentage, resets_at }, seven_day: {…}, ts } }`.
 
 ## Watch out
 
 - The theme is named like the layout (`themes/alp.json`) so it is Alp's own and can't clash with a `dracula.json` the person already has; Settings offers it only on this layout. Picking a theme in the picker rewrites the layout's root `theme`.
-- Mod art paths are relative to Herdr's home (`mods/pane-agent/zoom.svg`): renaming a mod means renaming its paths too.
-- `pane-agent` compares the file's `agent` along with model, effort and context before redrawing; leave `agent` out and a file from another agent keeps showing the old chips.
+- Mod art paths are relative to Herdr's home (`mods/alp-pane-agent/zoom.svg`): renaming a mod means renaming its paths too.
+- `alp-pane-agent` compares the file's `agent` along with model, effort and context before redrawing; leave `agent` out and a file from another agent keeps showing the old chips.
 - `limits.json` is shared by every agent that reports: read it, change your own key, write it back; never overwrite the whole file.
 - Context fill is absent right after `/compact` until the next answer; show nothing rather than 0%.
 - A Claude Code session keeps the plugin it started with: after installing or changing the plugin, restart running sessions before expecting chips.
-- Only Claude Code reports today: the program keys that get chips are the `REPORTING` set at the top of `pane-agent/main.js`.
+- Only Claude Code reports today: the program keys that get chips are the `REPORTING` set at the top of `alp-pane-agent/main.js`.
 - The model name shortening only knows `claude-<family>-<major>[-<minor>]`; other ids show as they are.
 - Usage limits show `–` until the first answer of any Claude session after the plugin is installed.
-- A layout block has no content-fit size: padding alone can't remove the empty space under the folded cell, so `usage-limits` resizes its own block. It does so only when the fold state changes (render re-runs on every layout change), and the block id in the layout must match its `block` prop.
+- A layout block has no content-fit size: padding alone can't remove the empty space under the folded cell, so `alp-usage-limits` resizes its own block. It does so only when the fold state changes (render re-runs on every layout change), and the block id in the layout must match its `block` prop.
 
 ## Alp
 
-A mod, `mods/alpmeister`, for a team lead's start of day, shown as **Alp**. The layout places it
-in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
-`tab.new {mod: "alpmeister", name: "Alp"}`.
+A mod, `mods/alp`, for a team lead's start of day, shown as **Alp**. The layout places it
+in `alp-view`, shown from the pinned tab; it also opens as a tab with
+`tab.new {mod: "alp", name: "Alp"}`.
 
-- **Settings** live in `~/.config/alp/alpmeister.json`, written by Settings, in three parts:
+- **Settings** live in `~/.config/alp/settings.json`, written by Settings, in three parts:
   - `account`: your GitHub as a whole. `repos` is `"all"` (every repository you own,
     collaborate on or reach through an organization, archived ones only with `archived`, less
     `exclude`) or a list of `owner/name`. Also the Claude prompts (`launch.issue`, `launch.pr`,
@@ -107,7 +107,7 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
     Settings, under a gear and "Alp settings", and fetches nothing from GitHub but the form's
     choices. Each other copy remembers its view and workspace in localStorage; `props.tab` and
     `props.workspace` open a copy on a given one
-    (`tab.new {mod: "alpmeister", props: {tab: "dashboard", workspace: "Team"}}`, `"overview"`
+    (`tab.new {mod: "alp", props: {tab: "dashboard", workspace: "Team"}}`, `"overview"`
     works too, `""` for All repos; the old `"today"`, and a copy that last showed the Today
     view, opens the Overview). `props.demo: true` fills every view with made-up data
     (`props.firstRun` too: a first run; `props.herdsView` and `props.herdsFull` open Herds on a
@@ -163,7 +163,7 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
       Next. The header ends in the GitHub mark (the milestone's page, or the open issues
       without a milestone). Then:
       - The progress band, two bars each with a small dim title over its left end. "Progress":
-        a usage-limits style bar of the share closed (its fill blends from `warning` at none
+        an alp-usage-limits style bar of the share closed (its fill blends from `warning` at none
         closed to `done` at all, by the share closed), with today's tick on the time from the start (the previous milestone's due date, else its
         creation) to the due date, and the due date and days left over its right end; its
         tooltip has the counts and dates. "By status": a strip of board-status segments with a
@@ -208,7 +208,7 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
       assignees' avatars. The iteration and milestone chips and menu rows carry GitHub's
       Octicons (`iteration.svg`, `milestone.svg`, MIT). Long chips end in an ellipsis before the
       avatars. A click on a card opens it on GitHub.
-    - The avatars download once with curl into `data/alpmeister/avatars/`, named for the image
+    - The avatars download once with curl into `data/alp/avatars/`, named for the image
       type GitHub serves; until then the login's initials show.
     - Dragging a card (a press that moves more than 5px) lifts it out of its column and draws it
       under the pointer, where it was pressed, at its own size. The column under the pointer
@@ -259,7 +259,7 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
     stays at the bottom: "2 unsaved changes" in `warning`, Revert, Save. A save sets
     `shared("alp.settingsStamp")`, and every other copy fetches again. Nothing is written until
     Save, which writes over the version it read (or refuses, when the file changed on disk:
-    Revert loads it) and keeps the previous file as `alpmeister.json.bak`.
+    Revert loads it) and keeps the previous file as `settings.json.bak`.
     - GitHub: All my repos (with Include archived) or Only the ones I pick, then a checklist of
       your repositories (30px rows, scrolling after 12): the checkbox puts one in or out of
       scope, badges for private, archived and fork.
@@ -398,7 +398,7 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
 
 ## Done when
 
-- `herdr-app check` passes for `mods/usage-limits` and `mods/pane-agent`, and `herdr-app do layout.switch '{"name":"alp"}'` returns ok with no errors in `herdr-app status`.
+- `herdr-app check` passes for `mods/alp-usage-limits` and `mods/alp-pane-agent`, and `herdr-app do layout.switch '{"name":"alp"}'` returns ok with no errors in `herdr-app status`.
 - A new Claude Code session in a Herdr terminal shows its model, effort and context chips in the pane header within 3 seconds of its first answer, and `~/.local/state/herdr-agents/<terminal>.json` holds `"agent":"claude"`.
 - Changing the file's `agent` to anything else hides the chips within 3 seconds.
 - The sidebar shows Session and Weekly percentages and reset times matching `limits.json`, and folding the sidebar shows the rail cell with the same space above and below it as the unfolded rows (the `limits` block at 82px), back to 96px when unfolded.
@@ -410,9 +410,9 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
   sidebar is: Files, Changes, Today and Run. The Basecamp button in the tab bar shows or hides it
   (drawn by `alp-tabs`, above).
 - **Where:** the `basecamp` column, the root row's last child: a `basecamp-header` block (42px,
-  drags the window) showing `mods/basecamp/`, over the `basecamp-body` stack of `files`
+  drags the window) showing `mods/alp-basecamp/`, over the `basecamp-body` stack of `files`
   (`alp-files`, 8px padding), `changes` (the shipped `changes`, 8px padding), `basecamp-daypack`
-  (`daypack`) and `basecamp-run` (`alp-runs` with `props: { part: "list" }`).
+  (`alp-daypack`) and `basecamp-run` (`alp-runs` with `props: { part: "list" }`).
 - **Header:** the tab strip: Files (`files.svg`), Changes (`changes.svg`, then the changed-file
   count in `accent`), Today (the backpack, then the open Today count in `accent`) and Run
   (`mods/alp-runs/play.svg`, then the running count in `working`), `selected` on the stack's
@@ -422,7 +422,7 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
 
 ## Today
 
-- **What:** the `daypack` mod, Basecamp's Today tab (the one the dock opens on first). It holds
+- **What:** the `alp-daypack` mod, Basecamp's Today tab (the one the dock opens on first). It holds
   the Today list, and is the only place it shows: the issues and PRs pinned in Alp ("Pin to
   Today") and the todos typed here. Alp has no Today view any more.
 - **How it looks**, top to bottom on `chrome`:
@@ -548,7 +548,7 @@ in `alpmeister-view`, shown from the pinned tab; it also opens as a tab with
 - **Saving:** `ctrl-s` (an `on_key_down` around the editor, `cmd-s` in GPUI's spelling) or Save
   runs `writeTextFile(path, text, base)`, which refuses when the file changed since it was read.
 - **Auto save**, as VS Code's `files.autoSave`, set on Alp's Settings › Files page (`files` in
-  `~/.config/alp/alpmeister.json`, read again on `shared("alp.settingsStamp")`): Off (default),
+  `~/.config/alp/settings.json`, read again on `shared("alp.settingsStamp")`): Off (default),
   After a delay (default 1000 ms, restarted by each edit) or When you leave the file. It goes
   through the same save. With it on, the top line says a quiet "Saving…", "Unsaved" or "Saved",
   and chips and the tree mark such files with a `dim` dot.

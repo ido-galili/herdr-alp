@@ -1,6 +1,6 @@
-// Alpmeister's settings: which of your repositories it looks at, and its workspaces. They live
-// outside this repo, in ~/.config/alp/alpmeister.json, so no team's names ship with the mod.
-// The Settings tab writes them; `alpmeister.example.json` beside this file shows every key.
+// The Alp tab's settings: which of your repositories it looks at, and its workspaces. They live
+// outside this repo, in ~/.config/alp/settings.json, so no team's names ship with the mod.
+// The Settings tab writes them; `settings.example.json` beside this file shows every key.
 //
 //   account     your GitHub as a whole: the repos in scope, the Claude prompts, your local
 //               clones, and the @me searches the Daypack lists
@@ -78,12 +78,12 @@ const BOARD_DEFAULTS = { statusField: "Status", iterationField: "Iteration" };
 
 /**
  * Where the settings file lives.
- * @returns {string} The absolute path of alpmeister.json.
+ * @returns {string} The absolute path of settings.json.
  */
-export const configPath = () => `${home()}/.config/alp/alpmeister.json`;
+export const configPath = () => `${home()}/.config/alp/settings.json`;
 
 /**
- * Where Alpmeister keeps its own state: the last result and today's focus.
+ * Where the Alp tab keeps its own state: the last result and today's focus.
  * @returns {string} The absolute state folder.
  */
 export const stateDir = () => `${home()}/.local/state/alp`;

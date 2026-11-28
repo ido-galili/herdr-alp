@@ -1,5 +1,11 @@
 # herdr-alp
 
+## Mods
+
+Every mod this repo ships is `alp` (the Alp tab) or named `alp-<name>`, and is listed in
+`sync.sh`'s `mods`. Renaming one adds `old:new` to `renamed_mods` there, so install moves its
+Herdr data across.
+
 ## Pull request titles
 
 PRs are squash-merged and the title becomes the commit, which git-cliff turns into a line of

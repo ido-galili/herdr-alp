@@ -85,7 +85,7 @@ export class FocusStore {
       const data = text ? JSON.parse(text) : {};
       this.list = (data.items ?? fromDays(data.days ?? {})).map(withRepo);
     } catch (error) {
-      console.log(`alpmeister: focus.json unreadable, starting empty: ${error}`);
+      console.log(`alp: focus.json unreadable, starting empty: ${error}`);
       this.list = [];
     }
   }
@@ -100,7 +100,7 @@ export class FocusStore {
       this.snapshot = text;
       return true;
     } catch (error) {
-      console.log(`alpmeister: focus.json changed elsewhere, reloading: ${error}`);
+      console.log(`alp: focus.json changed elsewhere, reloading: ${error}`);
       await this.load();
       return false;
     }

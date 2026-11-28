@@ -21,25 +21,25 @@ import {
   terminals,
 } from "herdr";
 
-// Alp's tab bar: Herdr's `tabs` (0.1.16) with Alpmeister and two button groups added.
-// Alpmeister comes first, pinned before the space's tabs: it belongs to no space. A click swaps
-// the `work-stack` to the `alpmeister-view` block, so only Alpmeister shows; a space tab, a new
-// tab, another space, or Alpmeister again swaps back to the terminals. After + and a line, one
+// Alp's tab bar: Herdr's `tabs` (0.1.16) with the Alp tab and two button groups added.
+// The Alp tab comes first, pinned before the space's tabs: it belongs to no space. A click swaps
+// the `work-stack` to the `alp-view` block, so only Alp shows; a space tab, a new
+// tab, another space, or the Alp tab again swaps back to the terminals. After + and a line, one
 // icon button, Basecamp, shows or hides the `basecamp` dock (its Files, Changes, Today and Run
 // tabs) when the layout has one; it is lit while the dock shows, and the dock is remembered per
-// space. A layout without `work-stack` gets Alpmeister as an icon button before it instead,
-// going to the space's Alpmeister tab or opening one. An Alpmeister tab in a space shows
-// Alpmeister's icon before its name.
+// space. A layout without `work-stack` gets the Alp tab as an icon button before it instead,
+// going to the space's Alp tab or opening one. An Alp tab in a space shows
+// Alp's icon before its name.
 // The space's tabs shrink evenly to a minimum width, then a "+N" lists the ones that don't fit.
-// While Alpmeister shows they are greyed; a click goes back to the terminals on that tab. The
+// While the Alp tab shows they are greyed; a click goes back to the terminals on that tab. The
 // active tab has a ⋯ (the same menu as a right-click), a zoomed tab an expand icon, and Basecamp
 // shows how many files changed. The menus are this mod again, opened as a popup with props.menu.
 
-const ALPMEISTER = "alpmeister";
-const ALPMEISTER_ICON = "mods/alp-tabs/dashboard.svg";
+const ALP_MOD = "alp";
+const ALP_ICON = "mods/alp-tabs/dashboard.svg";
 const WORK_STACK = "work-stack";
 const WORK_BODY = "work-body";
-const ALPMEISTER_VIEW = "alpmeister-view";
+const ALP_VIEW = "alp-view";
 const BASECAMP_ID = "basecamp";
 const BASECAMP_STACK = "basecamp-body";
 const BASECAMP_ICON = "mods/alp-tabs/panel-right.svg";
@@ -79,7 +79,7 @@ const STATUS_ARGS = [
 const CHANGES_POLL = 10000;
 
 /**
- * How many trail items are still open, from the focus file Alpmeister and the Daypack keep.
+ * How many trail items are still open, from the focus file the Alp tab and the Daypack keep.
  * @returns {Promise<number>} The count; 0 when the file is missing or unreadable.
  */
 async function openTrailItems() {
@@ -92,13 +92,13 @@ async function openTrailItems() {
 }
 
 /**
- * The pane showing Alpmeister in a space, if any.
+ * The pane showing the Alp tab in a space, if any.
  * @param {object | undefined} space The space, from `spaces()`.
  * @returns {object | undefined} Its pane, from `panes()`.
  */
-function alpmeisterPane(space) {
+function alpPane(space) {
   const tabs = new Set((space?.tabs ?? []).map((tab) => tab.id));
-  return panes().find((pane) => pane.mod === ALPMEISTER && tabs.has(pane.tab));
+  return panes().find((pane) => pane.mod === ALP_MOD && tabs.has(pane.tab));
 }
 
 function find(node, id) {
@@ -453,7 +453,7 @@ export default class Tabs extends View {
     saveDocks(this.docks);
   }
 
-  /** Counts the open trail items again when Alpmeister or the Daypack says the list changed. */
+  /** Counts the open trail items again when the Alp tab or the Daypack says the list changed. */
   syncTrail(cx) {
     const stamp = shared(FOCUS_STAMP) ?? null;
     if (stamp === this.trailStamp) return;
@@ -569,7 +569,7 @@ export default class Tabs extends View {
         .bg(on ? t.raised : t.chrome)
         .text_color(ink)
         .when(Boolean(measure), (el) => el.on_size_change((size, cx) => this.measured(c.id, "tab", size.width, cx)))
-        // Greyed while Alpmeister shows in place of the terminals; a hover shows it's still a way back.
+        // Greyed while the Alp tab shows in place of the terminals; a hover shows it's still a way back.
         .when(alpOn && !measure, (el) => el.opacity(0.55))
         .when(!measure, (el) =>
           el
@@ -601,10 +601,10 @@ export default class Tabs extends View {
               : image(program.icon).size(14).flex_none(),
           ),
         )
-        // Alp: an Alpmeister tab carries the same icon as its button.
-        .when(!program?.icon && lead?.mod === ALPMEISTER, (el) =>
+        // Alp: an Alp tab carries the same icon as its button.
+        .when(!program?.icon && lead?.mod === ALP_MOD, (el) =>
           el.child(
-            svg(ALPMEISTER_ICON)
+            svg(ALP_ICON)
               .size(14)
               .flex_none()
               .text_color(on ? t.foreground : ink),
@@ -714,9 +714,9 @@ export default class Tabs extends View {
       if (!it) return;
       closeOverlay(p.overlay);
       run(it.command, it.args);
-      // Picking a tab from "+N" while Alpmeister shows goes back to the terminals, on that tab.
+      // Picking a tab from "+N" while the Alp tab shows goes back to the terminals, on that tab.
       const stack = find(layout(), WORK_STACK);
-      if (it.command === "tab.select" && stack?.active === ALPMEISTER_VIEW)
+      if (it.command === "tab.select" && stack?.active === ALP_VIEW)
         run("layout.select", { stack: WORK_STACK, child: WORK_BODY });
     };
     return (
@@ -823,7 +823,7 @@ export default class Tabs extends View {
     const active = shown.findIndex((tab) => tab.active);
     const selected = shown[active]?.id;
     const stop = (_e, cx) => cx.stop_propagation();
-    // A thin line after the pinned Alpmeister tab, and between + and the buttons after it.
+    // A thin line after the pinned Alp tab, and between + and the buttons after it.
     const separator = () => div().w(1).h(16).mx(5).flex_none().bg(t.border);
     const button = (id, label, action) =>
       div()
@@ -841,12 +841,12 @@ export default class Tabs extends View {
         .child(label);
     const root = layout(),
       stack = find(root, WORK_STACK);
-    const pinned = Boolean(stack && find(stack, ALPMEISTER_VIEW));
-    const alpOn = pinned && stack.active === ALPMEISTER_VIEW;
+    const pinned = Boolean(stack && find(stack, ALP_VIEW));
+    const alpOn = pinned && stack.active === ALP_VIEW;
     const showTerminals = () => {
       if (alpOn) run("layout.select", { stack: WORK_STACK, child: WORK_BODY });
     };
-    this.leaveAlpmeister(space, selected, alpOn, showTerminals);
+    this.leaveAlp(space, selected, alpOn, showTerminals);
     // Until every tab has been measured, show them all at their natural width.
     const sizes = shown.map((c) => this.sizes[c.id]);
     const known = this.room !== undefined && sizes.every((s) => s?.tab !== undefined && s?.label !== undefined);
@@ -884,7 +884,7 @@ export default class Tabs extends View {
         this.pressed = null;
       })
       .on_scroll_wheel((e) => this.wheel(e))
-      .when(pinned, (el) => el.child(this.alpmeisterTab(t, alpOn, stop)).child(separator()))
+      .when(pinned, (el) => el.child(this.alpTab(t, alpOn, stop)).child(separator()))
       .child(
         h_flex()
           .id("tab-row")
@@ -920,7 +920,7 @@ export default class Tabs extends View {
       )
       .child(button("tab-new", "+", () => openOverlay({ mod: "new-menu", kind: "popup", width: 250, height: 512 })))
       .when(!pinned || Boolean(dock), (el) => el.child(separator()))
-      .when(!pinned, (el) => el.child(this.alpmeisterButton(t, space, stop)))
+      .when(!pinned, (el) => el.child(this.alpButton(t, space, stop)))
       .when(Boolean(dock), (el) => el.child(this.basecampButton(t, dock, body, tabs, stop)))
       .when(w?.buttons, (el) =>
         el
@@ -976,14 +976,14 @@ export default class Tabs extends View {
   }
 
   /**
-   * While Alpmeister shows, going to another tab or space (a click elsewhere, a key, a new tab)
+   * While the Alp tab shows, going to another tab or space (a click elsewhere, a key, a new tab)
    * swaps back to the terminals so that tab shows.
    * @param {object | undefined} space The active space.
    * @param {string | undefined} selected The active tab's id.
-   * @param {boolean} alpOn Whether Alpmeister's view shows.
+   * @param {boolean} alpOn Whether the Alp tab's view shows.
    * @param {Function} back Swaps back to the terminals.
    */
-  leaveAlpmeister(space, selected, alpOn, back) {
+  leaveAlp(space, selected, alpOn, back) {
     const where = `${space?.id}:${selected}`;
     const moved = this.where !== undefined && where !== this.where;
     this.where = where;
@@ -991,16 +991,16 @@ export default class Tabs extends View {
   }
 
   /**
-   * Alpmeister's pinned tab, before the space's tabs: shows Alpmeister's view in place of the
+   * The pinned Alp tab, before the space's tabs: shows Alp's view in place of the
    * terminals, or the terminals again when it already shows.
    * @param {object} t The theme.
-   * @param {boolean} on Whether Alpmeister's view shows.
+   * @param {boolean} on Whether the Alp tab's view shows.
    * @param {Function} stop Keeps the press from dragging the window.
    * @returns {object}
    */
-  alpmeisterTab(t, on, stop) {
+  alpTab(t, on, stop) {
     return h_flex()
-      .id("alpmeister-tab")
+      .id("alp-tab")
       .h(29)
       .px(10)
       .gap(7)
@@ -1014,10 +1014,10 @@ export default class Tabs extends View {
       .text_color(on ? t.foreground : t.muted)
       .hover((s) => s.bg(t.hover))
       .on_mouse_down("left", stop)
-      .on_click(() => run("layout.select", { stack: WORK_STACK, child: on ? WORK_BODY : ALPMEISTER_VIEW }))
+      .on_click(() => run("layout.select", { stack: WORK_STACK, child: on ? WORK_BODY : ALP_VIEW }))
       .tooltip(on ? "Back to the terminals" : "Show Alp")
       .child(
-        svg(ALPMEISTER_ICON)
+        svg(ALP_ICON)
           .size(14)
           .flex_none()
           .text_color(on ? t.foreground : t.muted),
@@ -1026,19 +1026,19 @@ export default class Tabs extends View {
   }
 
   /**
-   * Alpmeister's button, for a layout without `work-stack`: goes to the space's Alpmeister tab, or opens one. On while that tab shows.
+   * Alp's button, for a layout without `work-stack`: goes to the space's Alp tab, or opens one. On while that tab shows.
    * @param {object} t The theme.
    * @param {object | undefined} space The active space.
    * @param {Function} stop Keeps the press from dragging the window.
    * @returns {object}
    */
-  alpmeisterButton(t, space, stop) {
-    const pane = alpmeisterPane(space);
+  alpButton(t, space, stop) {
+    const pane = alpPane(space);
     const shown = Boolean(pane && space?.tabs?.find((tab) => tab.id === pane.tab)?.active);
-    return this.iconButton(t, "alpmeister", ALPMEISTER_ICON, shown, stop)
+    return this.iconButton(t, "alp", ALP_ICON, shown, stop)
       .on_click(() => {
         if (pane) run("tab.select", { id: pane.tab });
-        else run("tab.new", { mod: ALPMEISTER, name: "Alp" });
+        else run("tab.new", { mod: ALP_MOD, name: "Alp" });
       })
       .tooltip(pane ? "Go to Alp" : "Open Alp");
   }

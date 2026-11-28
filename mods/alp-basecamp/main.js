@@ -1,7 +1,7 @@
 // Basecamp: the one dock on the window's right edge, beside the terminals. This mod is its
 // header, a strip of four tabs over the `basecamp-body` stack: Files (the folder's tree, the
 // `alp-files` mod; a file opens in an editor pane), Changes (Herdr's `changes`), Today (the
-// trail, the `daypack` mod) and Run (the workspace's launch configs, tasks and saved commands,
+// trail, the `alp-daypack` mod) and Run (the workspace's launch configs, tasks and saved commands,
 // the `alp-runs` mod). Files and Changes show when the welcome turned them on
 // (`shared("workspace.panels")`). The tab bar's Basecamp button shows or hides the dock.
 
@@ -14,7 +14,7 @@ const STACK_ID = "basecamp-body";
 const TABS = [
   { child: "files", panel: "files", label: "Files", icon: "mods/alp-tabs/files.svg" },
   { child: "changes", panel: "changes", label: "Changes", icon: "mods/alp-tabs/changes.svg" },
-  { child: "basecamp-daypack", label: "Today", icon: "mods/daypack/backpack.svg" },
+  { child: "basecamp-daypack", label: "Today", icon: "mods/alp-daypack/backpack.svg" },
   { child: "basecamp-run", label: "Run", icon: "mods/alp-runs/play.svg" },
 ];
 const STAMP_KEY = "alp.focusStamp";
@@ -56,7 +56,7 @@ export const runningCount = () =>
   ).length;
 
 /**
- * How many trail items are still open, from the focus file Alpmeister and the Daypack keep.
+ * How many trail items are still open, from the focus file the Alp tab and the Daypack keep.
  * @returns {Promise<number>} The count; 0 when the file is missing or unreadable.
  */
 async function openTrailItems() {
@@ -77,7 +77,7 @@ export default class Basecamp extends View {
     this.full = undefined; // the tabs' width with their icons, from the hidden copy
   }
 
-  /** Counts the open trail items again when Alpmeister or the Daypack says the list changed. */
+  /** Counts the open trail items again when the Alp tab or the Daypack says the list changed. */
   syncTrail(cx) {
     const stamp = shared(STAMP_KEY) ?? null;
     if (stamp === this.trailStamp) return;

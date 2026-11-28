@@ -88,7 +88,7 @@ export function openFilterDialog(session) {
   const id = `filter-${++nextSession}`;
   sessions.set(id, session);
   openOverlay({
-    mod: "alpmeister",
+    mod: "alp",
     kind: "dialog",
     width: WIDTH,
     height: dialogHeight(session.spec(session.start)),
