@@ -506,18 +506,16 @@ function CardsView(t, model, groups, live, actions) {
   return v_flex()
     .gap(10)
     .when(needsYou.length > 0, (el) =>
-      el
-        .child(SectionHeading(t, "Needs you", needsYou.length, t.blocked))
-        .child(
-          CardRow().children(
-            needsYou.map((session) =>
-              ListCard(t, session, live, actions, {
-                role: leads.has(session.id) ? "herdsman" : undefined,
-                sub: whereFrom(session),
-              }),
-            ),
+      el.child(SectionHeading(t, "Needs you", needsYou.length, t.blocked)).child(
+        CardRow().children(
+          needsYou.map((session) =>
+            ListCard(t, session, live, actions, {
+              role: leads.has(session.id) ? "herdsman" : undefined,
+              sub: whereFrom(session),
+            }),
           ),
         ),
+      ),
     )
     .when(groups.herds.length > 0, (el) =>
       el.child(SectionHeading(t, "Herds", groups.herds.length)).children(
