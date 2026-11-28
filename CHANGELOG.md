@@ -64,4 +64,8 @@ share one version. Made by git-cliff from the titles of merged pull requests.
 - **alpmeister, daypack**: a background tab's notification shows the tab ([#15](https://github.com/ido-galili/herdr-alp/pull/15))
 - **daypack**: fix "label is not a function" on PR and issue rows ([#6](https://github.com/ido-galili/herdr-alp/pull/6))
 
+### Changed
+
+- **herds**: herds side by side in a row that scrolls sideways ([#7](https://github.com/ido-galili/herdr-alp/pull/7))
+
 
