@@ -1,6 +1,6 @@
 {
   "name": "alp",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Feeds Herdr the session's model, effort, context usage and rate limits (~/.local/state/herdr-agents) without using Claude's status line. Its alp-runs skill points Claude at the runs started from Alp's Run panel.",
   "license": "MIT"
 }
