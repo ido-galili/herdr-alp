@@ -3,13 +3,15 @@
 //   herdr-app do tab.new '{"mod":"alpmeister","props":{"tab":"dashboard","demo":true}}'
 // Three workspaces show every Dashboard layout: one with a repository and a board, one with a
 // repository only, one with a board only. Between them they hold bugs at every priority, a
-// failing nightly, a milestone that is late to start, issues on hold, cards in every status and
-// iteration, and PRs in every review state. Nothing here calls GitHub or reads your files, and
+// failing nightly, milestones in every state (overdue, next and behind schedule, later, without a
+// due date), issues on hold, cards in every status and iteration, and PRs in every review state. Nothing here calls GitHub or reads your files, and
 // the demo writes nothing back: not the settings, not the cache, not today's focus.
 
 import { normalizeConfig } from "./config.js";
 import { MODEL_VERSION, boardFilter, workspaceQueries } from "./data.js";
 import { today } from "./focus.js";
+import { matchesSearch } from "./search-terms.js";
+import { matchesBoard } from "./board-terms.js";
 
 const MIN = 60000;
 const HOUR = 60 * MIN;
@@ -32,7 +34,6 @@ const RAW_CONFIG = {
       repo: WEB,
       board: { owner: ORG, number: 4, title: "Website roadmap", statusField: "Status", iterationField: "Iteration" },
       statuses: ["Backlog", "Todo", "In Progress", "In Review", "QA", "Done", "On Hold"],
-      notStarted: ["Backlog", "Todo"],
       inFlight: { statuses: ["In Progress", "In Review", "QA"], excludeTypes: ["Epic"] },
       mineHidden: ["Backlog", "Done", "On Hold"],
       boardView: { query: "iteration:@current", statuses: ["Todo", "In Progress", "In Review", "QA", "Done"] },
@@ -103,15 +104,34 @@ function iterations(now) {
  * @param {string} repo `owner/name`.
  * @param {number} number The PR number.
  * @param {string} title The PR title.
- * @param {object} more `author`, `reviewDecision`, `checks`, `isDraft` and `ago` (ms since its update).
+ * @param {object} more `author`, `reviewDecision`, `checks`, `isDraft`, `ago` (ms since its update),
+ *   and for the Daypack's filters `labels` and `reviewRequested` (logins).
  * @returns {object} The row.
  */
-function pr(repo, number, title, { author = VIEWER, reviewDecision = null, checks = "SUCCESS", isDraft = false, ago = HOUR } = {}) {
-  return { kind: "pr", repo, number, title, url: `https://github.com/${repo}/pull/${number}`, updatedAt: Date.now() - ago, author, isDraft, reviewDecision, checks };
+function pr(
+  repo,
+  number,
+  title,
+  { author = VIEWER, reviewDecision = null, checks = "SUCCESS", isDraft = false, ago = HOUR, labels = [], reviewRequested = [] } = {},
+) {
+  return {
+    kind: "pr",
+    repo,
+    number,
+    title,
+    url: `https://github.com/${repo}/pull/${number}`,
+    updatedAt: Date.now() - ago,
+    author,
+    isDraft,
+    reviewDecision,
+    checks,
+    labels,
+    reviewRequested,
+  };
 }
 
 /**
- * An issue as a milestone or the spotlight lists it.
+ * An issue as the Milestone card lists it.
  * @param {string} repo `owner/name`.
  * @param {number} number The issue number.
  * @param {string} title The issue title.
@@ -120,6 +140,21 @@ function pr(repo, number, title, { author = VIEWER, reviewDecision = null, check
  */
 function issue(repo, number, title, { status = null, assignees = [], type = "Task", labels = [], priority = null, closed = false, subIssues = { total: 0, completed: 0 } } = {}) {
   return { repo, number, title, url: `https://github.com/${repo}/issues/${number}`, closed, status, assignees, type, parent: null, labels, priority, subIssues };
+}
+
+/**
+ * A milestone as the Milestone card shows it, in `workspaceMilestones()`'s shape.
+ * @param {string} repo `owner/name`.
+ * @param {number} number The milestone's number, for its URL.
+ * @param {string} title Its title.
+ * @param {object} more `due` and `start` (ms or null), `startFrom` (the milestone whose due date
+ *   started it, or null for its creation), `total`, `closed`, `byStatus`, `issues`, `onHold`, and
+ *   `now` to tell an overdue one.
+ * @returns {object} The milestone.
+ */
+function milestone(repo, number, title, { due = null, start = null, startFrom = null, total, closed, byStatus, issues = [], onHold = null, now }) {
+  const overdue = due != null && new Date(due).toISOString().slice(0, 10) < new Date(now).toISOString().slice(0, 10);
+  return { title, url: `https://github.com/${repo}/milestone/${number}`, due, overdue, start, startFrom, total, closed, openCount: total - closed, byStatus, issues, onHold };
 }
 
 /**
@@ -166,6 +201,72 @@ function meta(statuses, its) {
 }
 
 /**
+ * Each demo repository's open issues, as `[number, type, priority, labels]`, for its Open bugs,
+ * Triage bugs and Customer issues tiles: each tile counts those its search matches, so a filter
+ * edited on a tile changes it.
+ */
+const REPO_ISSUES = {
+  [WEB]: [
+    [412, "Bug", "Blocker", ["backend", "customer-reported"]],
+    [409, "Bug", "Critical", ["backend"]],
+    [401, "Bug", "Critical", ["frontend", "triage"]],
+    [421, "Bug", "Critical", ["frontend", "customer: acme-shop"]],
+    [426, "Bug", "Major", ["frontend", "triage"]],
+    [427, "Bug", "Major", ["backend"]],
+    [429, "Bug", "Major", ["frontend"]],
+    [430, "Bug", "Major", ["frontend", "customer-reported"]],
+    [432, "Bug", "Major", ["backend", "triage"]],
+    [434, "Bug", "Major", ["frontend"]],
+    [437, "Bug", "Minor", ["frontend"]],
+    [438, "Bug", "Minor", ["backend", "triage"]],
+    [439, "Bug", "Minor", ["frontend"]],
+    [441, "Bug", null, ["frontend"]],
+    [418, "Improvement", null, ["frontend", "triage"]],
+    [446, "Story", null, ["frontend"]],
+    [448, "Task", null, ["backend", "triage"]],
+    [452, "Task", null, ["backend"]],
+  ],
+  [CORE]: [
+    [201, "Bug", "Critical", ["terminal"]],
+    [203, "Bug", "Major", ["layouts", "triage"]],
+    [206, "Bug", "Major", ["terminal"]],
+    [207, "Bug", "Minor", ["docs"]],
+    [210, "Bug", "Minor", ["layouts"]],
+    [220, "Task", null, ["docs"]],
+    [222, "Task", null, ["terminal", "good first issue"]],
+  ],
+};
+
+/** Each demo repository's labels, for Customer issues: Herdr core has no customer label. */
+const REPO_LABELS = {
+  [WEB]: ["backend", "frontend", "triage", "customer: acme-shop", "customer-reported"],
+  [CORE]: ["docs", "good first issue", "layouts", "terminal", "triage"],
+};
+
+/**
+ * A demo repository's Open bugs, Triage bugs and Customer issues, from the workspace's searches,
+ * as `loadWorkspace()` would count them: nothing is fetched.
+ * @param {object} ws The normalized workspace.
+ * @returns {{ bugs: object, triage: number, customer: object }} Open bugs by priority, the
+ *   triage count, and the customer labels with their count and search.
+ */
+function repoTiles(ws) {
+  const pool = (REPO_ISSUES[ws.repo] ?? []).map(([number, type, priority, labels]) => ({ kind: "issue", number, type, priority, labels }));
+  const bugs = pool.filter((item) => matchesSearch(item, ws.bugs.query, VIEWER));
+  const counts = Object.fromEntries([...ws.bugs.priorities, "Unset"].map((priority) => [priority, 0]));
+  for (const bug of bugs) counts[ws.bugs.priorities.includes(bug.priority) ? bug.priority : "Unset"] += 1;
+  const match = ws.customer.labelMatch.toLowerCase();
+  const labels = (REPO_LABELS[ws.repo] ?? []).filter((label) => label.toLowerCase().includes(match));
+  const customers = pool.filter((item) => item.labels.some((label) => labels.includes(label)));
+  const query = labels.length ? `repo:${ws.repo} is:issue is:open label:${labels.map((label) => `"${label}"`).join(",")}` : null;
+  return {
+    bugs: { total: bugs.length, read: bugs.length, counts },
+    triage: pool.filter((item) => matchesSearch(item, ws.queries.triage, VIEWER)).length,
+    customer: { labels, count: customers.length, query },
+  };
+}
+
+/**
  * The Website workspace: a repository with a board, every Dashboard part filled.
  * @param {object} ws The normalized workspace.
  * @param {number} now Milliseconds since the epoch.
@@ -186,10 +287,12 @@ function website(ws, now) {
     card(WEB, 433, "Pricing page v2", { kind: "pr", status: "In Review", iteration: current, assignees: ["mara-v"], reviewDecision: "CHANGES_REQUESTED" }),
     card(WEB, 401, "Flaky checkout e2e on Safari", { status: "In Review", iteration: current, type: "Bug", assignees: ["tobi-s"], milestone: m24, prs: [{ number: 428, reviewDecision: "APPROVED" }] }),
     card(WEB, 389, "Onboarding copy pass", { status: "QA", iteration: current, assignees: ["lena-k"], milestone: m24 }),
+    card(WEB, 447, "Gift card balance API", { status: "In Progress", iteration: current, assignees: ["tobi-s"], milestone: m25 }),
+    card(WEB, 371, "3-D Secure fallback for old cards", { status: "In Review", iteration: previous, type: "Bug", assignees: ["lena-k"], milestone: "v2.3" }),
     card(WEB, 377, "Move images to the CDN", { status: "Done", iteration: current, assignees: [VIEWER], milestone: m24 }),
     card(WEB, 380, "Lighthouse budget in CI", { status: "Done", iteration: current, type: "Improvement", assignees: ["mara-v"] }),
   ];
-  const bugs = { total: 14, read: 14, counts: { Blocker: 1, Critical: 3, Major: 6, Minor: 3, Unset: 1 } };
+  const tiles = repoTiles(ws);
   const inFlight = items
     .filter((item) => ws.inFlight.statuses.includes(item.status) && item.kind === "issue")
     .map((item, index) => ({
@@ -230,28 +333,58 @@ function website(ws, now) {
       url: `https://github.com/${WEB}/actions`,
       at: now - 6 * HOUR,
     },
-    bugs,
-    customer: { labels: ["customer: acme-shop", "customer-reported"], count: 3, query: `repo:${WEB} is:issue is:open label:"customer-reported"` },
+    bugs: tiles.bugs,
+    customer: tiles.customer,
     boardView: { filter: boardFilter(ws), total: items.length, items, meta: meta(ws.statuses, its) },
-    milestone: {
-      title: m24,
-      url: `https://github.com/${WEB}/milestone/12`,
-      due: now + 5 * DAY,
-      previousDue: now - 23 * DAY,
-      total: 26,
-      closed: 15,
-      byStatus: { Done: 15, QA: 1, "In Review": 2, "In Progress": 4, Todo: 3, Backlog: 1 },
-      unassigned: [v24[4]],
-      notStarted: [v24[1], v24[4], issue(WEB, 423, "Currency switcher in the footer", { status: "Backlog" })],
-    },
-    spotlight: {
-      milestones: [
-        { title: m24, url: `https://github.com/${WEB}/milestone/12`, issues: v24 },
-        { title: m25, url: `https://github.com/${WEB}/milestone/13`, issues: v25 },
+    milestones: {
+      next: m24,
+      noMilestone: { count: 6 },
+      list: [
+        milestone(WEB, 11, "v2.3", {
+          now,
+          due: now - 9 * DAY,
+          start: now - 30 * DAY,
+          startFrom: "v2.2",
+          total: 14,
+          closed: 12,
+          byStatus: { Done: 12, "In Review": 1, Todo: 1 },
+          issues: [issue(WEB, 371, "3-D Secure fallback for old cards", { status: "In Review", assignees: ["lena-k"], type: "Bug", priority: "Major" })],
+          onHold: [],
+        }),
+        milestone(WEB, 12, m24, {
+          now,
+          due: now + 5 * DAY,
+          start: now - 9 * DAY,
+          startFrom: "v2.3",
+          total: 26,
+          closed: 15,
+          byStatus: { Done: 15, QA: 1, "In Review": 2, "In Progress": 4, Todo: 3, Backlog: 1 },
+          issues: v24,
+          onHold: [],
+        }),
+        milestone(WEB, 13, m25, {
+          now,
+          due: now + 19 * DAY,
+          start: now + 5 * DAY,
+          startFrom: m24,
+          total: 11,
+          closed: 3,
+          byStatus: { Backlog: 3, Todo: 4, "In Progress": 1, Done: 3 },
+          issues: v25,
+          onHold: [issue(WEB, 414, "Apple Pay on the web", { status: "On Hold", type: "Story", assignees: ["tobi-s"] })],
+        }),
+        milestone(WEB, 14, "v2.6", {
+          now,
+          start: now - 4 * DAY,
+          total: 4,
+          closed: 0,
+          byStatus: { Backlog: 4 },
+          issues: [issue(WEB, 455, "Wish lists", { status: "Backlog", type: "Epic", labels: ["product-prioritized"], subIssues: { total: 4, completed: 0 } })],
+          onHold: [],
+        }),
       ],
-      onHold: [{ ...issue(WEB, 414, "Apple Pay on the web", { status: "On Hold", type: "Story", assignees: ["tobi-s"] }), milestone: m25 }],
     },
-    counts: { triage: 4 },
+    counts: { triage: tiles.triage },
     boardUrl: `https://github.com/orgs/${ORG}/projects/4`,
     iteration: { title: current.title, start: Date.parse(`${current.startDate}T00:00:00`), end: Date.parse(`${current.startDate}T00:00:00`) + 14 * DAY },
     inFlightTotal: inFlight.length,
@@ -260,53 +393,49 @@ function website(ws, now) {
 }
 
 /**
- * The Herdr core workspace: a repository only, so the Dashboard lists its open PRs.
+ * The Herdr core workspace: a repository only, so the Overview shows no team in flight.
  * @param {object} ws The normalized workspace.
  * @param {number} now Milliseconds since the epoch.
  * @returns {object} The workspace's model.
  */
 function herdrCore(ws, now) {
-  const openPrs = [
-    pr(CORE, 212, "Terminal: keep scrollback across reloads", { author: "lena-k", checks: "SUCCESS", reviewDecision: "APPROVED", ago: 2 * HOUR }),
-    pr(CORE, 215, "hc: --json for every command", { author: VIEWER, checks: "PENDING", ago: 40 * MIN }),
-    pr(CORE, 209, "Layouts: stacks remember their child", { author: "tobi-s", checks: "FAILURE", reviewDecision: "CHANGES_REQUESTED", ago: 26 * HOUR }),
-    pr(CORE, 217, "WIP: remote machines over SSH", { author: "mara-v", isDraft: true, checks: null, ago: 3 * DAY }),
-  ];
+  const tiles = repoTiles(ws);
   return {
     fetchedAt: now,
     errors: {},
     queries: workspaceQueries(ws),
     nightly: null,
-    bugs: { total: 5, read: 5, counts: { Blocker: 0, Critical: 1, Major: 2, Minor: 2, Unset: 0 } },
-    customer: { labels: [], count: 0, query: null },
+    bugs: tiles.bugs,
+    customer: tiles.customer,
     boardView: null,
-    milestone: {
-      title: "0.2",
-      url: `https://github.com/${CORE}/milestone/3`,
-      due: now + 19 * DAY,
-      previousDue: now - 11 * DAY,
-      total: 12,
-      closed: 4,
-      byStatus: { Open: 8, Closed: 4 },
-      unassigned: [],
-      notStarted: [],
-    },
-    spotlight: {
-      milestones: [
-        {
-          title: "0.2",
-          url: `https://github.com/${CORE}/milestone/3`,
+    milestones: {
+      next: "0.2",
+      noMilestone: { count: 3 },
+      list: [
+        milestone(CORE, 3, "0.2", {
+          now,
+          due: now + 19 * DAY,
+          start: now - 11 * DAY,
+          startFrom: "0.1",
+          total: 12,
+          closed: 4,
+          byStatus: { Open: 8, Closed: 4 },
           issues: [
             issue(CORE, 188, "Remote machines", { type: "Epic", assignees: ["mara-v"], subIssues: { total: 7, completed: 2 } }),
             issue(CORE, 201, "Crash when a pane closes mid-resize", { type: "Bug", priority: "Critical", assignees: ["tobi-s"] }),
           ],
-        },
+        }),
+        milestone(CORE, 4, "0.3", {
+          now,
+          start: now - 2 * DAY,
+          total: 5,
+          closed: 0,
+          byStatus: { Open: 5 },
+          issues: [issue(CORE, 230, "Plugins from a registry", { type: "Epic", subIssues: { total: 5, completed: 0 } })],
+        }),
       ],
-      onHold: null,
     },
-    counts: { triage: 1 },
-    openPrsTotal: openPrs.length,
-    openPrs,
+    counts: { triage: tiles.triage },
   };
 }
 
@@ -321,8 +450,8 @@ function alphorn(ws, now) {
   const current = its[2];
   const items = [
     card(HORN, 61, "Push notifications for Needs you", { status: "Todo", iteration: current, type: "Story", assignees: ["lena-k"] }),
-    card(HORN, 58, "Pair a phone with a QR code", { status: "In Progress", iteration: current, type: "Story", assignees: [VIEWER] }),
-    card(HORN, 63, "Reconnect after the phone sleeps", { status: "In Review", iteration: current, type: "Bug", assignees: ["tobi-s"], prs: [{ number: 64, reviewDecision: null }] }),
+    card(HORN, 58, "Pair a phone with a QR code", { status: "In Progress", iteration: current, type: "Story", assignees: [VIEWER], milestone: "1.0" }),
+    card(HORN, 63, "Reconnect after the phone sleeps", { status: "In Review", iteration: current, type: "Bug", assignees: ["tobi-s"], prs: [{ number: 64, reviewDecision: null }], milestone: "1.0" }),
     card(HORN, 55, "Read a terminal's last 200 lines", { status: "Done", iteration: current, assignees: [VIEWER] }),
   ];
   const inFlight = items
@@ -336,7 +465,7 @@ function alphorn(ws, now) {
       since: now - (index + 2) * 7 * HOUR,
       iteration: item.iteration,
       assignees: item.assignees.map((person) => person.login),
-      milestone: null,
+      milestone: item.milestone?.title ?? null,
       prs: item.prs,
     }));
   return {
@@ -362,23 +491,38 @@ function alphorn(ws, now) {
  */
 function account(config, now) {
   const sprint = iterations(now)[2].title;
-  const reviews = [
-    pr(WEB, 433, "Pricing page v2", { author: "mara-v", reviewDecision: "CHANGES_REQUESTED", checks: "SUCCESS", ago: 35 * MIN }),
-    pr(CORE, 212, "Terminal: keep scrollback across reloads", { author: "lena-k", reviewDecision: "REVIEW_REQUIRED", checks: "SUCCESS", ago: 2 * HOUR }),
-    pr(HORN, 64, "Reconnect after the phone sleeps", { author: "tobi-s", checks: "PENDING", ago: 5 * HOUR }),
+  const me = [VIEWER];
+  // Every made-up PR and issue the Daypack's searches pick from: each card shows those its
+  // search matches, so an edited filter filters them too.
+  const prs = [
+    pr(WEB, 433, "Pricing page v2", { author: "mara-v", reviewDecision: "CHANGES_REQUESTED", checks: "SUCCESS", ago: 35 * MIN, labels: ["frontend"], reviewRequested: me }),
+    pr(CORE, 212, "Terminal: keep scrollback across reloads", { author: "lena-k", reviewDecision: "REVIEW_REQUIRED", checks: "SUCCESS", ago: 2 * HOUR, labels: ["backend"], reviewRequested: me }),
+    pr(HORN, 64, "Reconnect after the phone sleeps", { author: "tobi-s", checks: "PENDING", ago: 5 * HOUR, labels: ["backend"], reviewRequested: me }),
+    pr(WEB, 436, "WIP: one-page checkout", { author: "tobi-s", isDraft: true, checks: null, ago: 7 * HOUR, labels: ["frontend"], reviewRequested: me }),
+    pr(WEB, 431, "Retry failed payment webhooks", { reviewDecision: "APPROVED", checks: "SUCCESS", ago: 20 * MIN, labels: ["backend"] }),
+    pr(CORE, 215, "hc: --json for every command", { checks: "PENDING", ago: 40 * MIN, labels: ["backend"] }),
+    pr(WEB, 425, "Bump the image CDN client", { reviewDecision: "CHANGES_REQUESTED", checks: "FAILURE", ago: DAY, labels: ["frontend"] }),
+    pr(HORN, 66, "WIP: dark mode", { isDraft: true, checks: null, ago: 2 * DAY, labels: ["frontend"] }),
   ];
-  const myPrs = [
-    pr(WEB, 431, "Retry failed payment webhooks", { reviewDecision: "APPROVED", checks: "SUCCESS", ago: 20 * MIN }),
-    pr(CORE, 215, "hc: --json for every command", { checks: "PENDING", ago: 40 * MIN }),
-    pr(WEB, 425, "Bump the image CDN client", { reviewDecision: "CHANGES_REQUESTED", checks: "FAILURE", ago: DAY }),
-  ];
-  const mine = [
-    { repo: WEB, number: 397, title: "Retry failed payment webhooks", workspace: "Website", status: "In Progress", iteration: sprint, milestone: "v2.4" },
-    { repo: HORN, number: 58, title: "Pair a phone with a QR code", workspace: "Alphorn", status: "In Progress", iteration: sprint, milestone: null },
-    { repo: WEB, number: 377, title: "Move images to the CDN", workspace: "Website", status: "Done", iteration: sprint, milestone: "v2.4" },
-    { repo: WEB, number: 452, title: "Spike: server-side cart", workspace: "Website", status: "Todo", iteration: sprint, milestone: "v2.5" },
-    { repo: CORE, number: 220, title: "Document the mod API", workspace: null, status: null, iteration: null, milestone: "0.2" },
-  ].map((row, index) => ({ kind: "issue", url: `https://github.com/${row.repo}/issues/${row.number}`, updatedAt: now - (index + 1) * 3 * HOUR, ...row }));
+  const issues = [
+    { repo: WEB, number: 397, title: "Retry failed payment webhooks", workspace: "Website", status: "In Progress", iteration: sprint, milestone: "v2.4", type: "Task", labels: ["backend"] },
+    { repo: HORN, number: 58, title: "Pair a phone with a QR code", workspace: "Alphorn", status: "In Progress", iteration: sprint, milestone: null, type: "Story", labels: ["frontend"] },
+    { repo: WEB, number: 377, title: "Move images to the CDN", workspace: "Website", status: "Done", iteration: sprint, milestone: "v2.4", type: "Task", labels: ["frontend"] },
+    { repo: WEB, number: 452, title: "Spike: server-side cart", workspace: "Website", status: "Todo", iteration: sprint, milestone: "v2.5", type: "Task", labels: ["backend"] },
+    { repo: CORE, number: 220, title: "Document the mod API", workspace: null, status: null, iteration: null, milestone: "0.2", type: "Task", labels: ["docs"] },
+    { repo: WEB, number: 412, title: "Cart rounds CHF wrong", workspace: "Website", status: "Todo", iteration: sprint, milestone: "v2.4", type: "Bug", labels: ["backend"], assignees: ["tobi-s"] },
+  ].map((row, index) => ({
+    kind: "issue",
+    url: `https://github.com/${row.repo}/issues/${row.number}`,
+    updatedAt: now - (index + 1) * 3 * HOUR,
+    assignees: me,
+    ...row,
+  }));
+  const { queries } = config.account;
+  const pool = [...prs, ...issues];
+  const reviews = demoSearch(pool, queries.review);
+  const myPrs = demoSearch(pool, queries.myPrs);
+  const mine = demoSearch(pool, queries.mine);
   const repos = [
     { repo: WEB, isPrivate: false, issues: 38, prs: 6, checks: "SUCCESS", pushedAt: now - 20 * MIN },
     { repo: CORE, isPrivate: false, issues: 21, prs: 4, checks: "FAILURE", pushedAt: now - 2 * HOUR },
@@ -397,7 +541,79 @@ function account(config, now) {
     redRepos: repos.filter((repo) => repo.checks === "FAILURE").length,
     redPrs: myPrs.filter((row) => row.checks === "FAILURE").length,
     queries: { ...config.account.queries },
+    pool,
   };
+}
+
+/**
+ * The made-up PRs and issues a search matches, for one Daypack card.
+ * @param {object[]} pool Every made-up PR and issue.
+ * @param {string} query The card's search.
+ * @returns {object[]} The matching ones.
+ */
+const demoSearch = (pool, query) => pool.filter((item) => matchesSearch(item, query, VIEWER));
+
+/**
+ * One Daypack card filtered again with another search, in the demo: `loadCardSearch()` on the
+ * made-up data. Nothing is fetched.
+ * @param {object} account The demo account's model.
+ * @param {"review" | "myPrs" | "mine"} key The card's search.
+ * @param {string} query The search.
+ * @returns {object} The account's model with that card's rows, count and search.
+ */
+export function demoCardSearch(account, key, query) {
+  const list = { review: "reviews", myPrs: "myPrs", mine: "mine" }[key];
+  const rows = demoSearch(account.pool ?? [], query);
+  const next = { ...account, [list]: rows, counts: { ...account.counts, [list]: rows.length }, queries: { ...account.queries, [key]: query } };
+  if (key === "myPrs") next.redPrs = rows.filter((row) => row.checks === "FAILURE").length;
+  return next;
+}
+
+/** Each demo workspace's model, by its name. */
+const WORKSPACES = { Website: website, "Herdr core": herdrCore, Alphorn: alphorn };
+
+/**
+ * One of a demo workspace's Overview cards counted again with another search, in the demo:
+ * `loadWorkspaceCard()` on the made-up data. Nothing is fetched.
+ * @param {object} ws The normalized workspace, with the card's edited search in place.
+ * @param {object} model The workspace's model.
+ * @param {"bugs" | "triage" | "customer"} key The card.
+ * @returns {object} The workspace's model with that card's result and searches.
+ */
+export function demoWorkspaceCard(ws, model, key) {
+  const fresh = WORKSPACES[ws.name]?.(ws, Date.now());
+  if (!fresh) return model;
+  const next = { ...model, queries: fresh.queries };
+  if (key === "bugs") next.bugs = fresh.bugs;
+  if (key === "triage") next.counts = { ...model.counts, triage: fresh.counts?.triage };
+  if (key === "customer") next.customer = fresh.customer;
+  return next;
+}
+
+/**
+ * A demo workspace's model with its board's cards filtered by the workspace's Board filter, as
+ * GitHub would: `loadBoardView()` on the made-up cards.
+ * @param {object} model The workspace's model, as built.
+ * @param {object} ws The normalized workspace.
+ * @returns {object} The model, its `boardView` holding only the matching cards.
+ */
+function filteredBoard(model, ws) {
+  if (!model.boardView) return model;
+  const filter = boardFilter(ws);
+  const context = { viewer: VIEWER, iteration: model.iteration?.title ?? null };
+  const items = model.boardView.items.filter((item) => matchesBoard(item, filter, context));
+  return { ...model, boardView: { ...model.boardView, filter, total: items.length, items } };
+}
+
+/**
+ * A demo workspace's board with another filter, for a filter applied on the Board: nothing is
+ * fetched, the made-up cards are filtered again, and a move made earlier is not kept.
+ * @param {object} ws The normalized workspace, with the filter in `boardView`.
+ * @returns {object | null} The board, in `loadBoardView()`'s shape; null for a workspace without one.
+ */
+export function demoBoardView(ws) {
+  const build = WORKSPACES[ws.name];
+  return build ? (filteredBoard(build(ws, Date.now()), ws).boardView ?? null) : null;
 }
 
 /**
@@ -407,13 +623,14 @@ function account(config, now) {
  */
 export function demoModel(config) {
   const now = Date.now();
-  const build = { Website: website, "Herdr core": herdrCore, Alphorn: alphorn };
   return {
     version: MODEL_VERSION,
     fetchedAt: now,
     errors: {},
     account: account(config, now),
-    workspaces: Object.fromEntries(config.workspaces.map((ws) => [ws.name, build[ws.name]?.(ws, now) ?? { fetchedAt: now, errors: {} }])),
+    workspaces: Object.fromEntries(
+      config.workspaces.map((ws) => [ws.name, WORKSPACES[ws.name] ? filteredBoard(WORKSPACES[ws.name](ws, now), ws) : { fetchedAt: now, errors: {} }]),
+    ),
   };
 }
 
@@ -469,6 +686,36 @@ export function demoDiscovery(config) {
 }
 
 /**
+ * A demo workspace's open issues without a milestone, for the Milestone card's "No milestone",
+ * in `loadNoMilestone()`'s shape.
+ * @param {object} ws The normalized workspace.
+ * @returns {object} The card's parts, with `openCount`.
+ */
+export function demoNoMilestone(ws) {
+  if (ws.repo === CORE) {
+    return {
+      openCount: 3,
+      byStatus: { Open: 3 },
+      open: [],
+      issues: [issue(CORE, 236, "Wayland: drag a tab to another window", { type: "Bug", priority: "Minor", assignees: ["lena-k"] })],
+      onHold: null,
+    };
+  }
+  const issues = [
+    issue(WEB, 421, "Price badges overlap on narrow screens", { status: "Todo", type: "Bug", priority: "Major", assignees: ["lena-k"] }),
+    issue(WEB, 430, "Dark mode for the account pages", { status: "Backlog", type: "Story" }),
+    issue(WEB, 452, "Spike: server-side cart", { status: "Todo", assignees: [VIEWER] }),
+  ];
+  return {
+    openCount: 6,
+    byStatus: { Backlog: 3, Todo: 2, "On Hold": 1 },
+    open: [],
+    issues: issues.slice(0, 2),
+    onHold: [issue(WEB, 427, "Klarna payments", { status: "On Hold", type: "Story", assignees: ["mara-v"] })],
+  };
+}
+
+/**
  * A repository's open milestones for the Board's card menu.
  * @param {string} repo `owner/name`.
  * @returns {{ id: string, title: string, dueOn: string | null }[]}
@@ -477,8 +724,15 @@ export function demoMilestones(repo) {
   const now = Date.now();
   return repo === WEB
     ? [
+        { id: "demo-ms-v2.3", title: "v2.3", dueOn: new Date(now - 9 * DAY).toISOString() },
         { id: "demo-ms-v2.4", title: "v2.4", dueOn: new Date(now + 5 * DAY).toISOString() },
-        { id: "demo-ms-v2.5", title: "v2.5", dueOn: new Date(now + 33 * DAY).toISOString() },
+        { id: "demo-ms-v2.5", title: "v2.5", dueOn: new Date(now + 19 * DAY).toISOString() },
+        { id: "demo-ms-v2.6", title: "v2.6", dueOn: null },
       ]
-    : [{ id: "demo-ms-0.2", title: "0.2", dueOn: new Date(now + 19 * DAY).toISOString() }];
+    : repo === CORE
+      ? [
+          { id: "demo-ms-0.2", title: "0.2", dueOn: new Date(now + 19 * DAY).toISOString() },
+          { id: "demo-ms-0.3", title: "0.3", dueOn: null },
+        ]
+      : [{ id: "demo-ms-1.0", title: "1.0", dueOn: null }];
 }

@@ -19,22 +19,22 @@ What's inside:
 | `themes/alp.json` | its built-in theme: Dracula |
 | `mods/usage-limits/` | sidebar block: session (5h) and weekly (7d) usage, with time to reset |
 | `mods/pane-agent/` | pane header: icon, name, folder, model/effort/context chips, worktree, branch, status, split/zoom/close |
-| `mods/alp-files/` | the Files panel with a minimal editor: click a file to edit it, `ctrl-s` saves, edits survive switching files, and a file another program changed asks before it's overwritten (Herdr's `files`, cloned) |
+| `mods/alp-files/` | Files: Basecamp's file tree, and the editor a file opens in, as a pane beside the terminals: `ctrl-s` saves, edits survive switching files, and a file another program changed asks before it's overwritten (Herdr's `files`, cloned) |
 | `mods/alp-chrome/` | sidebar brand row and footer: Herdr's `workspace-chrome`, with a 60px rail whose unfold button sits at the top |
 | `mods/alp-spaces/` | sidebar spaces list: Herdr's `spaces`, with each space's avatar on the folded rail |
 | `mods/alp-agents/` | sidebar agents list: grouped or priority views, sub-agents under their parent, each Space shown by its avatar |
-| `mods/alpmeister/` | a team lead's start-of-day tab: a Dashboard of all your repos or one workspace (bugs by priority, triage, customer issues, nightly, priorities, milestone, team in flight), a Board, Herds, Daypack (focus, reviews, your PRs, your issues) and Settings |
-| `mods/basecamp/` | Basecamp: the right column beside the terminals, with a Daypack tab and a Run tab, shown or hidden from its button at the end of the tab bar |
-| `mods/daypack/` | Daypack: Basecamp's tab with today's trail |
-| `mods/alp-runs/` | Runs: Basecamp's Run tab (the runs in Alp's config, `.herdr/alp.json` and your own, each with a play button, and an import from VS Code) and the bottom panel with each run's output and sessions |
+| `mods/alpmeister/` | Alp, a team lead's start-of-day tab: an Overview of all your repos or one workspace (bugs by priority, triage, customer issues, nightly, Waiting for your review, Your open PRs, Your issues, milestone, team in flight), a Board, Herds (sessions and their agents) and Settings |
+| `mods/basecamp/` | Basecamp (Files, Changes, Today and Run): the one dock on the right, beside the terminals; its tab strip. Shown or hidden from its button at the end of the tab bar, and remembered per space |
+| `mods/daypack/` | Today: Basecamp's tab with the Today list (the issues and PRs you Pin to Today in Alp, and the todos you type there), grouped or filtered by repo |
+| `mods/alp-runs/` | Runs: Basecamp's Run tab (the runs in Alp's config, `.herdr/alp.json` and your own, each with a play button, and an import from VS Code) and the bottom panel with each run's output and the Runs list |
 | `mods/alp-status/` | the status bar: Herdr's, with a Runs button that shows or hides the bottom panel |
-| `mods/alp-tabs/` | the tab bar: an Alpmeister tab pinned before the space's tabs, then the tabs, then icon buttons in two groups, Files and Changes, then Basecamp |
+| `mods/alp-tabs/` | the tab bar: an Alp tab pinned before the space's tabs, then the tabs, +, and the Basecamp button |
 | `plugins/alp/` | Claude Code plugin that writes the status files the mods read |
 | `schema/alp.schema.json` | the JSON schema for Alp's config files |
 | `RECIPE.md` | the brief to rebuild it from scratch (herdr.dev format) |
 | `icon.png` | Alp's logo |
 | `sync.sh` | copy the layout and mods into Herdr's home, or pull live edits back |
-| `setup.sh` | one-step install: checks `gh`, syncs, installs the plugin and opens Alpmeister's Settings |
+| `setup.sh` | one-step install: checks `gh`, syncs, installs the plugin and switches to the alp layout |
 
 ## Install
 
@@ -45,8 +45,9 @@ git clone https://github.com/ido-galili/herdr-alp && cd herdr-alp
 ./setup.sh
 ```
 
-It walks through the steps below, then opens Alpmeister on its [Settings](#settings) tab. To do
-it by hand instead:
+It walks through the steps below, then switches Herdr to the alp layout. Alp opens on the
+Overview of all your repositories, with a card that offers to add a workspace in its
+[Settings](#settings). To do it by hand instead:
 
 ### 1. Herdr layout and mods
 
@@ -86,49 +87,87 @@ Update it later with `/plugin marketplace update herdr-alp`.
 
 Restart running Claude sessions after installing or changing the plugin.
 
-## Alpmeister
+## Alp
 
 In an alp cooperative, the Alpmeister plans the season and oversees the alp, while the senn
-works the herd. The `alpmeister` mod is that view for a team lead. Its tab is pinned first in the
-tab bar, before the space's tabs, and belongs to no space. Click it and Alpmeister takes the whole
-work area in place of the terminals. Click it again, pick a tab, open one or switch spaces to get
-the terminals back. It can also open as a tab of its own in a space:
+works the herd. The `alpmeister` mod is that view for a team lead; it shows as **Alp**. Its tab is
+pinned first in the tab bar, before the space's tabs, and belongs to no space. Click it and Alp
+takes the whole work area in place of the terminals. Click it again, pick a tab, open one or
+switch spaces to get the terminals back. It can also open as a tab of its own in a space:
 
 ```sh
-herdr-app do tab.new '{"mod":"alpmeister","name":"Alpmeister"}'
+herdr-app do tab.new '{"mod":"alpmeister","name":"Alp"}'
 ```
 
-It has four tabs: Dashboard, Board, Herds and Daypack, and a gear beside Refresh that opens its
-settings in a tab of their own. It works before you set anything:
-the Dashboard starts on all your repositories.
+It has three views: Overview, Board and Herds, as tabs after its name (each with its icon: a
+grid, columns, three linked dots), and a Settings button that shows its settings in place of
+the view. It works before you set anything:
+the Overview starts on all your repositories, with a card that offers to add a workspace
+("Not now" hides it for good).
 
-- **Dashboard:** your GitHub as a whole, or one workspace, picked from a row of pills on top.
-  - **All repos:** four tiles (review requests, your open PRs, your assigned issues, red
-    checks), then every repository in scope with its open issues and PRs, the default branch's
-    checks, and when it was last pushed.
-  - **A workspace** is a repository, a project board, or both. With a repository: four tiles
-    (open bugs by priority, triage bugs, open customer issues, the last nightly run), the
-    spotlight on the next two milestones, and the next milestone (X of Y closed, due date,
-    status strip, flags). With a board: the issues in flight, each flagged when it is outside
-    the current iteration. A repository with no board lists its open PRs instead.
-- **Daypack:** today's focus (pinned rows and typed todos, carried over the next day), your
-  review requests with a Review button, your open PRs, and your issues with a Start button,
-  from every repository in scope. Both buttons open a Claude Code tab running the prompt set in
-  Settings, in that repository's local clone, and show only when the prompt is set.
+- **Overview:** your GitHub as a whole, or one workspace, picked from the Workspace dropdown on
+  top (each row in its list says what that workspace covers). A tile or card that opens GitHub has the GitHub
+  mark at the right end of its top-right icons (its tooltip says where: "See all 7 on GitHub",
+  "Open the run on GitHub"); the tile itself takes no click. The Customer issues and Nightly
+  tiles also have a gear that opens Settings on that section (also the way in when no
+  customer label or nightly is set). Every tile and card that lists a
+  GitHub search (open bugs, triage bugs, customer issues, Waiting for your review, Your open PRs
+  and Your issues) has a small filter icon in its top-right corner, with a dot when its
+  saved filter isn't the default; hovering says the filter in words. The
+  icon opens the filter dialog: chips, the GitHub search, a live "Shows 3 issues · now 0" count,
+  and Reset to default, Cancel and "Save for this card", which writes the setting Settings › Card
+  filters edits. Cancel, Esc or a click outside drops the edit; the card only ever shows the
+  saved filter.
+  - **Your lists:** Waiting for your review (with a Review button), Your open PRs, and Your
+    issues (with a Start button), each row with its pin ("Pin to Today", which adds it to
+    Basecamp's Today tab). Both buttons open a Claude Code tab running the prompt set in
+    Settings, in that repository's local clone; a dashed mark means the prompt isn't set yet and
+    opens Settings. The icons say what they do in their tooltips.
+  - **All repos:** the Red checks tile (default branches and your PRs whose checks fail), then
+    your lists from every repository in scope: Waiting for your review, then Your open PRs beside
+    Your issues, then every repository in scope
+    with its open issues and PRs, the default branch's checks, and when it was last pushed. With
+    open work hides the rest, and stays as you left it.
+  - **A workspace** is a repository, a project board, or both. Top to bottom: four tiles (open
+    bugs by priority, triage bugs, open customer issues, the last nightly run), the Milestone
+    card beside Waiting for your review, the issues in flight, then Your open PRs beside Your
+    issues (your lists narrowed to the workspace: its repository; for a workspace with only a
+    board, the repositories its board's items are in, and your issues on its board). A card the
+    workspace has no part for is left out: without a board no issues in flight; with only a
+    board no tiles and no Milestone card. On a narrow tab every card stacks, in the same order.
+    The Milestone card shows one milestone, picked in its header ("v2.4 · next ▾": Next, which moves on
+    by itself, any open milestone by due date with overdue ones in red, or No milestone). It
+    shows two bars: Progress (the share closed, orange at none closed blending to green at
+    all, with today's tick on the time from the start to the due date, and the due date and
+    days left over its right
+    end) and By status (the board statuses, a chip each). Under them, Issues (the open issues
+    with a priority, a prioritizing label or a feature type) and those on hold. A milestone
+    picked by hand outlines the card and offers "Back to next"; each workspace keeps its pick,
+    and one that closes goes back to Next. The GitHub mark opens the milestone (or the open
+    issues without one) on GitHub. With a board: the issues in flight, by status, the
+    longest in their status first, narrowed by the card's filter (its filter icon opens the
+    same dialog as the other cards): the next milestone by default, which moves on by itself
+    when that milestone closes, or one milestone, no milestone or any, and who they're assigned
+    to. The header says it in words ("next milestone · v2.4"); each workspace keeps its own.
 - **Board:** a workspace's board items, a column per status, with each card's assignee avatars.
-  Its filter field takes the board's own syntax, such as `type:Bug iteration:@current`: Enter
-  applies and saves it, Esc puts the saved one back. The avatars on top pick whose items show,
-  several at once. Settings holds an On Board tick per status that picks the columns. Drag a card
-  to another column to move it to that status; right-click it to change its iteration or
-  milestone. Both write to GitHub at once, so `gh` needs the `project` scope.
-- **Herds:** your Claude Code sessions and how they are linked. A session that messaged others
+  The filter in words on the header ("Filter: current iteration · 5 columns") opens the same
+  filter dialog: chips for Type, Columns and People, and the board filter in the board's own
+  syntax, such as `type:Bug iteration:@current`, with a count of the cards it shows. The board
+  keeps the saved filter until "Save for this board", which writes the filter and the columns
+  (the Show on board ticks in Settings); a filter GitHub refuses shows its error in the dialog and
+  isn't saved. People are remembered on this computer only; an avatar row above the board picks them in one click too. A card names its iteration, unless the filter already asks for that one. Drag a card to
+  another column to move it to that status; its ⋯ (always shown; or a right click) opens a menu
+  where you pressed that moves it or changes its iteration or milestone. Board cards have no
+  Claude button. These write to GitHub at once, so `gh` needs the `project` scope; after
+  a move, a toast at the board's bottom left offers Undo.
+- **Herds:** your Claude Code sessions and their agents, and how they are linked. A session that messaged others
   (`SendMessage`) or made their worktrees is a herdsman, marked with a crook: drawn on top, with a line down to each
   of its herd, labelled `msg 12:36` for its latest message or dotted `worktree`. Who and when
-  only: no message text is shown. Sessions with no link graze: a card each, in space order, with a
+  only: no message text is shown. Sessions with no link are grazing (sessions on their own): a card each, in space order, with a
   stripe in the space's color and its avatar in the corner. Every box and card ends with
   the session's git branch. A session that started agents (the Agent tool, forks included) leads
   them too: a smaller box per agent, a lamb for a fork and a herding dog for any other agent, with what it is for and how long it has run (or when it
-  finished), on a line labelled with its type, dotted for a background agent. An agent started
+  finished), on a solid line labelled with its type; a background agent is tagged "bg". An agent started
   by an agent sits under it. Agents that finished over 30 minutes ago fold into "+ N finished
   earlier". A click opens
   a session's tab. A background session is shown in the tab titled with its name, or in the
@@ -136,43 +175,57 @@ the Dashboard starts on all your repositories.
   sessions' transcripts and agent files) and redraws when a session starts, ends or changes
   status, and every few seconds while its agents work. Open it
   directly with `herdr-app do tab.new '{"mod":"alpmeister","props":{"tab":"herds"}}'`.
-- **Settings:** everything below, as a form (see [Settings](#settings)), in an "Alpmeister
-  settings" tab opened from the gear (or gone to, when it is already open). A save there makes
-  every Alpmeister tab fetch again.
-- **Refresh:** Dashboard and Daypack fetch when the tab opens and from its Refresh button only. The "updated" time turns
-  amber after 2 hours.
-- **Today's focus** shows each pinned issue's board status and each pinned PR's review
-  decision, as of the last refresh.
-- **Open on a tab or workspace:** `props.tab` (`dashboard`, `herds`, `today`, `settings`) and
+- **Settings:** everything below, as a form (see [Settings](#settings)), shown in place of the
+  view, with "Back to Overview" (or the view you came from). A side list picks the page, and the
+  save bar stays at the bottom: "2 unsaved changes · Revert · Save". Edits you haven't saved stay
+  while Alp is open, and the button says so: "Settings · 2 unsaved". After a save, Back fetches
+  again, and every other Alp tab fetches too.
+- **Refresh:** Alp fetches when the tab opens, when it shows data over 2 hours
+  old, and from "Updated 3h ago · Refresh", which turns orange after 2 hours.
+- **Pinned:** shown in place of the terminals (the Alp layout's pinned tab), the header ends in
+  "Back to terminals".
+- **Today** lives in Basecamp's Today tab (the `daypack` mod), its open count on the tab: the
+  rows you Pin to Today here and the todos you type there ("Add a todo and press Enter"),
+  carried over the next day. A key says what the Claude mark and the pin do ("set it in
+  Settings" opens Alp's Settings while a prompt is missing; "Hide key" is remembered). Each row
+  has its checkbox; a pin unpins, a todo has Edit (or a double-click) and Remove. "All repos ▾"
+  narrows the list to one repository (or the todos without one), and "Group by repo" gives each
+  repository its own heading, the todos without one under "Todos"; both are remembered. A todo
+  typed while the list shows one repository belongs to it. A refresh here keeps each pin's
+  board status and PR review decision up to date there.
+- **Open on a tab or workspace:** `props.tab` (`dashboard` or `overview` for the Overview,
+  `board`, `herds`, `settings`; the old `today` opens the Overview) and
   `props.workspace` (a workspace's name, `""` for All repos):
   `herdr-app do tab.new '{"mod":"alpmeister","props":{"tab":"dashboard","workspace":"Team"}}'`.
 - **Demo:** `props.demo` fills every tab with made-up data, for demos and screenshots: an
   org with three workspaces (a repository and a board, a repository only, a board only), every
-  bug priority, a failing nightly, cards in every status, PRs in every review state, a focus list
+  bug priority, a failing nightly, cards in every status, PRs in every review state, pins
   and a herd on Herds. It calls no GitHub and writes nothing: not the settings, the cache or the
-  focus list, and Board moves only change what it shows. Its gear opens demo settings whose Save
+  Today list, and Board moves only change what it shows. Its Settings button shows demo settings whose Save
   writes nothing:
   `herdr-app do tab.new '{"mod":"alpmeister","props":{"tab":"dashboard","workspace":"Website","demo":true}}'`.
-- **State:** `~/.local/state/alp/focus.json` holds the focus list and
+- **State:** `~/.local/state/alp/focus.json` holds the Today list and
   `~/.local/state/alp/alpmeister-cache.json` the last result.
 
 ### Settings
 
 The settings tab edits `~/.config/alp/alpmeister.json`. Its choices come from GitHub through
 the `gh` CLI (your repositories, your account's and organizations' project boards, a board's
-statuses and fields, a repository's workflows) and from your disk (local clones). Alpmeister
-only reads GitHub, never writes to it. Nothing is saved until Save, which keeps the previous
-file as `alpmeister.json.bak`.
+statuses and fields, a repository's workflows) and from your disk (local clones). Only the Board
+writes to GitHub: a card's status, its place in the column, its iteration and its milestone; the
+rest of Alp only reads. Nothing is saved until Save, in the bar at the bottom, which keeps the
+previous file as `alpmeister.json.bak`; Revert drops the unsaved changes.
 
-| Part | What you set |
+A side list picks the page: **You** (GitHub, Local folders, Claude buttons, Card filters), then
+a page per workspace and "+ Add workspace".
+
+| Page | What you set |
 |---|---|
-| Repos in scope | all your repositories (new ones join on their own; archived ones optional), or only the ones you check |
+| GitHub | the repos in scope: all your repositories (new ones join on their own; archived ones optional), or only the ones you pick |
 | Local folders | each repository's clone, where its Claude buttons open; clones found under `~/projects`, `~/code` and the like are offered |
 | Claude buttons | what they type into the new Claude tab. `{repo}` and `{number}` are filled in; a `/command` works too |
-| Daypack searches | the review-request, your-PRs and your-issues searches |
-| Workspaces | as many as you like, each with a name, a repository and/or a project board |
-| A workspace's board | its status and iteration fields, and per status: not started, in flight or other; hidden from Your issues; on hold |
-| A workspace's repository | the nightly workflow, its branch and the runs that count; the bugs, triage, spotlight and customer issue settings |
+| Card filters | every card's filter in one list, each with an Edit button that opens the same filter dialog the Overview's cards open (its Save writes that one filter at once, not through the Save bar): Waiting for your review, Your open PRs and Your issues, then each workspace's Open bugs, Triage bugs and Open PRs (`queries.prs`, `is:pr is:open` by default; the repository and a sort are added). "Save for this card" on an Overview card writes the same setting |
+| Workspace: *name* | its name, repository and project board, then sections that fold, each with a line saying what it is set to: Board columns (per status: what it means and whether the Board shows it; "More per-status options" adds hidden from Your issues and on hold; the status and iteration fields), Nightly (the workflow, its branch and the runs that count), Bugs and triage, Milestone issues (what the Milestone card lists under Issues) and Customer issues |
 
 Nightly checks (one row per job or step) are edited in the file: see
 `mods/alpmeister/alpmeister.example.json` for every key. A file in the earlier one-repo shape
@@ -187,9 +240,10 @@ workspace is the focused terminal's git checkout, or the repo the space's termin
 - **Run:** the play button starts the run. What it `dependsOn` starts first, and a group starts
   each of its runs. A `${input:...}` asks first, with the last answer filled in.
 - **Watch:** the bottom panel opens with the run's live output. Its bar shows the run's state,
-  stop (Ctrl-C, then terminate on a second press) and restart. The sessions list beside it holds
+  stop (Ctrl-C, then terminate on a second press) and restart. The Runs list beside it holds
   every run: running, exited 0 or failed. The output stays after the command ends.
-- **Show or hide:** the terminal button at the right end of the status bar, after the commands hint.
+- **Show or hide:** Output in the Run tab, beside the workspace's name, or the terminal button at
+  the right end of the status bar, after the commands hint.
 - **Add, edit, delete:** **+** adds a run; right-click a run to edit it, delete it from the file
   it's in, or hide it for yourself.
 - **Not runnable here:** runs that use `${file}` and other editor-only variables fold away under
@@ -206,8 +260,9 @@ Three files, deep-merged. Later ones win:
 | `.herdr/alp.local.json` | yours, in this repo only | Git ignores it (Alp adds it to `.git/info/exclude`); every worktree of the repo shares the main checkout's |
 
 Objects merge key by key, anything else is replaced, and `null` removes a key. Runs are keyed by
-name, so your local file can change one field of the team's run, or hide it with `null`. Runs from
-your files are marked *yours* or *local* in the list.
+name, so your local file can change one field of the team's run, or hide it with `null`. A run from
+`.herdr/alp.local.json` is marked *just me* in the list, and one from your own Alp config
+(`~/.config/alp/alp.json`) *me everywhere*.
 
 ```jsonc
 // .herdr/alp.json

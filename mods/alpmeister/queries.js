@@ -98,31 +98,36 @@ query($reviewQuery: String!, $mineQuery: String!, $myPrsQuery: String!) {
   }
 }`;
 
+/** The fields of a milestone's issue, for the Milestone card. Needs $statusField and $iterationField. */
+const MILESTONE_ISSUE = `
+  number title state url
+  issueType { name }
+  parent { number title url }
+  labels(first: 10) { nodes { name } }
+  subIssuesSummary { total completed }
+  assignees(first: 3) { nodes { login } }
+  ${ISSUE_FIELDS}
+  ${BOARD_FIELDS}`;
+
 /**
- * A workspace's repository: its milestones with their issues, and the triage count.
- * Variables: owner, name, statusField, iterationField, triageQuery.
+ * A workspace's repository: its open milestones with their issues and counts, the open issues
+ * without a milestone (counted), and the triage count.
+ * Variables: owner, name, statusField, iterationField, triageQuery, noMilestoneQuery.
  */
 export const WORKSPACE_REPO = `
 query(
-  $owner: String!, $name: String!, $statusField: String!, $iterationField: String!, $triageQuery: String!
+  $owner: String!, $name: String!, $statusField: String!, $iterationField: String!, $triageQuery: String!,
+  $noMilestoneQuery: String!
 ) {
   repository(owner: $owner, name: $name) {
     url
     open: milestones(first: 20, states: OPEN, orderBy: { field: DUE_DATE, direction: ASC }) {
       nodes {
-        title number dueOn url
+        title number dueOn url createdAt
+        closedIssues: issues(states: CLOSED) { totalCount }
         issues(first: 100) {
           totalCount
-          nodes {
-            number title state url
-            issueType { name }
-            parent { number title url }
-            labels(first: 10) { nodes { name } }
-            subIssuesSummary { total completed }
-            assignees(first: 3) { nodes { login } }
-            ${ISSUE_FIELDS}
-            ${BOARD_FIELDS}
-          }
+          nodes { ${MILESTONE_ISSUE} }
         }
       }
     }
@@ -131,6 +136,19 @@ query(
     }
   }
   triage: search(type: ISSUE, query: $triageQuery, first: 0) { issueCount }
+  noMilestone: search(type: ISSUE, query: $noMilestoneQuery, first: 0) { issueCount }
+}`;
+
+/**
+ * A repository's open issues without a milestone, for the Milestone card when "No milestone" is
+ * picked. Variables: searchQuery, statusField, iterationField.
+ */
+export const NO_MILESTONE_ISSUES = `
+query($searchQuery: String!, $statusField: String!, $iterationField: String!) {
+  search(type: ISSUE, query: $searchQuery, first: 100) {
+    issueCount
+    nodes { ... on Issue { ${MILESTONE_ISSUE} } }
+  }
 }`;
 
 /**
@@ -310,22 +328,6 @@ mutation($pr: ID!) {
   updatePullRequest(input: { pullRequestId: $pr, milestoneId: null }) { pullRequest { id } }
 }`;
 
-/** A repository's open PRs, for a workspace with no board. Variables: prsQuery. */
-export const OPEN_PRS = `
-query($prsQuery: String!) {
-  search(type: ISSUE, query: $prsQuery, first: 50) {
-    issueCount
-    nodes {
-      ... on PullRequest {
-        number title url updatedAt isDraft reviewDecision
-        repository { nameWithOwner }
-        author { login }
-        ${CHECKS}
-      }
-    }
-  }
-}`;
-
 /**
  * One page of open bugs with their issue fields, for the count by priority. Issue search
  * cannot filter on an issue field, so the priorities are counted from the nodes.
@@ -431,3 +433,31 @@ query($login: String!, $number: Int!) {
     }
   }
 }`;
+
+/**
+ * One Daypack card's search on its own, for a card whose filter was just changed: the same
+ * fields as that search in ACCOUNT. Variable: search (not "query", which gh uses for the document).
+ */
+export const ACCOUNT_SEARCHES = {
+  review: `
+query($search: String!) {
+  search(type: ISSUE, query: $search, first: 50) {
+    issueCount
+    nodes { ... on PullRequest { number title url updatedAt reviewDecision repository { nameWithOwner } author { login } ${CHECKS} } }
+  }
+}`,
+  myPrs: `
+query($search: String!) {
+  search(type: ISSUE, query: $search, first: 50) {
+    issueCount
+    nodes { ... on PullRequest { number title url updatedAt reviewDecision repository { nameWithOwner } ${CHECKS} } }
+  }
+}`,
+  mine: `
+query($search: String!) {
+  search(type: ISSUE, query: $search, first: 100) {
+    issueCount
+    nodes { ... on Issue { number title url updatedAt repository { nameWithOwner } milestone { title } ${ANY_BOARD_FIELDS} } }
+  }
+}`,
+};

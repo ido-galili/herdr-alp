@@ -1,74 +1,31 @@
-// Your GitHub as a whole, for the Dashboard's "All repos" view: four tiles (review requests,
-// your PRs, your issues, red checks), then every repository in scope with its open work and the
-// state of its default branch. Also the open PRs card a workspace without a board shows in place
-// of the team in flight.
+// Your GitHub as a whole, for the Dashboard's "All repos" view: the Red checks tile (beside your
+// issues; your lists are in my-day.js), then every repository in scope with its open work and the
+// state of its default branch.
 
 import { div } from "gpui-kit";
-import { h_flex, v_flex } from "gpui-base";
+import { v_flex } from "gpui-base";
 import { theme } from "herdr";
-import { searchUrl } from "./data.js";
-import { ClaudeButton, checksChip, decisionChip } from "./my-day.js";
 import { Tile } from "./project.js";
-import { Card, Chip, NeedsYou, Note, Row, TextButton, Toggle, ago, itemKey } from "./ui.js";
+import { Card, Chip, NeedsYou, Note, Row, TextButton, Toggle, ago } from "./ui.js";
 
 const REPO_LIMIT = 12;
-const PR_LIMIT = 10;
 
 /**
- * The account's four tiles, four across when `wide`, else two by two.
+ * The Red checks tile: default branches and your PRs whose checks fail.
  * @param {object} account The account model.
- * @param {{ wide: boolean }} options
- * @returns {object} The row of tiles.
+ * @returns {object} The tile.
  */
-export function AccountTiles(account, { wide }) {
+export function RedChecks(account) {
   const t = theme();
-  const counts = account.counts;
-  const approved = account.myPrs.filter((pr) => pr.reviewDecision === "APPROVED").length;
-  const changes = account.myPrs.filter((pr) => pr.reviewDecision === "CHANGES_REQUESTED").length;
   const red = account.redRepos + account.redPrs;
-  const prLines = [
-    approved ? `${approved} approved` : null,
-    changes ? `${changes} with changes requested` : null,
-  ].filter(Boolean);
-  const tiles = [
-    Tile(
-      "tile-reviews",
-      "Review requests",
-      String(counts.reviews),
-      "waiting on you",
-      counts.reviews ? t.blocked : t.foreground,
-      searchUrl(null, account.queries.review),
-    ),
-    Tile(
-      "tile-my-prs",
-      "My open PRs",
-      String(counts.myPrs),
-      prLines.length ? prLines : "no review decisions yet",
-      t.foreground,
-      searchUrl(null, account.queries.myPrs),
-    ),
-    Tile(
-      "tile-mine",
-      "Assigned issues",
-      String(counts.mine),
-      "open, assigned to you",
-      t.foreground,
-      searchUrl(null, account.queries.mine),
-    ),
-    Tile(
-      "tile-red",
-      "Red checks",
-      String(red),
-      [`${account.redRepos} default branches failing`, `${account.redPrs} of your PRs failing`],
-      red ? t.blocked : t.done,
-      null,
-    ),
-  ];
-  if (wide) return h_flex().gap(10).items_stretch().children(tiles);
-  return v_flex()
-    .gap(10)
-    .child(h_flex().gap(10).items_stretch().children(tiles.slice(0, 2)))
-    .child(h_flex().gap(10).items_stretch().children(tiles.slice(2)));
+  return Tile(
+    "tile-red",
+    "Red checks",
+    String(red),
+    [`${account.redRepos} default branches failing`, `${account.redPrs} of your PRs failing`],
+    red ? t.blocked : t.done,
+    null,
+  );
 }
 
 /**
@@ -146,55 +103,6 @@ export function Repos(config, account, options) {
       )
       .when(account.reposTotal > 100, (el) =>
         el.child(div().pt(6).child(Note(`Showing your 100 most recently pushed of ${account.reposTotal}.`))),
-      ),
-  );
-}
-
-/**
- * A workspace's open PRs, for a repository with no board: author, review decision, checks, age.
- * @param {object} ws The workspace.
- * @param {object} model The workspace's model.
- * @param {object} actions `{ pinButton, launch, prompt, expanded, onToggleGroup }`.
- * @returns {object} The card.
- */
-export function OpenPrs(ws, model, actions) {
-  const t = theme();
-  const prs = model.openPrs ?? [];
-  const now = Date.now();
-  const open = actions.expanded.has("open-prs");
-  const rows = (open ? prs : prs.slice(0, PR_LIMIT)).map((pr) =>
-    Row(`op-${itemKey(pr)}`, {
-      number: pr.number,
-      title: pr.title,
-      url: pr.url,
-      dim: pr.isDraft,
-      chips: [
-        pr.isDraft ? Chip("Draft", { color: t.dim }) : null,
-        Chip(pr.author, { color: t.muted }),
-        decisionChip(t, pr, "op"),
-        checksChip(t, pr, "op"),
-        Chip(`${ago(now - pr.updatedAt)} ago`, { color: t.dim }),
-      ].filter(Boolean),
-      buttons: [actions.pinButton(pr), ClaudeButton("op", pr, actions)].filter(Boolean),
-    }),
-  );
-  const more = prs.length - PR_LIMIT;
-  return Card(
-    "open-prs",
-    "Open PRs",
-    [Chip(String(model.openPrsTotal ?? prs.length), { color: t.muted })],
-    v_flex()
-      .gap(2)
-      .when(!rows.length, (el) =>
-        el.child(Note(model.errors?.prs ? `GitHub: ${model.errors.prs}` : `No open PRs in ${ws.repo}.`)),
-      )
-      .children(rows)
-      .when(more > 0, (el) =>
-        el.child(
-          TextButton("open-prs-more", open ? "Show less" : `Show ${more} more`, (cx) =>
-            actions.onToggleGroup("open-prs", cx),
-          ),
-        ),
       ),
   );
 }

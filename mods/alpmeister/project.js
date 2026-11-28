@@ -1,116 +1,56 @@
 // A workspace's status: tiles for open bugs by priority, triage bugs, customer issues and the
-// nightly run, then the next milestone. `config` here is the workspace's settings.
+// nightly run (the Milestone card is in spotlight.js). `config` here is the workspace's settings.
 
 import { div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { theme } from "herdr";
 import { searchUrl } from "./data.js";
-import { Bar, Card, Chip, NeedsYou, Note, daysUntil, formatDate, formatTime, openUrl, statusColor } from "./ui.js";
+import { Chip, ICONS, IconButton, Note, formatDate, formatTime, openUrl, warningColor } from "./ui.js";
 
-const WEEK_DAYS = 7;
-
-/** The next milestone: X of Y closed, the due date, the status strip and its flags. */
-export function Milestone(config, model) {
-  const t = theme();
-  const milestone = model.milestone;
-  if (!milestone) return Card("milestone", "Next milestone", [], Note("No open milestone with a due date ahead."));
-  const daysLeft = daysUntil(milestone.due);
-  const fraction = milestone.total ? milestone.closed / milestone.total : 0;
-  const elapsed =
-    milestone.previousDue && milestone.due > milestone.previousDue
-      ? (Date.now() - milestone.previousDue) / (milestone.due - milestone.previousDue)
-      : null;
-  const behind = elapsed != null && fraction < elapsed;
-  const color = behind ? t.working : t.accent;
-  const due = formatDate(milestone.due, { utc: true });
-  const order = [
-    ...config.statuses,
-    ...Object.keys(milestone.byStatus).filter((status) => !config.statuses.includes(status)),
-  ];
-  const present = order.filter((status) => milestone.byStatus[status]);
-  const flags = [];
-  if (milestone.unassigned.length) {
-    flags.push(
-      NeedsYou(`${milestone.unassigned.length} unassigned`)
-        .id("flag-unassigned")
-        .tooltip(milestone.unassigned.map((issue) => `#${issue.number} ${issue.title}`).join("\n")),
-    );
-  }
-  if (daysLeft < WEEK_DAYS && milestone.notStarted.length) {
-    flags.push(
-      NeedsYou(`${milestone.notStarted.length} not started`)
-        .id("flag-not-started")
-        .tooltip(milestone.notStarted.map((issue) => `#${issue.number} ${issue.status} ${issue.title}`).join("\n")),
-    );
-  }
-  return Card(
-    "milestone",
-    "Next milestone",
-    [Chip(`Due ${due} · ${daysLeft}d left`, { color: daysLeft < WEEK_DAYS ? t.working : t.muted })],
-    v_flex()
-      .gap(10)
-      .child(
-        h_flex()
-          .id("milestone-title")
-          .items_baseline()
-          .gap(10)
-          .cursor_pointer()
-          .on_click(() => openUrl(milestone.url))
-          .child(div().text_size(20).font_semibold().text_color(t.foreground).child(milestone.title))
-          .child(
-            div()
-              .text_size(14)
-              .font_medium()
-              .text_color(color)
-              .child(`${milestone.closed} of ${milestone.total} closed`),
-          ),
-      )
-      .child(
-        div()
-          .id("milestone-bar")
-          .tooltip(
-            elapsed == null
-              ? `${Math.round(fraction * 100)}% closed`
-              : `${Math.round(fraction * 100)}% closed, ${Math.round(Math.min(1, elapsed) * 100)}% of the time since the previous milestone gone`,
-          )
-          .child(Bar(fraction, color, elapsed == null ? null : Math.min(1, elapsed))),
-      )
-      .child(
-        h_flex()
-          .w_full()
-          .h(6)
-          .rounded(3)
-          .overflow_hidden()
-          .children(
-            present.map((status) =>
-              div()
-                .h_full()
-                .w(`${(milestone.byStatus[status] / milestone.total) * 100}%`)
-                .bg(statusColor(t, status)),
-            ),
-          ),
-      )
-      .child(
-        h_flex()
-          .flex_wrap()
-          .gap(6)
-          .children(
-            present.map((status) => Chip(`${status} ${milestone.byStatus[status]}`, { color: statusColor(t, status) })),
-          ),
-      )
-      .when(flags.length > 0, (el) => el.child(h_flex().gap(6).children(flags))),
-  );
+/**
+ * The tooltip of a tile's GitHub mark when it opens a list: "See all 7 on GitHub", "See both on
+ * GitHub", "See it on GitHub".
+ * @param {number | null | undefined} count How many the list holds.
+ * @returns {string} The words; "Open the search on GitHub" for an empty or unknown list.
+ */
+export function seeAll(count) {
+  if (!count) return "Open the search on GitHub";
+  if (count === 1) return "See it on GitHub";
+  if (count === 2) return "See both on GitHub";
+  return `See all ${count} on GitHub`;
 }
 
 /**
- * One number tile: a label, a big value, then lines or any element under it. `sub` is a string,
- * an element, or a list of them. `action` is a
- * URL to open or a function to run on click.
+ * One number tile: a label, a big value, then lines or any element under it. Its top-right
+ * corner holds, left to right, each when it has one: its filter icon, a gear to its settings,
+ * and the GitHub mark (no words; the tooltip says where it goes). Only those open anything: the
+ * tile itself takes no click. `sub` is a string, an element, or a list of them.
+ * @param {string} id The tile's element id.
+ * @param {string} label The tile's label.
+ * @param {string} value The big value.
+ * @param {string | object | Array<string | object>} sub The lines under the value.
+ * @param {string} color The value's color.
+ * @param {string | null} url What the GitHub mark opens, or null for no mark.
+ * @param {string} [note] A short clause after the label that says what the tile counts.
+ * @param {{ github?: string | null, outline?: string | null, filter?: object | null,
+ *   settings?: { tooltip: string, onPress(cx: object): void } | null }} [options] `github`: the
+ *   GitHub mark's tooltip, such as "See all 7 on GitHub"; `outline`: a border color, such as red
+ *   for a failed run; `filter`: the tile's filter icon (`FilterIcon`); `settings`: the gear's
+ *   tooltip and what it opens.
+ * @returns {object} The tile.
  */
-export function Tile(id, label, value, sub, color, action) {
+export function Tile(id, label, value, sub, color, url, note, { github, outline, filter, settings } = {}) {
   const t = theme();
+  const mark =
+    github && url ? IconButton(`${id}-github`, ICONS.github, () => openUrl(url), { tooltip: github })
+      : null;
+  const gear = settings
+    ? IconButton(`${id}-settings`, ICONS.settings, (cx) => settings.onPress(cx), { tooltip: settings.tooltip })
+    : null;
+  const corner = [filter, gear, mark].filter(Boolean);
   return v_flex()
     .id(id)
+    .relative()
     .flex_1()
     .min_w(0)
     .p(12)
@@ -118,25 +58,46 @@ export function Tile(id, label, value, sub, color, action) {
     .rounded(10)
     .bg(t.background)
     .border_1()
-    .border_color(t.border)
-    .cursor_pointer()
-    .hover((style) => style.border_color(t.input))
-    .on_click((_event, cx) => {
-      if (typeof action === "function") action(cx);
-      else if (action) openUrl(action);
-    })
-    .child(div().text_size(11).text_color(t.dim).child(label))
+    .border_color(outline ?? t.border)
+    .child(
+      div()
+        .when(corner.length > 0, (el) => el.pr(24 * corner.length))
+        .truncate()
+        .text_size(11.5)
+        .text_color(t.dim)
+        .child(note ? `${label} · ${note}` : label),
+    )
     .child(div().text_size(22).font_semibold().text_color(color).child(value))
     .children(
       (Array.isArray(sub) ? sub : [sub]).map((line) =>
-        typeof line === "string" ? div().text_size(11).truncate().text_color(t.muted).child(line) : line,
+        typeof line === "string" ? div().text_size(11.5).truncate().text_color(t.muted).child(line) : line,
       ),
-    );
+    )
+    .when(corner.length > 0, (el) => el.child(div().absolute().top(7).right(7).child(h_flex().gap(2).children(corner))));
 }
 
-/** The color for a bug priority: the most urgent in `blocked`, unset in `dim`. */
+/**
+ * A row of tiles, four across when `wide`, else two by two.
+ * @param {object[]} tiles The four tiles.
+ * @param {boolean} wide Whether the tiles go four across.
+ * @returns {object} The tiles.
+ */
+export function TileRows(tiles, wide) {
+  const rows = wide ? [[0, tiles.length]] : [[0, 2], [2, tiles.length]];
+  return v_flex()
+    .gap(10)
+    .children(rows.map(([from, to]) => h_flex().gap(10).items_stretch().children(tiles.slice(from, to))));
+}
+
+/**
+ * The color for a bug priority: the most urgent in `blocked`, unset in `dim`.
+ * @param {object} t The theme.
+ * @param {object} config The workspace's config, with its bug priorities in order.
+ * @param {string} priority The priority.
+ * @returns {string} The color: red, then orange, then the accent.
+ */
 export function priorityColor(t, config, priority) {
-  const colors = [t.blocked, t.ansi9 ?? t.blocked, t.working, t.accent];
+  const colors = [t.blocked, t.ansi9 ?? t.blocked, warningColor(t), t.accent];
   const index = config.bugs.priorities.indexOf(priority);
   return index < 0 ? t.dim : (colors[index] ?? t.muted);
 }
@@ -183,7 +144,13 @@ function outcomeColor(t, outcome) {
   return t.dim;
 }
 
-/** The nightly tile's value, color and lines: the run's outcome, when it started, then one line per check. */
+/**
+ * The nightly tile's value, color and lines: the run's outcome, when it started, then one line per check.
+ * @param {object} t The theme.
+ * @param {object | null} run The latest nightly run.
+ * @param {string | null} error Why it could not be read.
+ * @returns {Array} The value, its color, and the lines under it.
+ */
 function nightlyParts(t, run, error) {
   if (error) return ["Error", t.blocked, error];
   if (!run) return ["–", t.dim, "No nightly configured"];
@@ -193,7 +160,7 @@ function nightlyParts(t, run, error) {
     h_flex()
       .items_center()
       .gap(6)
-      .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.muted).child(check.name))
+      .child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(t.muted).child(check.name))
       .child(Chip(check.outcome, { color: outcomeColor(t, check.outcome) })),
   );
   return [value, outcomeColor(t, run.overall), [`${formatDate(run.at)}, ${formatTime(run.at)}`, ...lines]];
@@ -201,14 +168,27 @@ function nightlyParts(t, run, error) {
 
 /**
  * The top row: open bugs by priority, triage bugs, open customer issues and the nightly run.
- * Four across when `wide`, else two by two.
+ * Four across when `wide`, else two by two; a failed nightly is outlined in red. In each corner:
+ * the filter icon (Open bugs, Triage bugs and Customer issues, when `filter` gives one), a gear
+ * to the settings (Customer issues and Nightly: Settings on this workspace with that section
+ * unfolded), then the GitHub mark when there is something to open.
+ * @param {object} config The workspace's config.
+ * @param {object} model The workspace's model.
+ * @param {{ wide: boolean, onSettings(cx: object, section?: string): void,
+ *   filter?(key: "bugs" | "triage" | "customer"): object | null }} options
+ *   `onSettings` opens Settings on this workspace, with one of its sections ("nightly",
+ *   "customer") open when given; `filter` gives a tile's filter icon.
+ * @returns {object} The row of tiles.
  */
-export function Tiles(config, model, { wide }) {
+export function Tiles(config, model, { wide, onSettings, filter }) {
   const t = theme();
   const counts = model.counts;
   const [nightlyValue, nightlyColor, nightlySub] = nightlyParts(t, model.nightly, model.errors.nightly);
   const bugs = model.bugs;
   const customer = model.customer;
+  const noLabel = Boolean(customer) && !customer.labels.length;
+  const failed = model.nightly?.overall === "failure";
+  const filters = Object.fromEntries(["bugs", "triage", "customer"].map((key) => [key, filter?.(key) ?? null]));
   const tiles = [
     Tile(
       "tile-bugs",
@@ -217,6 +197,8 @@ export function Tiles(config, model, { wide }) {
       bugs ? BugPriorities(t, config, bugs) : (model.errors.bugs ?? ""),
       t.foreground,
       searchUrl(config.repo, model.queries.bugsQuery),
+      undefined,
+      { github: seeAll(bugs?.total), filter: filters.bugs },
     ),
     Tile(
       "tile-triage",
@@ -225,6 +207,8 @@ export function Tiles(config, model, { wide }) {
       "waiting for triage",
       t.foreground,
       searchUrl(config.repo, model.queries.triageQuery),
+      undefined,
+      { github: seeAll(counts?.triage), filter: filters.triage },
     ),
     Tile(
       "tile-customer",
@@ -232,13 +216,28 @@ export function Tiles(config, model, { wide }) {
       customer ? String(customer.count) : "–",
       customer ? customer.labels.join(", ") || "No customer label" : (model.errors.customer ?? ""),
       t.foreground,
-      customer?.query ? searchUrl(config.repo, customer.query) : null,
+      !noLabel && customer?.query ? searchUrl(config.repo, customer.query) : null,
+      undefined,
+      {
+        github: seeAll(customer?.count),
+        filter: filters.customer,
+        settings: { tooltip: "Customer issues settings", onPress: (cx) => onSettings(cx, "customer") },
+      },
     ),
-    Tile("tile-nightly", "Nightly", nightlyValue, nightlySub, nightlyColor, model.nightly?.url),
+    Tile(
+      "tile-nightly",
+      "Nightly",
+      nightlyValue,
+      nightlySub,
+      nightlyColor,
+      model.nightly?.url ?? null,
+      "latest run",
+      {
+        github: "Open the run on GitHub",
+        settings: { tooltip: "Nightly settings", onPress: (cx) => onSettings(cx, "nightly") },
+        outline: failed ? `${t.blocked}80` : null,
+      },
+    ),
   ];
-  if (wide) return h_flex().gap(10).items_stretch().children(tiles);
-  return v_flex()
-    .gap(10)
-    .child(h_flex().gap(10).items_stretch().children(tiles.slice(0, 2)))
-    .child(h_flex().gap(10).items_stretch().children(tiles.slice(2)));
+  return TileRows(tiles, wide);
 }

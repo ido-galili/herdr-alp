@@ -12,6 +12,14 @@ const SESSION_STATUS_LABELS = { working: "working", blocked: "needs you", done: 
 export const claudeTooltip = (prompt) =>
   `Open a Claude tab running ${prompt}. Middle-click opens it in the background.`;
 
+/**
+ * The tooltip of a Claude button whose prompt is not set.
+ * @param {string} kind "pr" or "issue".
+ * @returns {string}
+ */
+export const noPromptTooltip = (kind) =>
+  `No Claude prompt for ${kind === "pr" ? "PRs" : "issues"} yet. Click to set it in Settings, under Claude buttons.`;
+
 /** Opens a URL in the default browser. */
 export const openUrl = (url) => exec("open", [url]).catch((error) => console.log(`alpmeister: open failed: ${error}`));
 
@@ -81,6 +89,16 @@ export function formatTime(time) {
 /** Whole days from now until `time`, never below zero. */
 export const daysUntil = (time) => Math.max(0, Math.ceil((time - Date.now()) / DAY));
 
+/**
+ * The warning color: orange, for cautions that are not errors (stale data, unsaved edits,
+ * "Unassigned"). Yellow stays for working and red for "act now".
+ * @param {object} t The theme.
+ * @returns {string} The theme's `warning`, or orange when the theme has none.
+ */
+export function warningColor(t) {
+  return t.warning ?? "#ffb86c";
+}
+
 /** The theme color for a board status, matching the agents list: working, review, done. */
 export function statusColor(t, status) {
   if (!status) return t.dim;
@@ -102,17 +120,23 @@ export function typeColor(t, type) {
   return t.muted;
 }
 
-/** A chip as the pane header draws them: 18px, rounded, `hover` fill. */
+/**
+ * A chip as the pane header draws them: 20px, rounded, `hover` fill.
+ * @param {string | object} text The chip's label, or an element.
+ * @param {{ color?: string, fill?: string, tooltip?: string, id?: string }} [options] Its text color,
+ *   fill, and a tooltip (shown only with an id).
+ * @returns {object} The chip.
+ */
 export function Chip(text, { color, fill, tooltip, id } = {}) {
   const t = theme();
   const chip = h_flex()
     .flex_none()
     .px(6)
-    .h(18)
+    .h(20)
     .items_center()
     .rounded(5)
     .bg(fill ?? t.hover)
-    .text_size(10.5)
+    .text_size(11.5)
     .text_color(color ?? t.muted)
     .child(text);
   return tooltip && id ? chip.id(id).tooltip(tooltip) : chip;
@@ -161,8 +185,16 @@ export function Bar(fraction, color, tick = null, height = 8) {
     );
 }
 
-/** A card holding one widget: a title row with optional extras, then the body. */
-export function Card(id, title, extras, body) {
+/**
+ * A card holding one widget: a title row with optional extras, then the body.
+ * @param {string} id The card's element id.
+ * @param {string} title The card's title.
+ * @param {object[] | null} extras Chips and buttons on the right of the title row.
+ * @param {object} body The card's content.
+ * @param {string} [note] A short dim clause after the title that says what the card lists.
+ * @returns {object} The card.
+ */
+export function Card(id, title, extras, body, note) {
   const t = theme();
   return v_flex()
     .id(id)
@@ -177,14 +209,22 @@ export function Card(id, title, extras, body) {
       h_flex()
         .items_center()
         .gap(8)
-        .child(div().text_size(12.5).font_semibold().text_color(t.foreground).child(title))
+        .child(div().flex_none().text_size(12.5).font_semibold().text_color(t.foreground).child(title))
+        .when(Boolean(note), (el) => el.child(div().min_w(0).truncate().text_size(11.5).text_color(t.dim).child(note)))
         .child(div().flex_1())
         .children(extras ?? []),
     )
     .child(body);
 }
 
-/** A small text button in the agents list's style. */
+/**
+ * A small text button in the agents list's style.
+ * @param {string} id A unique element id.
+ * @param {string} label The label.
+ * @param {Function} onClick Called with the window context.
+ * @param {{ icon?: string, tooltip?: string }} [options] An icon before the label, and a tooltip.
+ * @returns {object} The button.
+ */
 export function TextButton(id, label, onClick, { icon, tooltip } = {}) {
   const t = theme();
   const button = h_flex()
@@ -195,7 +235,7 @@ export function TextButton(id, label, onClick, { icon, tooltip } = {}) {
     .h(20)
     .items_center()
     .rounded(5)
-    .text_size(10.5)
+    .text_size(11.5)
     .text_color(t.dim)
     .cursor_pointer()
     .hover((style) => style.bg(t.hover).text_color(t.foreground))
@@ -206,6 +246,23 @@ export function TextButton(id, label, onClick, { icon, tooltip } = {}) {
     .when(Boolean(icon), (el) => el.child(svg(icon).size(11).flex_none()))
     .child(label);
   return tooltip ? button.tooltip(tooltip) : button;
+}
+
+/**
+ * A link's words with its icon on their left, both in the link's color: the gear on a link that
+ * opens Settings, the GitHub mark on one that opens GitHub.
+ * @param {string | null} icon The icon's path, such as `ICONS.settings` or `ICONS.github`; null for none.
+ * @param {string} text The link's words.
+ * @param {number} [size] The icon's size: about the text's, 12 for 11.5-12px text.
+ * @returns {object} The words and the icon, side by side.
+ */
+export function LinkLabel(icon, text, size = 12) {
+  return h_flex()
+    .flex_none()
+    .gap(5)
+    .items_center()
+    .when(Boolean(icon), (el) => el.child(svg(icon).size(size).flex_none()))
+    .child(text);
 }
 
 /** Icons this mod draws: its own, Herdr's shipped pin and close, and the Claude program icon. */
@@ -222,20 +279,52 @@ export const ICONS = {
   pin: "mods/workspace-chrome/pin.svg",
   close: "mods/workspace-chrome/x.svg",
   edit: "mods/alpmeister/pencil.svg",
+  filter: "mods/alpmeister/filter.svg",
   claude: "icons/claude.svg",
   terminal: "mods/workspace-chrome/terminal.svg",
   iteration: "mods/alpmeister/iteration.svg",
   milestone: "mods/alpmeister/milestone.svg",
   settings: "mods/workspace-chrome/settings.svg",
+  viewOverview: "mods/alpmeister/view-overview.svg",
+  viewBoard: "mods/alpmeister/view-board.svg",
+  viewHerds: "mods/alpmeister/view-herds.svg",
 };
 
 /**
- * A 22px icon button with a tooltip. `color` tints a one-color icon; `picture` draws a
- * full-color icon as it is, such as a program's. `onMiddleClick`, when given, runs on a
- * middle-button release over the button.
+ * The mark Claude buttons show while their prompt is not set: the Claude mark's place, drawn as a
+ * dashed outline.
+ * @param {object} t The theme.
+ * @returns {object} The mark.
  */
-export function IconButton(id, icon, onClick, { tooltip, color, picture = false, onMiddleClick } = {}) {
+export function DashedMark(t) {
+  return div().flex_none().w(13).h(11).rounded(3).border_1().border_dashed().border_color(t.dim);
+}
+
+/**
+ * A 22px icon button with a tooltip. `color` tints a one-color icon; `picture` draws a
+ * full-color icon as it is, such as a program's, a little faded until hovered or focused; `mark`
+ * draws an element in place of the icon. `onMiddleClick`, when given, runs on a middle-button
+ * release over the button.
+ *
+ * With a `label`, the button is a Tab stop (Enter or Space presses it). It stays an icon on hover
+ * and focus: the label goes into the tooltip ("Review: Open a Claude tab…"), unless the tooltip
+ * already starts with it ("Pin to Today").
+ * @param {string} id A unique element id.
+ * @param {string | null} icon The icon's path, or null with `mark`.
+ * @param {(cx: object) => void} onClick Called with the window context.
+ * @param {{ tooltip?: string, color?: string, picture?: boolean, mark?: object, label?: string,
+ *   onMiddleClick?: (cx: object) => void }} [options]
+ * @returns {object} The button.
+ */
+export function IconButton(id, icon, onClick, { tooltip, color, picture = false, mark, label, onMiddleClick } = {}) {
   const t = theme();
+  const glyph = mark ?? (picture ? image(icon).w(13).h(13) : svg(icon).size(13));
+  const press = (cx) => {
+    cx.stop_propagation();
+    onClick(cx);
+  };
+  const tip = label && !(tooltip ?? "").startsWith(label) ? (tooltip ? `${label}: ${tooltip}` : label) : tooltip;
+  const lit = (style) => style.bg(t.hover).text_color(color ?? t.foreground).opacity(1);
   return h_flex()
     .id(id)
     .flex_none()
@@ -245,19 +334,25 @@ export function IconButton(id, icon, onClick, { tooltip, color, picture = false,
     .rounded(5)
     .text_color(color ?? t.dim)
     .cursor_pointer()
-    .hover((style) => style.bg(t.hover).text_color(color ?? t.foreground))
-    .on_click((_event, cx) => {
-      cx.stop_propagation();
-      onClick(cx);
-    })
+    .on_click((_event, cx) => press(cx))
     .when(Boolean(onMiddleClick), (el) =>
       el.on_mouse_up("middle", (_event, cx) => {
         cx.stop_propagation();
         onMiddleClick(cx);
       }),
     )
-    .when(Boolean(tooltip), (el) => el.tooltip(tooltip))
-    .child(picture ? image(icon).w(13).h(13) : svg(icon).size(13));
+    .when(Boolean(tip), (el) => el.tooltip(tip))
+    .when(Boolean(label), (el) =>
+      el
+        .when(picture && !color, (el) => el.opacity(0.65))
+        .tab_index(0)
+        .focus(lit)
+        .on_key_down((event, cx) => {
+          if (event.key === "enter" || event.key === "space") press(cx);
+        }),
+    )
+    .hover(lit)
+    .child(glyph);
 }
 
 /** The name a Claude tab opened on an issue or PR carries: `repo#12`, or `PR repo#12`. */
@@ -371,7 +466,7 @@ export function Segmented(id, options, value, onPick) {
           .gap(5)
           .items_center()
           .rounded(5)
-          .text_size(10.5)
+          .text_size(11.5)
           .cursor_pointer()
           .bg(option.value === value ? t.selected : t.canvas)
           .text_color(option.value === value ? t.foreground : t.dim)
@@ -387,7 +482,15 @@ export function Segmented(id, options, value, onPick) {
     );
 }
 
-/** A filter toggle: a checkbox-like dot and its label, in the accent color while on. */
+/**
+ * A filter toggle: a checkbox-like dot and its label, in the accent color while on.
+ * @param {string} id A unique element id.
+ * @param {string} label The label.
+ * @param {boolean} on Whether it is on.
+ * @param {Function} onToggle Called with the window context.
+ * @param {string} [tooltip] A tooltip.
+ * @returns {object} The toggle.
+ */
 export function Toggle(id, label, on, onToggle, tooltip) {
   const t = theme();
   return h_flex()
@@ -398,7 +501,7 @@ export function Toggle(id, label, on, onToggle, tooltip) {
     .h(20)
     .items_center()
     .rounded(5)
-    .text_size(10.5)
+    .text_size(11.5)
     .text_color(on ? t.foreground : t.dim)
     .cursor_pointer()
     .hover((style) => style.bg(t.hover))
@@ -459,15 +562,117 @@ export const Note = (text, color) =>
     .text_color(color ?? theme().dim)
     .child(text);
 
-/** A group heading inside a card: a status name and its count. */
+/**
+ * A group heading inside a card: a status name and its count.
+ * @param {string} name The status name.
+ * @param {number} count How many items it has.
+ * @param {string} color The status color.
+ * @returns {object} The heading.
+ */
 export function GroupHeading(name, count, color) {
   const t = theme();
   return h_flex()
     .pt(6)
     .gap(6)
     .items_center()
-    .text_size(11)
+    .text_size(11.5)
     .child(div().size(7).rounded(4).bg(color))
     .child(div().font_medium().text_color(t.foreground).child(name))
     .child(div().text_color(t.dim).child(String(count)));
+}
+
+/**
+ * Presses a focusable element's action on Enter or Space.
+ * @param {(cx: object) => void} press The action.
+ * @returns {(event: object, cx: object) => void} A key-down handler.
+ */
+export const pressOnKey = (press) => (event, cx) => {
+  if (event.key !== "enter" && event.key !== "space") return;
+  cx.stop_propagation();
+  press(cx);
+};
+
+
+/**
+ * The words a card's filter shows on hover, or on the Board's button: what it shows, and
+ * whether it is saved for this card.
+ * @param {string} summary The filter in words, such as "bugs only · open".
+ * @param {boolean} saved Whether the settings hold a filter other than the default.
+ * @returns {string} Such as "Filter: label support · saved for this card".
+ */
+export const filterTooltip = (summary, saved) => `Filter: ${summary}${saved ? " · saved for this card" : ""}`;
+
+/**
+ * The filter's way in on a card or a tile: a small funnel that opens the filter dialog, with an
+ * accent dot when the saved filter isn't the default. Hovering shows the filter in words. It is a
+ * Tab stop: Enter or Space opens the dialog too.
+ * @param {string} id A unique element id.
+ * @param {{ saved: boolean, tooltip: string, onOpen(cx: object): void }} options `saved`: the
+ *   settings hold a filter other than the default.
+ * @returns {object} The button, 22px square.
+ */
+export function FilterIcon(id, { saved, tooltip, onOpen }) {
+  const t = theme();
+  const open = (cx) => onOpen(cx);
+  return div()
+    .id(id)
+    .relative()
+    .flex_none()
+    .size(22)
+    .flex()
+    .items_center()
+    .justify_center()
+    .rounded(5)
+    .text_color(saved ? t.accent : t.dim)
+    .cursor_pointer()
+    .tab_index(0)
+    .hover((style) => style.bg(t.hover).text_color(saved ? t.accent : t.foreground))
+    .focus((style) => style.bg(t.hover).text_color(t.foreground))
+    .tooltip(tooltip)
+    .on_click((_event, cx) => {
+      cx.stop_propagation();
+      open(cx);
+    })
+    .on_key_down(pressOnKey(open))
+    .child(svg(ICONS.filter).size(13))
+    .when(saved, (el) => el.child(div().absolute().top(2).right(2).size(6).rounded(3).bg(t.accent)));
+}
+
+/**
+ * The filter's way in where a header has room for words, as on the Board: "▾ Filter: <summary>",
+ * quiet at the default and in the accent once saved. A click, Enter or Space opens the filter
+ * dialog.
+ * @param {string} id A unique element id.
+ * @param {{ summary: string, saved: boolean, onOpen(cx: object): void, tooltip?: string }} options
+ * @returns {object} The button.
+ */
+export function FilterButton(id, { summary, saved, onOpen, tooltip }) {
+  const t = theme();
+  const color = saved ? t.accent : t.muted;
+  const open = (cx) => onOpen(cx);
+  return h_flex()
+    .id(id)
+    .min_w(0)
+    .max_w(360)
+    .h(22)
+    .px(8)
+    .gap(6)
+    .items_center()
+    .rounded(6)
+    .border_1()
+    .border_color(saved ? color : t.border)
+    .text_size(11.5)
+    .text_color(color)
+    .cursor_pointer()
+    .tab_index(0)
+    .hover((style) => style.bg(t.hover))
+    .focus((style) => style.bg(t.hover).border_color(t.accent))
+    .tooltip(tooltip ?? "Change what this card shows")
+    .on_click((_event, cx) => {
+      cx.stop_propagation();
+      open(cx);
+    })
+    .on_key_down(pressOnKey(open))
+    .child(div().flex_none().child("▾"))
+    .child(div().min_w(0).truncate().child(`Filter: ${summary}`));
 }

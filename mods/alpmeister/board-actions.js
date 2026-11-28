@@ -1,4 +1,5 @@
-// The Board's writes to GitHub: a card's status and iteration on the board, and its milestone.
+// The Board's writes to GitHub: a card's status (and an Undo putting it back) and iteration on
+// the board, and its milestone.
 // Each is one mutation through `gh api graphql`, with the ids the board load read.
 
 import { graphql } from "./data.js";
@@ -16,14 +17,19 @@ import {
 } from "./queries.js";
 
 /**
- * Moves a board item to another status.
+ * Moves a board item to another status, or to none.
  * @param {object} meta The board's ids, from the board load.
  * @param {{ itemId: string }} item The board item.
- * @param {string} status The status name.
+ * @param {string | null} status The status name, or null for no status.
  * @returns {Promise<void>}
  * @throws {Error} When the board has no Status field or no such option.
  */
 export async function setStatus(meta, item, status) {
+  if (status === null) {
+    if (!meta.status) throw new Error("The board has no Status field.");
+    await graphql(CLEAR_BOARD_FIELD, { project: meta.projectId, item: item.itemId, field: meta.status.fieldId });
+    return;
+  }
   const option = meta.status?.options[status];
   if (!option) throw new Error(`The board has no status ${status}.`);
   await graphql(SET_BOARD_OPTION, { project: meta.projectId, item: item.itemId, field: meta.status.fieldId, option });

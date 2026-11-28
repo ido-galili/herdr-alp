@@ -93,6 +93,12 @@ export class BarPart {
     });
   }
 
+  /**
+   * The bar over the output: the selected run's name, its exit, and its stop, restart and hide
+   * buttons; only the hide button when no run is selected.
+   * @param {object} cx The view's context.
+   * @returns {object}
+   */
   render(cx) {
     const t = theme();
     const list = sessions();
@@ -115,17 +121,18 @@ export class BarPart {
       .border_b(1)
       .border_color(t.border)
       .text_size(12)
-      .when(!session, (el) => el.child(div().flex_1().text_color(t.dim).child("No run selected")))
+      .when(!session, (el) => el.child(div().flex_1()))
       .when(Boolean(session), (el) =>
         el
-          .child(div().flex_none().text_size(10).text_color(mark.color).child(mark.glyph))
-          .child(div().flex_none().font_medium().text_color(t.foreground).child(session.title))
+          .child(div().flex_none().text_size(11.5).text_color(mark.color).child(mark.glyph))
           .child(
             div()
+              .id("runs-title")
               .flex_none()
-              .text_color(t.dim)
-              .tooltip(`Agents read it with: hc read ${session.name}`)
-              .child(session.name),
+              .font_medium()
+              .text_color(t.foreground)
+              .tooltip(`Agents read it with hc read ${session.name}`)
+              .child(session.title),
           )
           .child(
             div()
@@ -152,14 +159,20 @@ export class BarPart {
             ),
           ),
       )
-      .child(iconButton(t, "runs-hide", CLOSE_ICON, "Hide the runs panel", () => run("layout.hide", { id: PANEL_ID })));
+      .child(iconButton(t, "runs-hide", CLOSE_ICON, "Hide the runs' output", () => run("layout.hide", { id: PANEL_ID })));
   }
 }
 
 export class SessionsPart {
   init() {}
 
-  /** One session: its state, its name, and its close button. */
+  /**
+   * One session: its state, its name, and its close button.
+   * @param {object} t The theme.
+   * @param {object} session From `sessions()`.
+   * @param {boolean} selected Whether its output is the one shown.
+   * @returns {object}
+   */
   row(t, session, selected) {
     const mark = sessionMark(t, session);
     return h_flex()
@@ -175,7 +188,7 @@ export class SessionsPart {
       .bg(selected ? t.selected : t.chrome)
       .hover((style) => style.bg(selected ? t.selected : t.hover))
       .on_click(() => showSession(session.address))
-      .child(div().w(10).flex_none().text_size(10).text_color(mark.color).child(mark.glyph))
+      .child(div().w(12).flex_none().text_size(11.5).text_color(mark.color).child(mark.glyph))
       .child(
         div()
           .flex_1()
@@ -185,7 +198,7 @@ export class SessionsPart {
           .child(session.title),
       )
       .when(!session.running && session.exit !== 0, (el) =>
-        el.child(div().flex_none().text_size(11).text_color(t.dim).child(String(session.exit))),
+        el.child(div().flex_none().text_size(11.5).text_color(t.dim).child(String(session.exit))),
       )
       .child(
         h_flex()
@@ -206,6 +219,10 @@ export class SessionsPart {
       );
   }
 
+  /**
+   * The Runs list: a row per session, grouped by workspace when there are several.
+   * @returns {object}
+   */
   render() {
     const t = theme();
     const list = sessions();
@@ -214,7 +231,7 @@ export class SessionsPart {
     const workspaces = [...new Set(list.map((session) => session.workspace))];
     const rows = workspaces.flatMap((workspace) => [
       ...(workspaces.length > 1
-        ? [div().px(10).pt(8).pb(2).text_size(10.5).text_color(t.dim).truncate().child(workspace.split("/").pop())]
+        ? [div().px(10).pt(8).pb(2).text_size(11.5).text_color(t.dim).truncate().child(workspace.split("/").pop())]
         : []),
       ...list
         .filter((session) => session.workspace === workspace)
@@ -230,23 +247,20 @@ export class SessionsPart {
           .h(28)
           .px(10)
           .items_center()
-          .child(div().flex_1().text_size(10.5).font_semibold().text_color(t.dim).child("SESSIONS"))
+          .child(div().flex_1().text_size(11.5).font_semibold().text_color(t.dim).child("Runs"))
           .when(finished.length > 0, (el) =>
             el.child(
               div()
                 .id("sessions-clear")
-                .text_size(11)
+                .text_size(11.5)
                 .text_color(t.dim)
                 .cursor_pointer()
                 .hover((style) => style.text_color(t.foreground))
-                .tooltip("Close every finished session")
+                .tooltip("Close every finished run")
                 .on_click(() => finished.forEach(closeAndMoveOn))
                 .child("Clear finished"),
             ),
           ),
-      )
-      .when(!list.length, (el) =>
-        el.child(div().px(10).py(4).text_size(11.5).text_color(t.dim).child("Nothing has run yet.")),
       )
       .child(v_flex().id("sessions-scroll").flex_1().min_h(0).overflow_y_scrollbar().children(rows));
   }
@@ -255,6 +269,11 @@ export class SessionsPart {
 export class EmptyPart {
   init() {}
 
+  /**
+   * What the output block shows when no run is selected: that nothing has run yet, and a button
+   * to Basecamp's Run tab when the layout has Basecamp.
+   * @returns {object}
+   */
   render() {
     const t = theme();
     const basecamp = find(layout(), "basecamp");
@@ -267,7 +286,7 @@ export class EmptyPart {
       .bg(t.background)
       .text_size(12.5)
       .text_color(t.dim)
-      .child("No run selected.")
+      .child(sessions().length ? "No run selected" : "Nothing has run yet")
       .when(Boolean(basecamp), (el) =>
         el.child(
           div()

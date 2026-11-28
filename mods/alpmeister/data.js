@@ -8,11 +8,12 @@ import { exec } from "herdr";
 import { inScope, workspaceOfBoard } from "./config.js";
 import {
   ACCOUNT,
+  ACCOUNT_SEARCHES,
   BOARD_VIEW_PAGE,
   BUGS_PAGE,
   CUSTOMER_LABELS,
   ISSUE_COUNT,
-  OPEN_PRS,
+  NO_MILESTONE_ISSUES,
   WORKSPACE_BOARD,
   WORKSPACE_REPO,
   pickStates,
@@ -24,7 +25,7 @@ const BOARD_VIEW_PAGES = 5;
 const FAILED_CONCLUSIONS = ["failure", "timed_out", "startup_failure"];
 
 /** The cache format: a cache written by another version is ignored. */
-export const MODEL_VERSION = 2;
+export const MODEL_VERSION = 3;
 
 /**
  * Runs `gh` with the given arguments and parses its JSON output.
@@ -94,7 +95,6 @@ export function workspaceQueries(ws) {
     inFlightFilter: inFlightParts.join(" "),
     triageQuery: `${repo} ${ws.queries.triage}`,
     bugsQuery: `${repo} ${ws.bugs.query}`,
-    prsQuery: `${repo} is:pr is:open sort:updated-desc`,
   };
 }
 
@@ -168,7 +168,7 @@ function priorityOf(ws, issue) {
   return issue.issueFieldValues?.nodes?.find((field) => field.field?.name === ws.bugs.priorityField)?.name ?? null;
 }
 
-/** A milestone's issue, shaped for the milestone card and the spotlight card. */
+/** A milestone's issue, shaped for the Milestone card. */
 function milestoneIssue(ws, issue) {
   return {
     repo: ws.repo,
@@ -186,17 +186,15 @@ function milestoneIssue(ws, issue) {
   };
 }
 
-/** The open milestones whose due date has not passed, soonest first. */
-function upcomingMilestones(repository, now) {
-  const today = new Date(now).toISOString().slice(0, 10);
-  return repository.open.nodes.filter((milestone) => milestone.dueOn && milestone.dueOn.slice(0, 10) >= today);
-}
-
 /**
- * One milestone's spotlight: its open issues that have a priority value or a configured label,
- * or a feature type. Most urgent first, then by feature type. Issues on hold are left out.
+ * The issues the Milestone card lists under "Issues": the open ones with a priority value, a
+ * prioritizing label or a feature type, most urgent first, then by feature type. Issues on hold
+ * are left out (they have their own group).
+ * @param {object} ws The workspace.
+ * @param {object[]} issues The milestone's issues, from `milestoneIssue`.
+ * @returns {object[]} The issues to list.
  */
-function milestoneSpotlight(ws, milestone, issues) {
+function focusIssues(ws, issues) {
   const settings = ws.spotlight;
   const levels = ws.bugs.priorities;
   const types = settings.featureTypes;
@@ -204,59 +202,106 @@ function milestoneSpotlight(ws, milestone, issues) {
   const typeRank = (issue) => (types.includes(issue.type) ? types.indexOf(issue.type) : types.length);
   const isPrioritized = (issue) =>
     Boolean(issue.priority) || issue.labels.some((label) => settings.labels.includes(label));
-  const shown = issues
+  return issues
     .filter((issue) => !issue.closed && issue.status !== settings.holdStatus)
     .filter((issue) => isPrioritized(issue) || types.includes(issue.type))
     .sort(
       (first, second) =>
         rank(first) - rank(second) || typeRank(first) - typeRank(second) || first.number - second.number,
     );
-  return { title: milestone.title, url: milestone.url, issues: shown };
 }
 
-/** The spotlight card: the next milestones' issues in focus, and their issues on hold. */
-function spotlight(ws, upcoming) {
-  const milestones = upcoming.slice(0, ws.spotlight.milestones).map((milestone) => ({
-    milestone,
-    issues: milestone.issues.nodes.map((issue) => milestoneIssue(ws, issue)),
-  }));
+/**
+ * What the Milestone card shows of a set of issues: the counts by board status (with a board,
+ * else open and closed), the open ones, the issues it lists, and the ones on hold (null without a
+ * board, where nothing can be on hold).
+ * @param {object} ws The workspace.
+ * @param {object[]} issues The issues, from `milestoneIssue`.
+ * @returns {{ byStatus: Record<string, number>, open: object[], issues: object[],
+ *   onHold: object[] | null }}
+ */
+export function milestoneParts(ws, issues) {
+  const byStatus = {};
+  const bucket = (issue) => (ws.board ? (issue.status ?? "No status") : issue.closed ? "Closed" : "Open");
+  for (const issue of issues) byStatus[bucket(issue)] = (byStatus[bucket(issue)] ?? 0) + 1;
+  const open = issues.filter((issue) => !issue.closed);
   return {
-    milestones: milestones.map(({ milestone, issues }) => milestoneSpotlight(ws, milestone, issues)),
-    onHold: ws.board
-      ? milestones.flatMap(({ milestone, issues }) =>
-          issues
-            .filter((issue) => !issue.closed && issue.status === ws.spotlight.holdStatus)
-            .map((issue) => ({ ...issue, milestone: milestone.title })),
-        )
-      : null,
+    byStatus,
+    open,
+    issues: focusIssues(ws, issues),
+    onHold: ws.board ? open.filter((issue) => issue.status === ws.spotlight.holdStatus) : null,
   };
 }
 
 /**
- * The next milestone, with its breakdown: by board status with a board, else open and closed.
+ * A workspace's open milestones for the Milestone card and Team in flight's filter: each with
+ * its due date, when its time started (the due date of the milestone before it, or when it was
+ * created when that is later or there is none), its counts and its issues. Ordered by due date,
+ * the ones without a due date last. `next` is the first one due today or later: an overdue
+ * milestone is never the next one.
+ * @param {object} ws The workspace.
+ * @param {object} repository The repository, from WORKSPACE_REPO.
+ * @param {object | null} noMilestone The search counting the open issues without a milestone.
+ * @param {number} now Milliseconds since the epoch.
+ * @returns {{ list: object[], next: string | null, noMilestone: { count: number } }}
  */
-function nextMilestone(ws, repository, next) {
-  if (!next) return null;
-  const earlierDues = [...repository.open.nodes, ...repository.closed.nodes]
-    .map((milestone) => milestone.dueOn)
-    .filter((due) => due && due < next.dueOn)
-    .sort();
-  const issues = next.issues.nodes.map((issue) => milestoneIssue(ws, issue));
-  const byStatus = {};
-  const bucket = (issue) => (ws.board ? (issue.status ?? "No status") : issue.closed ? "Closed" : "Open");
-  for (const issue of issues) byStatus[bucket(issue)] = (byStatus[bucket(issue)] ?? 0) + 1;
-  return {
-    title: next.title,
-    url: next.url,
-    due: Date.parse(next.dueOn),
-    previousDue: earlierDues.length ? Date.parse(earlierDues[earlierDues.length - 1]) : null,
-    total: next.issues.totalCount,
-    closed: issues.filter((issue) => issue.closed).length,
-    byStatus,
-    unassigned: issues.filter((issue) => !issue.closed && issue.assignees.length === 0),
-    notStarted: issues.filter((issue) => !issue.closed && ws.notStarted.includes(issue.status)),
-  };
+function workspaceMilestones(ws, repository, noMilestone, now) {
+  const today = new Date(now).toISOString().slice(0, 10);
+  const dues = [...repository.open.nodes, ...repository.closed.nodes]
+    .filter((milestone) => milestone.dueOn)
+    .map((milestone) => ({ title: milestone.title, due: milestone.dueOn }));
+  const list = repository.open.nodes.map((milestone) => {
+    const issues = milestone.issues.nodes.map((issue) => milestoneIssue(ws, issue));
+    const previous = milestone.dueOn
+      ? dues.filter((other) => other.due < milestone.dueOn).sort((a, b) => a.due.localeCompare(b.due)).pop()
+      : null;
+    const created = milestone.createdAt ? Date.parse(milestone.createdAt) : null;
+    const previousDue = previous ? Date.parse(previous.due) : null;
+    const fromPrevious = previousDue != null && (created == null || previousDue >= created);
+    const total = milestone.issues.totalCount;
+    const closed = milestone.closedIssues?.totalCount ?? issues.filter((issue) => issue.closed).length;
+    return {
+      title: milestone.title,
+      url: milestone.url,
+      due: milestone.dueOn ? Date.parse(milestone.dueOn) : null,
+      overdue: Boolean(milestone.dueOn) && milestone.dueOn.slice(0, 10) < today,
+      start: fromPrevious ? previousDue : created,
+      startFrom: fromPrevious ? previous.title : null,
+      total,
+      closed,
+      openCount: total - closed,
+      ...milestoneParts(ws, issues),
+    };
+  });
+  const dated = list.filter((milestone) => milestone.due != null).sort((a, b) => a.due - b.due);
+  const ordered = [...dated, ...list.filter((milestone) => milestone.due == null)];
+  const next = dated.find((milestone) => !milestone.overdue)?.title ?? null;
+  return { list: ordered, next, noMilestone: { count: noMilestone?.issueCount ?? 0 } };
 }
+
+/**
+ * The open issues of a workspace's repository without a milestone, for the Milestone card when
+ * "No milestone" is picked: fetched only then, the first 100.
+ * @param {object} ws The workspace, with a repository.
+ * @returns {Promise<object>} The Milestone card's parts (`milestoneParts`), with `openCount`.
+ * @throws {Error} With GitHub's message when the search fails.
+ */
+export async function loadNoMilestone(ws) {
+  const data = await graphql(NO_MILESTONE_ISSUES, {
+    searchQuery: noMilestoneQuery(ws),
+    statusField: ws.board?.statusField ?? "Status",
+    iterationField: ws.board?.iterationField ?? "Iteration",
+  });
+  const issues = data.search.nodes.filter((node) => node.number).map((issue) => milestoneIssue(ws, issue));
+  return { openCount: data.search.issueCount, ...milestoneParts(ws, issues) };
+}
+
+/**
+ * The search for a workspace's open issues without a milestone.
+ * @param {object} ws The workspace, with a repository.
+ * @returns {string}
+ */
+const noMilestoneQuery = (ws) => `repo:${ws.repo} is:issue is:open no:milestone`;
 
 /**
  * One outcome for a check's jobs or steps: failed, running, cancelled, skipped or success.
@@ -455,9 +500,9 @@ const part = (errors, key, promise) =>
   });
 
 /**
- * Loads one workspace: its repository's milestones, bugs, triage, customer issues, nightly run
- * and open PRs, and its board's iterations, items in flight and the Board tab's items. A part the workspace has no
- * repository or board for is null.
+ * Loads one workspace: its repository's milestones, bugs, triage, customer issues and nightly
+ * run, and its board's iterations, items in flight and the Board tab's items. A part the
+ * workspace has no repository or board for is null.
  * @param {object} ws The workspace.
  * @returns {Promise<object>} The workspace's model, with failures in `errors`.
  */
@@ -471,8 +516,20 @@ export async function loadWorkspace(ws) {
   };
   const [owner, name] = ws.repo ? ws.repo.split("/") : [];
   const none = Promise.resolve(null);
-  const [repo, board, nightlyRun, bugs, customer, prs, boardView] = await Promise.all([
-    ws.repo ? part(errors, "github", graphql(WORKSPACE_REPO, { owner, name, ...fields, triageQuery: queries.triageQuery })) : none,
+  const [repo, board, nightlyRun, bugs, customer, boardView] = await Promise.all([
+    ws.repo
+      ? part(
+          errors,
+          "github",
+          graphql(WORKSPACE_REPO, {
+            owner,
+            name,
+            ...fields,
+            triageQuery: queries.triageQuery,
+            noMilestoneQuery: noMilestoneQuery(ws),
+          }),
+        )
+      : none,
     ws.board
       ? part(
           errors,
@@ -488,14 +545,11 @@ export async function loadWorkspace(ws) {
     ws.repo ? part(errors, "nightly", nightly(ws)) : none,
     ws.repo ? part(errors, "bugs", bugsByPriority(ws, queries.bugsQuery)) : none,
     ws.repo ? part(errors, "customer", customerIssues(ws)) : none,
-    ws.repo && !ws.board ? part(errors, "prs", graphql(OPEN_PRS, { prsQuery: queries.prsQuery })) : none,
     ws.board && boardFilter(ws) ? part(errors, "boardView", loadBoardView(ws)) : none,
   ]);
   const model = { fetchedAt: now, errors, nightly: nightlyRun, bugs, customer, queries, boardView };
   if (repo?.repository) {
-    const upcoming = upcomingMilestones(repo.repository, now);
-    model.milestone = nextMilestone(ws, repo.repository, upcoming[0]);
-    model.spotlight = spotlight(ws, upcoming);
+    model.milestones = workspaceMilestones(ws, repo.repository, repo.noMilestone, now);
     model.counts = { triage: repo.triage.issueCount };
   }
   const project = board?.owner?.projectV2;
@@ -520,37 +574,52 @@ export async function loadWorkspace(ws) {
   } else if (ws.board && !errors.board) {
     errors.board = `Board ${ws.board.owner} #${ws.board.number} not found, or gh lacks the read:project scope.`;
   }
-  if (prs) {
-    model.openPrsTotal = prs.search.issueCount;
-    model.openPrs = prs.search.nodes.filter((pr) => pr.number).map(prRow);
-  }
   return model;
+}
+
+/**
+ * Fetches one of a workspace's Overview cards again, for a filter edited on the card, and puts
+ * its result into a copy of the workspace's model: Open bugs, Triage bugs or Customer issues.
+ * The other cards stay as they were.
+ * @param {object} ws The workspace, with the card's edited search in place.
+ * @param {object} model The workspace's model, from `loadWorkspace`.
+ * @param {"bugs" | "triage" | "customer"} key The card.
+ * @returns {Promise<object>} The workspace's model with that card's result and searches.
+ * @throws {Error} With GitHub's message when it refuses the search.
+ */
+export async function loadWorkspaceCard(ws, model, key) {
+  const queries = workspaceQueries(ws);
+  const next = { ...model, queries: { ...model.queries, ...queries }, errors: { ...model.errors } };
+  delete next.errors[key];
+  if (key === "bugs") next.bugs = await bugsByPriority(ws, queries.bugsQuery);
+  if (key === "triage") {
+    const count = (await graphql(ISSUE_COUNT, { searchQuery: queries.triageQuery })).search.issueCount;
+    next.counts = { ...model.counts, triage: count };
+  }
+  if (key === "customer") next.customer = await customerIssues(ws);
+  return next;
 }
 
 /** Whether a check state is a failure. */
 const failing = (state) => state === "FAILURE" || state === "ERROR";
 
+/** Where each Daypack card's rows and count sit in the account's model, by its search's key. */
+const CARD_LISTS = { review: "reviews", myPrs: "myPrs", mine: "mine" };
+
 /**
- * Loads the account: every repository in scope with its open counts and checks, your review
- * requests, your PRs and your issues. With picked repositories, the searches keep only theirs.
+ * A Daypack card's rows from its search's result. With picked repositories, only theirs; "All"
+ * keeps everything a search finds, such as a review on a repository you are not in.
  * @param {object} config The settings.
- * @returns {Promise<object>} The account's model, with a failure in `error`.
+ * @param {"review" | "myPrs" | "mine"} key The card's search.
+ * @param {{ nodes: object[] }} search The search's result.
+ * @param {Set<string>} scoped The repositories in scope.
+ * @returns {object[]} The rows.
  */
-export async function loadAccount(config) {
-  const { queries } = config.account;
-  const data = await graphql(
-    ACCOUNT,
-    { reviewQuery: queries.review, mineQuery: queries.mine, myPrsQuery: queries.myPrs },
-    { partial: true },
-  );
-  const repos = data.viewer.repositories.nodes.filter((repo) => inScope(config.account, repo));
-  const scoped = new Set(repos.map((repo) => repo.nameWithOwner));
-  // "All" keeps everything a search finds, such as a review on a repository you are not in.
+function cardRows(config, key, search, scoped) {
   const keep = (item) => !Array.isArray(config.account.repos) || scoped.has(item.repo);
-  const reviews = data.reviews.nodes.filter((pr) => pr.number).map(prRow).filter(keep);
-  const myPrs = data.myPrs.nodes.filter((pr) => pr.number).map(prRow).filter(keep);
-  const mine = data.mine.nodes
-    .filter((issue) => issue.number)
+  const nodes = (search?.nodes ?? []).filter((node) => node.number);
+  if (key !== "mine") return nodes.map(prRow).filter(keep);
+  return nodes
     .map((issue) => {
       const standing = standingOnBoards(config, issue);
       return {
@@ -567,6 +636,60 @@ export async function loadAccount(config) {
       };
     })
     .filter(keep);
+}
+
+/**
+ * A Daypack card's count: the rows kept with picked repositories, else GitHub's total.
+ * @param {object} config The settings.
+ * @param {object[]} rows The card's rows.
+ * @param {{ issueCount: number }} search The search's result.
+ * @returns {number}
+ */
+const cardCount = (config, rows, search) => (Array.isArray(config.account.repos) ? rows.length : search?.issueCount ?? rows.length);
+
+/**
+ * Fetches one Daypack card again with another search, for a filter edited on the card, and
+ * puts its rows into a copy of the account's model. The other cards stay as they were.
+ * @param {object} config The settings.
+ * @param {object} account The account's model, from `loadAccount`.
+ * @param {"review" | "myPrs" | "mine"} key The card's search.
+ * @param {string} query The search to run.
+ * @returns {Promise<object>} The account's model with that card's rows, count and search.
+ * @throws {Error} With GitHub's message when it refuses the search.
+ */
+export async function loadCardSearch(config, account, key, query) {
+  const data = await graphql(ACCOUNT_SEARCHES[key], { search: query });
+  const scoped = new Set(account.repos.map((repo) => repo.repo));
+  const rows = cardRows(config, key, data.search, scoped);
+  const list = CARD_LISTS[key];
+  const next = {
+    ...account,
+    [list]: rows,
+    counts: { ...account.counts, [list]: cardCount(config, rows, data.search) },
+    queries: { ...account.queries, [key]: query },
+  };
+  if (key === "myPrs") next.redPrs = rows.filter((pr) => failing(pr.checks)).length;
+  return next;
+}
+
+/**
+ * Loads the account: every repository in scope with its open counts and checks, your review
+ * requests, your PRs and your issues. With picked repositories, the searches keep only theirs.
+ * @param {object} config The settings.
+ * @returns {Promise<object>} The account's model, with a failure in `error`.
+ */
+export async function loadAccount(config) {
+  const { queries } = config.account;
+  const data = await graphql(
+    ACCOUNT,
+    { reviewQuery: queries.review, mineQuery: queries.mine, myPrsQuery: queries.myPrs },
+    { partial: true },
+  );
+  const repos = data.viewer.repositories.nodes.filter((repo) => inScope(config.account, repo));
+  const scoped = new Set(repos.map((repo) => repo.nameWithOwner));
+  const reviews = cardRows(config, "review", data.reviews, scoped);
+  const myPrs = cardRows(config, "myPrs", data.myPrs, scoped);
+  const mine = cardRows(config, "mine", data.mine, scoped);
   return {
     viewer: data.viewer.login,
     reposTotal: data.viewer.repositories.totalCount,
@@ -585,9 +708,9 @@ export async function loadAccount(config) {
     myPrs,
     mine,
     counts: {
-      reviews: Array.isArray(config.account.repos) ? reviews.length : data.reviews.issueCount,
-      myPrs: Array.isArray(config.account.repos) ? myPrs.length : data.myPrs.issueCount,
-      mine: Array.isArray(config.account.repos) ? mine.length : data.mine.issueCount,
+      reviews: cardCount(config, reviews, data.reviews),
+      myPrs: cardCount(config, myPrs, data.myPrs),
+      mine: cardCount(config, mine, data.mine),
     },
     redRepos: repos.filter((repo) => failing(repo.defaultBranchRef?.target?.statusCheckRollup?.state)).length,
     redPrs: myPrs.filter((pr) => failing(pr.checks)).length,

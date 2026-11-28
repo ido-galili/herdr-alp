@@ -1,5 +1,5 @@
-// An agent's usage limits: Session (5h) and Weekly (7d), each with a usage bar and a
-// tick showing how far through the window we are (how close the reset is).
+// An agent's usage limits: Session (5h) and Weekly (7d), each with a usage bar, its
+// percentage and the time left; the tooltip has the full text, with how much time is gone.
 // Data: the agent's entry in ~/.local/state/herdr-agents/limits.json
 // ({ "<agent>": { five_hour, seven_day, ts } }), written for Claude Code by the
 // alp plugin. Props: { agent } (default "claude").
@@ -33,6 +33,13 @@ const narrow = () => (find(layout(), "sidebar")?.size?.px ?? Infinity) < 160;
 const toSec = (v) => (v == null ? null : typeof v === "number" ? (v > 1e12 ? v / 1000 : v) : Date.parse(v) / 1000);
 const pct = (w) => { const v = w?.used_percentage ?? w?.percentUsed ?? w?.utilization; return v == null ? null : Math.max(0, Math.min(100, v)); };
 
+/**
+ * The theme's warning colour (orange): a theme may not carry `warning`, so fall back to Alp's.
+ * @param {Record<string, string>} t The theme.
+ * @returns {string} The warning colour.
+ */
+const warning = (t) => t.warning ?? "#ffb86c";
+
 function left(sec) {
   if (sec <= 0) return "now";
   const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60);
@@ -60,37 +67,65 @@ export default class UsageLimits extends View {
     });
   }
 
-  // Usage fill, with a tick at how far through the window time is (the right end is the reset).
-  bar(t, frac, color, mark) {
-    const c = (v) => Math.max(0, Math.min(1, v)) * 100;
-    return div().relative().w_full().h(8)
-      .child(div().w_full().h(8).rounded(4).bg(t.border).overflow_hidden()
-        .child(div().h(8).w(`${c(frac)}%`).rounded(4).bg(color)))
-      .child(div().absolute().top(-2).left(`${c(mark)}%`).w(2).h(12).rounded(1).bg(t.foreground));
+  /**
+   * The usage fill on its track.
+   * @param {Record<string, string>} t The theme.
+   * @param {number} frac How much is used, 0 to 1.
+   * @param {string} color The fill's colour.
+   * @returns {object}
+   */
+  bar(t, frac, color) {
+    const c = Math.max(0, Math.min(1, frac)) * 100;
+    return div().w_full().h(8).rounded(4).bg(t.border).overflow_hidden()
+      .child(div().h(8).w(`${c}%`).rounded(4).bg(color));
   }
 
+  /**
+   * A window's full text, for its tooltip: "Weekly: 74% used, 55% of the time gone · resets in 3d 4h".
+   * @param {{ label: string }} win The limit window.
+   * @param {{ used: number | null, remain: number | null, elapsed: number }} st Its numbers, from stats().
+   * @returns {string} The text.
+   */
+  tip(win, { used, remain, elapsed }) {
+    if (used == null) return `${win.label}: no data yet`;
+    if (remain == null) return `${win.label}: ${Math.round(used)}% used`;
+    return `${win.label}: ${Math.round(used)}% used, ${Math.round(elapsed * 100)}% of the time gone · ${remain <= 0 ? "resets now" : `resets in ${left(remain)}`}`;
+  }
+
+  /**
+   * A window's usage, time left and colour: accent, orange from 70% used, red from 90%.
+   * @param {Record<string, string>} t The theme.
+   * @param {{ key: string, span: number }} win The limit window.
+   * @returns {{ used: number | null, remain: number | null, elapsed: number, color: string }} Its numbers and colour.
+   */
   stats(t, win) {
     const w = this.data?.[win.key];
     const used = pct(w);
     const reset = toSec(w?.resets_at ?? w?.resetsAt);
     const remain = reset == null ? null : reset - Date.now() / 1000;
     const elapsed = remain == null ? 0 : 1 - Math.max(0, Math.min(win.span, remain)) / win.span;
-    const color = used == null ? t.dim : used >= 90 ? t.blocked : used >= 70 ? t.working : t.accent;
+    const color = used == null ? t.dim : used >= 90 ? t.blocked : used >= 70 ? warning(t) : t.accent;
     return { used, remain, elapsed, color };
   }
 
-  // Rail: only the session window, in a 32px cell (gauge, %, bar, clock + time to reset);
-  // the full text is in the tooltip.
+  /**
+   * Rail: only the session window, in a 32px cell (gauge, %, bar, clock + time to reset);
+   * the full text is in the tooltip. The time stays at 9.5px: 11.5 doesn't fit the cell.
+   * @param {Record<string, string>} t The theme.
+   * @param {{ key: string, label: string, span: number }} win The limit window.
+   * @returns {object}
+   */
   cell(t, win) {
-    const { used, remain, color } = this.stats(t, win);
+    const st = this.stats(t, win);
+    const { used, remain, color } = st;
     const usedText = used == null ? "–" : `${Math.round(used)}%`;
-    const tip = `${win.label} ${usedText}${remain == null ? "" : ` · resets ${left(remain)}`}`;
+    const tip = this.tip(win, st);
     const short = remain == null ? null : remain <= 0 ? "now" : remain >= 3600 ? `${Math.floor(remain / 3600)}h` : `${Math.floor(remain / 60)}m`;
     return h_flex().flex_none().justify_center().child(
       v_flex().id(`limit-${win.key}`).w(32).py(4).gap(3).items_center().rounded(6)
         .hover((s) => s.bg(t.hover)).tooltip(tip)
         .child(svg("mods/usage-limits/gauge.svg").size(14).flex_none().text_color(color))
-        .child(div().text_size(11).font_semibold().text_color(color).child(usedText))
+        .child(div().text_size(11.5).font_semibold().text_color(color).child(usedText))
         .child(div().w(24).h(3).rounded(2).bg(t.border).overflow_hidden()
           .child(div().h(3).w(`${used ?? 0}%`).rounded(2).bg(color)))
         .when(short != null, (el) => el.child(h_flex().gap(2).items_center().text_size(9.5).text_color(t.dim)
@@ -98,15 +133,22 @@ export default class UsageLimits extends View {
           .child(short))));
   }
 
+  /**
+   * Unfolded: the label, one percentage and the time left over the usage bar; the full text is in the tooltip.
+   * @param {Record<string, string>} t The theme.
+   * @param {{ key: string, label: string, span: number }} win The limit window.
+   * @returns {object}
+   */
   row(t, win) {
-    const { used, remain, elapsed, color } = this.stats(t, win);
-    return v_flex().gap(4)
+    const st = this.stats(t, win);
+    const { used, remain, color } = st;
+    return v_flex().id(`limit-row-${win.key}`).gap(4).tooltip(this.tip(win, st))
       .child(h_flex().items_center().gap(6).text_size(11.5)
         .child(div().text_color(t.foreground).font_medium().child(win.label))
         .child(div().text_color(color).font_semibold().child(used == null ? "–" : `${Math.round(used)}%`))
         .child(div().flex_1())
-        .child(div().text_color(t.dim).child(remain == null ? "" : `resets ${left(remain)}`)))
-      .child(this.bar(t, (used ?? 0) / 100, color, elapsed));
+        .child(div().text_color(t.dim).child(remain == null ? "" : remain <= 0 ? "resets now" : `${left(remain)} left`)))
+      .child(this.bar(t, (used ?? 0) / 100, color));
   }
 
   render() {

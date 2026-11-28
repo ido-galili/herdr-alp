@@ -1,18 +1,22 @@
 // Board: a workspace's board items that match the Board tab filter, one column per status, as
-// GitHub's board shows them. Each card carries its assignees' avatars. Dragging a card to another
-// column moves it to that status; a right click opens its menu for the iteration and milestone.
+// GitHub's board shows them. Each card carries its assignees' avatars. The filter's summary sits
+// on the header and opens the filter dialog. Dragging a card to another column moves it to that status,
+// and a toast floating at the bottom left of Alp's view (drawn by main.js) offers Undo; the avatar row above the board picks
+// people, as the dialog's People chips do; the ⋯ on a card (always shown), or a right click, opens its
+// menu to move it or set its iteration and milestone.
 
 import { div, image, svg } from "gpui-kit";
-import { h_flex, v_flex, Input, Popup } from "gpui-base";
+import { h_flex, v_flex, Popup } from "gpui-base";
 import { theme } from "herdr";
 import { boardFilter, boardStatuses } from "./data.js";
 import { prChip } from "./in-flight.js";
-import { ClaudeButton, decisionChip } from "./my-day.js";
+import { decisionChip } from "./my-day.js";
 import {
   Card,
   Chip,
   ICONS,
   IconButton,
+  LinkLabel,
   Note,
   SessionButton,
   TextButton,
@@ -21,11 +25,12 @@ import {
   shortRepo,
   statusColor,
   typeColor,
+  warningColor,
 } from "./ui.js";
 
-const NO_STATUS = "No status";
+/** The column of items with no status. */
+export const NO_STATUS = "No status";
 const AVATAR_SIZE = 20;
-const PICKER_SIZE = 26;
 const COLUMN_GAP = 8;
 /** A column's padding on each side, between its edge and its cards. */
 export const COLUMN_PADDING = 4;
@@ -35,6 +40,8 @@ export const CARD_GAP = 6;
 const PROBE_WIDTH = 100;
 /** The people picker's key for items with no assignee. */
 export const UNASSIGNED = "";
+/** An avatar's box in the avatar row above the board. */
+const PICKER_SIZE = 26;
 
 /**
  * The board's columns: the statuses ticked for the Board, each shown even when empty. With none
@@ -122,11 +129,39 @@ function Avatar(t, person, id, avatarPath, size = AVATAR_SIZE) {
 }
 
 /**
- * One item's card: its number, type and buttons, its title, then its PRs, its iteration when
- * that is not the current one, and its assignees' avatars. A click opens it on GitHub.
+ * The one iteration a board filter asks for, read from its iteration term, such as
+ * `iteration:@current`, `iteration:"Sprint 24"` or `iteration:Sprint-24`. Careful: any filter it
+ * cannot be sure of gives null, so the cards keep their iteration chips: no term, a negated
+ * term (`-iteration:`), more than one term, more than one value (`iteration:@current,@previous`),
+ * a comparison or any other `@` value than `@current`.
+ * @param {string | null | undefined} filter The board filter.
+ * @param {string} field The board's Iteration field name, which names the term.
+ * @returns {string | null} "@current", or the iteration's name in lower case; null when unsure.
+ */
+function filterIteration(filter, field) {
+  const terms = (filter ?? "").match(/(?:[^\s"]+|"[^"]*")+/g) ?? [];
+  const key = `${field.toLowerCase()}:`;
+  const values = [];
+  for (const term of terms) {
+    const lower = term.toLowerCase();
+    if (lower.startsWith(`-${key}`)) return null;
+    if (lower.startsWith(key)) values.push(term.slice(key.length));
+  }
+  if (values.length !== 1) return null;
+  const quoted = values[0].match(/^"([^"]*)"$/);
+  const value = (quoted ? quoted[1] : values[0]).trim().toLowerCase();
+  if (!value || (!quoted && /[",<>=*]/.test(value))) return null;
+  if (value.startsWith("@")) return value === "@current" ? value : null;
+  return value;
+}
+
+/**
+ * One item's card: its number, type and buttons, its title, then its PRs, its iteration unless
+ * the filter already asks for that one, and its assignees' avatars. A click opens it on GitHub.
  * @param {object} t The theme.
  * @param {object} item The board item.
- * @param {object} options The Board options, with `repo` and `iteration`.
+ * @param {object} options The Board options, with `repo`, `iteration` (the current one's name)
+ *   and `filterIteration` (from `filterIteration()`).
  * @returns {object} The card.
  */
 function ItemCard(t, item, options) {
@@ -134,13 +169,15 @@ function ItemCard(t, item, options) {
   const linked = item.kind !== "draft" && item.number != null;
   const session = linked ? sessionTab(item) : null;
   const chips = (item.kind === "pr" ? [decisionChip(t, item, "bv")] : item.prs.map((pr) => prChip(t, item, pr, "bv"))).filter(Boolean);
-  if (item.iteration) {
-    const current = item.iteration === options.iteration;
+  const current = Boolean(item.iteration) && item.iteration === options.iteration;
+  const asked =
+    options.filterIteration === "@current" ? current : options.filterIteration === item.iteration?.toLowerCase();
+  if (item.iteration && !asked) {
     chips.push(
-      Chip(IconLabel(ICONS.iteration, current ? "Current iteration" : item.iteration), {
-        color: current ? t.accent : t.working,
+      Chip(IconLabel(ICONS.iteration, item.iteration), {
+        color: current ? t.accent : t.muted,
         id: `${id}-it`,
-        tooltip: item.iteration,
+        tooltip: current ? "The current iteration" : "Iteration",
       }),
     );
   }
@@ -160,10 +197,13 @@ function ItemCard(t, item, options) {
     .border_color(options.ghost || options.menuFor === item.itemId ? t.accent : t.border)
     .hover((style) => style.border_color(t.accent))
     .when(options.writing.has(item.itemId), (el) => el.opacity(0.6))
+    .when(!options.ghost, (el) =>
+      el.on_mouse_move((event) => options.onCardPointer(item.itemId, event.local_position)),
+    )
     .on_mouse_down("left", (event) => options.onCardDown(item, event))
-    .on_mouse_down("right", (_event, cx) => {
+    .on_mouse_down("right", (event, cx) => {
       cx.stop_propagation();
-      options.onCardMenu(item, cx);
+      options.onCardMenu(item, cx, false, event.local_position ?? null);
     })
     .when(Boolean(item.url), (el) =>
       el.cursor_pointer().on_click(() => {
@@ -188,7 +228,7 @@ function ItemCard(t, item, options) {
                   .flex_shrink(1)
                   .min_w(0)
                   .truncate()
-                  .text_size(11)
+                  .text_size(11.5)
                   .text_color(t.dim)
                   .child(`${item.kind === "pr" ? "PR " : ""}${item.repo === options.repo ? "" : shortRepo(item.repo)}#${item.number}`),
               ),
@@ -203,9 +243,9 @@ function ItemCard(t, item, options) {
             .flex_none()
             .items_center()
             .when(Boolean(session), (el) => el.child(SessionButton(`${id}-session`, session)))
-            .when(linked, (el) =>
-              el.children([options.pinFor("bv")(item), ClaudeButton("bv", item, options)].filter(Boolean)),
-            ),
+            // No Claude button on Board cards; the Overview's rows have theirs.
+            .when(linked, (el) => el.children([options.pinFor("bv")(item)].filter(Boolean)))
+            .when(Boolean(item.itemId) && !options.ghost, (el) => el.child(MoreButton(t, item, id, options))),
         ),
     )
     .child(
@@ -238,7 +278,64 @@ function ItemCard(t, item, options) {
       ),
     );
   if (options.menuFor !== item.itemId) return card;
-  return Popup.new(`${id}-popup`, card).w_full().anchor("top_left").content(options.cardMenu(item, options.flipMenu));
+  const menu = options.cardMenu(item, options.flipMenu, options.columns);
+  if (!options.menuAt) return Popup.new(`${id}-popup`, card).w_full().anchor("top_left").content(menu);
+  // Opened by a press: the menu's top-left at that point (the popup keeps it inside the window).
+  // The point is a sibling of the card, so a press in the menu doesn't reach the card.
+  return div()
+    .relative()
+    .w_full()
+    .child(card)
+    .child(
+      div()
+        .absolute()
+        .left(options.menuAt.x)
+        .top(options.menuAt.y)
+        .child(Popup.new(`${id}-popup`, div().size(0)).anchor("top_left").content(menu)),
+    );
+}
+
+/**
+ * The ⋯ on a card: it opens the card menu where it was pressed. It always shows, muted until the
+ * pointer is on it or its menu is open; it is a Tab stop, and Enter or Space opens the menu (at
+ * the card's top-left) with the keyboard in it.
+ * @param {object} t The theme.
+ * @param {object} item The board item.
+ * @param {string} id The card's element id.
+ * @param {object} options The Board options.
+ * @returns {object} The button.
+ */
+function MoreButton(t, item, id, options) {
+  const open = options.menuFor === item.itemId;
+  return div()
+    .id(`${id}-more`)
+    .flex_none()
+    .w(22)
+    .h(20)
+    .flex()
+    .items_center()
+    .justify_center()
+    .rounded(5)
+    .text_size(14)
+    .text_color(open ? t.foreground : t.muted)
+    .when(open, (el) => el.bg(t.hover))
+    .cursor_pointer()
+    .tab_index(0)
+    .when(Boolean(options.focus) && options.dotsFor === item.itemId, (el) => el.track_focus(options.focus.dots))
+    .hover((style) => style.bg(t.hover).text_color(t.foreground))
+    .focus((style) => style.bg(t.hover).text_color(t.foreground))
+    .tooltip("Move, iteration, milestone")
+    .on_mouse_down("left", (_event, cx) => cx.stop_propagation())
+    .on_click((_event, cx) => {
+      cx.stop_propagation();
+      options.onCardMenu(item, cx);
+    })
+    .on_key_down((event, cx) => {
+      if (event.key !== "enter" && event.key !== "space") return;
+      cx.stop_propagation();
+      options.onCardMenu(item, cx, true);
+    })
+    .child("⋯");
 }
 
 /**
@@ -246,7 +343,7 @@ function ItemCard(t, item, options) {
  * @param {object[]} items The board items.
  * @returns {{ login: string, avatar: string | null, count: number }[]}
  */
-function peopleOf(items) {
+export function peopleOf(items) {
   const people = new Map();
   for (const item of items) {
     const assignees = item.assignees.length ? item.assignees : [{ login: UNASSIGNED, avatar: null }];
@@ -268,72 +365,39 @@ function peopleOf(items) {
  * @param {Set<string>} picked The picked logins.
  * @returns {boolean}
  */
-function pickedItem(item, picked) {
+export function pickedItem(item, picked) {
   if (!picked.size) return true;
   if (!item.assignees.length) return picked.has(UNASSIGNED);
   return item.assignees.some((person) => picked.has(person.login));
 }
 
 /**
- * The filter field: the board's filter syntax, applied and saved on Enter, reverted on Esc.
+ * The avatar row above the board: every person on it as an avatar alone (their item count is in
+ * the tooltip), then Unassigned. A click picks or unpicks one, as the People chips in the filter dialog do; with any picked, the
+ * board shows only their items. Someone picked whose cards the filter hides stays, to unpick.
  * @param {object} t The theme.
+ * @param {{ login: string, avatar?: string | null, count: number }[]} people The people on the board.
  * @param {object} options The Board options.
- * @returns {object} The field.
- */
-function FilterField(t, options) {
-  return h_flex()
-    .gap(8)
-    .items_center()
-    .child(div().flex_none().text_size(11).text_color(t.dim).child("Filter"))
-    .child(
-      div()
-        .flex_1()
-        .min_w(0)
-        .on_key_down((event, cx) => {
-          if (event.key !== "escape") return;
-          cx.stop_propagation();
-          options.onFilterRevert(cx);
-        })
-        .child(
-          Input.new(options.filterInput)
-            .h(26)
-            .px(8)
-            .rounded(6)
-            .border_1()
-            .border_color(options.filterError ? t.blocked : t.border)
-            .bg(t.canvas)
-            .text_size(12)
-            .text_color(t.foreground),
-        ),
-    )
-    .when(Boolean(options.filterBusy), (el) => el.child(div().flex_none().text_size(11).text_color(t.dim).child("Applying…")));
-}
-
-/**
- * The people picker: every assignee's avatar with their item count, then Unassigned. A click
- * picks or unpicks one; with any picked, the board shows only their items.
- * @param {object} t The theme.
- * @param {{ login: string, avatar: string | null, count: number }[]} people The people on the board.
- * @param {object} options The Board options.
- * @returns {object} The picker.
+ * @returns {object | null} The row, or null with nobody to pick.
  */
 function PeoplePicker(t, people, options) {
   const picked = options.picked;
+  const shown = [...people];
+  for (const login of picked) if (!shown.some((person) => person.login === login)) shown.push({ login, avatar: null, count: 0 });
+  if (!shown.length) return null;
   return h_flex()
     .flex_wrap()
     .gap(6)
     .items_center()
     .children(
-      people.map((person) => {
+      shown.map((person) => {
         const on = picked.has(person.login);
         const key = person.login || "unassigned";
         const label = person.login || "Unassigned";
         return h_flex()
           .id(`bv-pick-${key}`)
           .flex_none()
-          .gap(4)
           .p(2)
-          .pr(6)
           .items_center()
           .rounded_full()
           .border_1()
@@ -348,22 +412,125 @@ function PeoplePicker(t, people, options) {
             person.login
               ? Avatar(t, person, `bv-pick-av-${key}`, options.avatarPath, PICKER_SIZE - 6)
               : div().size(PICKER_SIZE - 6).rounded_full().border_1().border_color(t.dim),
-          )
-          .child(div().text_size(11).text_color(on ? t.foreground : t.muted).child(String(person.count)));
+          );
       }),
     )
     .when(picked.size > 0, (el) => el.child(TextButton("bv-pick-clear", "Everyone", (cx) => options.onClearPeople(cx))));
 }
 
 /**
- * The Board tab's card for one workspace: the filter field, the people picker, then a column
- * per status, each with its count.
+ * The toast after a move: what moved where, with Undo while it can be undone. Alp's view floats it
+ * at the bottom left of what shows, so it stays in view on a board taller than the window.
+ * @param {object} t The theme.
+ * @param {{ text: string, status: string, tail: string, undo?: Function } | null} toast The toast.
+ * @param {(cx: object) => void} onUndo Undoes the move.
+ * @returns {object | null} The toast, or null without one.
+ */
+export function MoveToast(t, toast, onUndo) {
+  if (!toast) return null;
+  return h_flex()
+    .id("bv-toast")
+    .h(34)
+    .pl(12)
+    .pr(toast.undo ? 5 : 12)
+    .gap(12)
+    .items_center()
+    .rounded(8)
+    .bg(t.selected)
+    .border_1()
+    .border_color(t.input)
+    .shadow_lg()
+    .text_size(12)
+    .text_color(t.foreground)
+    .child(
+      h_flex()
+        .gap(4)
+        .child(div().child(toast.text))
+        .child(div().font_semibold().child(toast.status))
+        .child(div().text_color(t.muted).child(toast.tail)),
+    )
+    .when(Boolean(toast.undo), (el) =>
+      el.child(
+        h_flex()
+          .id("bv-toast-undo")
+          .h(24)
+          .px(10)
+          .items_center()
+          .rounded(6)
+          .bg(t.hover)
+          .font_semibold()
+          .cursor_pointer()
+          .tab_index(0)
+          .hover((style) => style.bg(t.input))
+          .focus((style) => style.bg(t.input))
+          .on_click((_event, cx) => {
+            cx.stop_propagation();
+            onUndo(cx);
+          })
+          .on_key_down((event, cx) => {
+            if (event.key !== "enter" && event.key !== "space") return;
+            cx.stop_propagation();
+            onUndo(cx);
+          })
+          .child("Undo"),
+      ),
+    );
+}
+
+/**
+ * "Nothing matches. Clear filters", for a board the filter empties.
+ * @param {object} t The theme.
+ * @param {(cx: object) => void} onClear Clears the filters.
+ * @returns {object}
+ */
+function NothingMatches(t, onClear) {
+  return h_flex()
+    .gap(6)
+    .items_center()
+    .child(div().text_size(12).text_color(t.muted).child("Nothing matches."))
+    .child(TextButton("bv-clear-filters", "Clear filters", (cx) => onClear(cx)));
+}
+
+/**
+ * The Board tab with no board in any workspace: what it needs, and an "Add a board" button.
+ * @param {(cx: object) => void} onAdd Opens Settings at a workspace's board picker.
+ * @returns {object} The empty state.
+ */
+export function NoBoard(onAdd) {
+  const t = theme();
+  return v_flex()
+    .items_start()
+    .gap(10)
+    .child(Note("Add a project board to a workspace in Settings to see it here."))
+    .child(
+      h_flex()
+        .id("bv-add-board")
+        .h(26)
+        .px(12)
+        .items_center()
+        .rounded(6)
+        .bg(t.accent)
+        .text_size(12)
+        .font_medium()
+        .text_color(t.accent_foreground ?? t.background)
+        .cursor_pointer()
+        .on_click((_event, cx) => onAdd(cx))
+        .child(LinkLabel(ICONS.settings, "Add a board")),
+    );
+}
+
+/**
+ * The Board tab's card for one workspace: the filter in words on the header (a button that opens
+ * the filter dialog), the avatar row to pick people, then a column per status, each with its
+ * count. The toast after a move floats over Alp's view (`MoveToast`), not in the card.
  * @param {object} ws The workspace, with a board.
  * @param {object | undefined} wsModel The workspace's last load.
- * @param {{ loading: boolean, avatarPath(login: string): string | null, onEditStatuses(): void,
- *   filterInput: object, filterBusy: boolean, filterError: string | null, onFilterRevert(cx: object): void,
- *   picked: Set<string>, onTogglePerson(login: string, cx: object): void, onClearPeople(cx: object): void,
- *   pinFor(prefix: string): Function, launch: Function, prompt: Function }} options
+ * @param {{ loading: boolean, avatarPath(login: string): string | null,
+ *   filter: object, onChooseColumns(cx: object): void,
+ *   onClearFilters(cx: object): void, picked: Set<string>, onTogglePerson(login: string, cx: object): void,
+ *   onClearPeople(cx: object): void,
+ *   pinFor(prefix: string): Function, launch: Function, prompt: Function }} options The rest
+ *   come from `BoardState.options()`.
  * @returns {object} The card.
  */
 export function Board(ws, wsModel, options) {
@@ -372,35 +539,46 @@ export function Board(ws, wsModel, options) {
   const items = view ? view.items.filter((item) => pickedItem(item, options.picked)) : [];
   const extras = [
     view ? Chip(items.length === view.total ? String(view.total) : `${items.length} of ${view.total}`, { color: t.dim }) : null,
-    TextButton("bv-statuses", "Statuses", () => options.onEditStatuses(), {
-      tooltip: "Pick the Board's columns in Settings, in the status table's On Board column",
+    options.filter,
+    TextButton("bv-choose-columns", "Choose columns ▾", (cx) => options.onChooseColumns(cx), {
+      tooltip: "Pick the board's columns, with its filter",
     }),
     wsModel?.boardUrl
       ? IconButton("bv-github", ICONS.github, () => openUrl(wsModel.boardUrl), { tooltip: "Open the board on GitHub" })
       : null,
   ].filter(Boolean);
-  let body = v_flex().gap(10).child(FilterField(t, options));
-  if (options.filterError) body = body.child(Note(options.filterError, t.blocked));
+  let body = v_flex().gap(10);
   const notice = wsModel?.errors?.boardView
     ? Note(`GitHub: ${wsModel.errors.boardView}`, t.blocked)
-    : !boardFilter(ws)
-      ? Note("Type a filter, or tick the Board's statuses in Settings.")
-      : !view
-        ? Note(options.loading ? "Loading from GitHub…" : "Refresh to load the board.")
-        : !view.items.length
-          ? Note(`Nothing matches ${view.filter}.`)
-          : null;
+    : !view
+      ? Note(
+          !boardFilter(ws)
+            ? "Type a board filter, or choose the columns."
+            : options.loading
+              ? "Loading from GitHub…"
+              : "Refresh to load the board.",
+        )
+      : !view.items.length
+        ? NothingMatches(t, options.onClearFilters)
+        : null;
   if (notice) return Card("board-view", ws.board.title || ws.name, extras, body.child(notice));
-  const cardOptions = { ...options, repo: ws.repo, iteration: wsModel.iteration?.title ?? null };
+  const cardOptions = {
+    ...options,
+    repo: ws.repo,
+    iteration: wsModel.iteration?.title ?? null,
+    filterIteration: filterIteration(view.filter, ws.board.iterationField ?? "Iteration"),
+  };
   const columns = columnsOf(ws, view.items);
   const ghost = options.ghost;
   /** A column's shown cards, in board order, without the one being dragged. */
   const shownIn = (column) =>
     items.filter((item) => (item.status ?? NO_STATUS) === column && item.itemId !== options.draggedId);
+  const people = PeoplePicker(t, peopleOf(view.items), options);
   body = body
-    .child(PeoplePicker(t, peopleOf(view.items), options))
+    .when(Boolean(people), (el) => el.child(people))
+    .when(!items.length, (el) => el.child(NothingMatches(t, options.onClearFilters)))
     .when(view.total > view.items.length, (el) =>
-      el.child(Note(`Showing the first ${view.items.length} of ${view.total} items.`, t.working)),
+      el.child(Note(`Showing the first ${view.items.length} of ${view.total} items.`, warningColor(t))),
     )
     .when(Boolean(options.writeError), (el) => el.child(Note(options.writeError, t.blocked)))
     .child(
@@ -422,7 +600,7 @@ export function Board(ws, wsModel, options) {
           columns.map((column, index) => {
             const columnItems = shownIn(column);
             const target = ghost !== null && options.dragOver === column;
-            const columnOptions = { ...cardOptions, flipMenu: index >= columns.length / 2 };
+            const columnOptions = { ...cardOptions, columns, flipMenu: index >= columns.length / 2 };
             const cards = columnItems.map((item) => ItemCard(t, item, columnOptions));
             if (target) {
               const slot = div()
@@ -454,7 +632,7 @@ export function Board(ws, wsModel, options) {
                   .pb(2)
                   .child(div().flex_none().size(8).rounded_full().bg(statusColor(t, column)))
                   .child(div().truncate().text_size(11.5).font_semibold().text_color(t.foreground).child(column))
-                  .child(div().text_size(11).text_color(t.dim).child(String(columnItems.length))),
+                  .child(div().text_size(11.5).text_color(t.dim).child(String(columnItems.length))),
               )
               .children(cards);
           }),

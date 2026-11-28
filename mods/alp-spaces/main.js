@@ -3,13 +3,14 @@
 // its first terminal is in now, only where unusual: branch, ahead/behind. Agent state lives in the agents list, not here. Click to
 // switch, right-click for its menu, drag to reorder.
 //
-// Folded to the rail, the list is short and its block would leave a gap above the
-// agents: the mod sizes its own block to the list, and gives the block its share
-// back when the sidebar unfolds. Props: { block } the layout node id (default "spaces").
+// The block is as tall as its list, up to a cap past which the list scrolls, so the
+// agents below get the rest: the mod sizes its own block (on the rail too). The header's
+// "+" is a menu: New space, Add machine…. Props: { block } the layout node id (default
+// "spaces"); { addMenu } draws that menu (the popup's copy of this mod).
 
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, ScrollHandle } from "gpui-base";
-import { spaces, machines, panes, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout } from "herdr";
+import { spaces, machines, panes, run, openOverlay, closeOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout, props } from "herdr";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -31,6 +32,11 @@ function place(s, ps) {
 }
 const rowHeight = ({ tree }) => (tree ? 28 : 30);
 const RAIL_CELL = 32;
+// Unfolded, the list grows the block up to this many px (ten rows), then scrolls.
+const LIST_MAX = 300;
+// A machine header's row, and a "needs a login" note under one (two short lines).
+const HEAD_HEIGHT = 26;
+const LOGIN_HEIGHT = 44;
 // A space's name and its git tail never shrink below this, so a short one ("api")
 // stays readable instead of turning into an ellipsis next to a long branch.
 const SIDE_MIN = 48;
@@ -77,12 +83,20 @@ export function glyph(status) {
   return status === "blocked" || status === "done" ? "●" : "·";
 }
 
+/**
+ * The theme's warning colour (orange): a theme may not carry `warning`, so fall back to Alp's.
+ * @param {Record<string, string>} t The theme.
+ * @returns {string} The warning colour.
+ */
+const warning = (t) => t.warning ?? "#ffb86c";
+
 export function tone(t, status) {
   return t[status] ?? t.unknown;
 }
 
 export default class Spaces extends View {
   init(_props, cx) {
+    if (props()?.addMenu) return;
     this.block = _props?.block ?? "spaces";
     // A resize run from the first render can be lost while the mod loads: render once more.
     cx.timer.after(500, (cx) => cx.notify());
@@ -357,13 +371,19 @@ export default class Spaces extends View {
     return out.filter(r => this.shown.has(r.w.id));
   }
 
-  // The rows, under a header per machine once one isn't this computer.
+  /**
+   * The rows, under a header per machine once one isn't this computer.
+   * @param {Record<string, string>} t The theme.
+   * @param {boolean} collapsed Whether the sidebar is the rail.
+   * @returns {object[]} The headers and rows, in order.
+   */
   grouped(t, collapsed) {
     const rows = this.ordered();
     const draw = (r) => (collapsed ? this.compact(r, t) : this.row(r, t));
     // Where the active space's row lands among the children this returns: the list scrolls by its direct
     // children, and machine headers, login notes and loading rows count too.
     this.activeAt = -1;
+    this.listHeight = 0;
     let before = 0;
     const remote = [...new Set([...rows.map(r => r.w.machine).filter(Boolean), ...this.machines.map(m => m.name), ...Object.keys(this.reconnecting)])].sort();
     const loading = m => {
@@ -373,8 +393,9 @@ export default class Spaces extends View {
     };
     const loadingRow = m => h_flex().id(`machine-loading-${m ?? "local"}`).h(28).flex_none().px(collapsed ? 0 : 8).items_center().when(collapsed, el => el.justify_center()).text_size(12).text_color(t.dim).child(collapsed ? "…" : "Loading…");
     if (!remote.length) {
-      if (loading(null) && !rows.length) return [loadingRow(null)];
+      if (loading(null) && !rows.length) { this.listHeight = 28; return [loadingRow(null)]; }
       this.activeAt = rows.findIndex(r => r.w.active);
+      this.listHeight = rows.reduce((sum, r) => sum + rowHeight(r), 0);
       return rows.map(draw);
     }
     const machineNames = [null, ...remote];
@@ -388,7 +409,7 @@ export default class Spaces extends View {
       const folded = this.folded.has(m);
       const icon = svg(`mods/workspace-chrome/${m ? "server" : "monitor"}.svg`).size(13).flex_none();
       const badge = div().absolute().right(-3).bottom(-2).size(6).rounded(3).border_1().border_color(t.chrome).bg(connected ? t.ansi2 : t.dim);
-      const head = h_flex().id(`machine-${m ?? "local"}`).h(26).flex_none().px(collapsed ? 0 : 8).gap(7).items_center().text_size(11).text_color(t.dim)
+      const head = h_flex().id(`machine-${m ?? "local"}`).h(26).flex_none().px(collapsed ? 0 : 8).gap(7).items_center().text_size(11.5).text_color(t.dim)
         .when(collapsed, el => el.mt(4).w(RAIL_CELL).justify_center().rounded(6).tooltip(login ? `${m} needs a login: run ${login}. Click for Copy.` : m ? `${m} · ${connected ? "connected" : (machine?.state ?? "asleep").replace(/_/g, " ")}` : "This computer"))
         .cursor_pointer().hover(s => s.bg(t.hover))
         .on_click((_e, cx) => {
@@ -398,7 +419,7 @@ export default class Spaces extends View {
           cx.notify();
         })
         .when(machine?.keeps_running_after_logout === false, el => el.child(div().id(`machine-logout-${m}`)
-          .flex_none().text_color(t.blocked).tooltip("Agents stop when you disconnect. Click for the fix.")
+          .flex_none().text_color(warning(t)).tooltip("Agents stop when you disconnect. Click for the fix.")
           .on_click((_e, cx) => { cx.stop_propagation(); openOverlay({ mod: "machine-add", kind: "dialog", width: 560 }); }).child("⚠")))
         .when(!collapsed, el => el.child(icon))
         .when(collapsed, el => el.child(div().relative().flex_none().child(icon).when(Boolean(m), el => el.child(badge))))
@@ -422,28 +443,38 @@ export default class Spaces extends View {
           .child(h_flex().size(18).rounded(5).border_1().border_color(t.dim).items_center().justify_center()
             .child(svg("mods/workspace-chrome/plus.svg").size(10))))
         .when(!collapsed, el => el.child(svg("mods/workspace-chrome/plus.svg").size(12)).child("New space there"));
-      if (!collapsed && rebuilt) { before += 1; return [head]; }
+      if (!collapsed && rebuilt) { before += 1; this.listHeight += HEAD_HEIGHT; return [head]; }
       const cell = collapsed ? railCell : (el) => el;
       const guidance = !collapsed && login ? [v_flex().px(8).pb(6).gap(3).flex_none()
-        .child(div().text_size(11).text_color(t.blocked).child("needs a login: run"))
+        .child(div().text_size(11.5).text_color(t.blocked).child("needs a login: run"))
         .child(h_flex().gap(5).items_center()
-          .child(div().flex_1().min_w(0).truncate().tooltip(login).text_size(11).text_color(t.muted).child(login))
+          .child(div().flex_1().min_w(0).truncate().tooltip(login).text_size(11.5).text_color(t.muted).child(login))
           .child(div().id(`machine-login-copy-${m}`).flex_none().px(5).py(2).rounded(4)
-            .text_size(11).text_color(t.foreground).bg(t.raised).cursor_pointer().hover(s => s.bg(t.hover))
+            .text_size(11.5).text_color(t.foreground).bg(t.raised).cursor_pointer().hover(s => s.bg(t.hover))
             .on_click((_e, cx) => { cx.stop_propagation(); cx.write_to_clipboard(login); this.copiedLogin = login; cx.notify(); })
             .child(this.copiedLogin === login ? "Copied" : "Copy")))] : [];
       const items = [cell(head), ...guidance, ...(folded ? [] : mine.length ? mine.map(draw) : [loading(m) ? loadingRow(m) : cell(empty)])];
       const first = folded ? -1 : mine.findIndex(r => r.w.active);
       if (first >= 0) this.activeAt = before + 1 + guidance.length + first;
       before += items.length;
+      this.listHeight += HEAD_HEIGHT + guidance.length * LOGIN_HEIGHT
+        + (folded ? 0 : mine.length ? mine.reduce((sum, r) => sum + rowHeight(r), 0) : 28);
       return items;
     });
   }
 
-  // Only what's unusual, after the name: "herdr \u00b7 spike \u21912 \u21931". The repo or
-  // branch goes when the name already says it (a worktree is named after its branch),
-  // and master/main go: nearly every space is on one. When the row is full, it
-  // and the name both start from their text's width and give way in proportion.
+  /**
+   * Only what's unusual, after the name: "herdr \u00b7 spike \u21912 \u21931". The repo or
+   * branch goes when the name already says it (a worktree is named after its branch),
+   * and master/main go: nearly every space is on one. When the row is full, it
+   * and the name both start from their text's width and give way in proportion.
+   * Ahead is green; behind is orange, a caution (pull), not an error.
+   * @param {{ name: string, branch: string | null, ahead: number, behind: number }} g The space's git facts.
+   * @param {boolean} tree Whether the row is a worktree under its repo's space.
+   * @param {string} name The space's name.
+   * @param {Record<string, string>} t The theme.
+   * @returns {object}
+   */
   gitTail(g, tree, name, t) {
     const raw = g.branch ?? "detached";
     const fullName = name.toLowerCase();
@@ -466,7 +497,7 @@ export default class Spaces extends View {
       .text_color(t.dim)
       .when(Boolean(where), (el) => el.child(div().min_w(0).truncate().child(where)))
       .when(g.ahead > 0, (el) => el.child(div().flex_none().text_color(t.ansi2).child(`\u2191${g.ahead}`)))
-      .when(g.behind > 0, (el) => el.child(div().flex_none().text_color(t.ansi1).child(`\u2193${g.behind}`)));
+      .when(g.behind > 0, (el) => el.child(div().flex_none().text_color(warning(t)).child(`\u2193${g.behind}`)));
   }
 
   row({ w, i, g, tree }, t) {
@@ -526,9 +557,14 @@ export default class Spaces extends View {
       );
   }
 
-  // Rail: the space's avatar, as in the full list, on a cell that marks the active space.
-  // A space that needs you or has news gets a dot on the avatar's corner, ringed in the
-  // chrome color so it reads apart from the tile. A worktree row has no avatar of its own.
+  /**
+   * Rail: the space's avatar, as in the full list, on a cell that marks the active space.
+   * A space that needs you or has news gets a dot on the avatar's corner, ringed in the
+   * chrome color so it reads apart from the tile. A worktree row has no avatar of its own.
+   * @param {{ w: object, tree: boolean }} row The space and whether it's a worktree row.
+   * @param {Record<string, string>} t The theme.
+   * @returns {object}
+   */
   compact({ w, tree }, t) {
     const colors = shared("space.colors") ?? {};
     const color = colors[w.id] ?? "ansi6";
@@ -537,7 +573,7 @@ export default class Spaces extends View {
     const tile = tree
       ? svg("mods/workspace-chrome/branch.svg").size(13).flex_none().text_color(w.active ? t.foreground : t.dim)
       : h_flex().size(20).flex_none().rounded(6).bg(fill).items_center().justify_center()
-        .text_size(11).font_bold().text_color("#ffffff").child(spaceAvatar(w.name));
+        .text_size(11.5).font_bold().text_color("#ffffff").child(spaceAvatar(w.name));
     return railCell(h_flex()
       .id(`space-${w.id}`)
       .w(RAIL_CELL)
@@ -556,8 +592,29 @@ export default class Spaces extends View {
   }
 
 
+  /**
+   * The header "+" popup: New space (on this computer, as the "+" did) and Add machine….
+   * @param {Record<string, string>} t The theme.
+   * @returns {object}
+   */
+  addMenu(t) {
+    const item = (id, icon, label, action) => h_flex().id(id).h(31).px(8).gap(9).rounded(7).items_center()
+      .text_color(t.foreground).hover((el) => el.bg(t.hover))
+      .on_click(() => { closeOverlay(props().overlay); action(); })
+      .child(svg(`mods/workspace-chrome/${icon}.svg`).size(14).flex_none().text_color(t.muted))
+      .child(div().flex_1().child(label));
+    return v_flex().w_full().p(5).bg(t.popover).text_size(12.8)
+      .child(item("add-space", "plus", "New space", () => run("space.new")))
+      .child(item("add-machine", "server", "Add machine…", () => run("mod.open", { name: "machine-add" })));
+  }
+
+  /**
+   * The Spaces block: its header with the "+" menu, then the list; sizes its own block to the list.
+   * @returns {object}
+   */
   render() {
     const t = theme();
+    if (props()?.addMenu) return this.addMenu(t);
     const collapsed = narrow();
     const palette = ["ansi6", "ansi3", "ansi4", "ansi5", "ansi2", "ansi1"];
     const sp = spaces();
@@ -572,13 +629,10 @@ export default class Spaces extends View {
     }
     if (changed) setShared("space.colors", kept);
     const list = this.grouped(t, collapsed);
-    // Header, a 30px cell per row (worktree rows are shorter), and the list's bottom padding.
-    // Past eight rows the list scrolls, so the agents keep most of the rail.
-    const fit = collapsed ? 31 + Math.min(list.length, 8) * 30 + 14 : null;
-    const size = find(layout(), this.block)?.size;
-    if (fit == null ? size?.px != null : size?.px !== fit) {
-      run("layout.resize", fit == null ? { id: this.block, weight: 1 } : { id: this.block, px: fit });
-    }
+    // Header, the list and its bottom padding. Rail: a 30px cell per row, past eight rows the
+    // list scrolls, so the agents keep most of the rail. Unfolded: the rows' heights, up to LIST_MAX.
+    const fit = 31 + (collapsed ? Math.min(list.length, 8) * 30 : Math.min(this.listHeight, LIST_MAX)) + 14;
+    if (find(layout(), this.block)?.size?.px !== fit) run("layout.resize", { id: this.block, px: fit });
     // Bring the active space into view when it, or its place in the list, changes; a row already in view stays put.
     const active = sp.find(p => p.active)?.id;
     if (active !== this.revealed || this.activeAt !== this.revealedAt) {
@@ -591,7 +645,9 @@ export default class Spaces extends View {
         .when(collapsed, el => el.pl(0).pr(0).justify_center())
         .when(!collapsed, el => el.child("Spaces"))
         .child(div().id("space-new").size(26).flex_none().flex().items_center().justify_center().rounded(6).hover(s => s.bg(t.hover).text_color(t.foreground))
-          .on_click(() => run("space.new")).child(svg("mods/workspace-chrome/plus.svg").size(14))))
+          .tooltip("New space or machine")
+          .on_click(() => openOverlay({ mod: "alp-spaces", kind: "popup", width: 190, height: 72, props: { addMenu: true } }))
+          .child(svg("mods/workspace-chrome/plus.svg").size(14))))
       .child(v_flex().flex_1().min_h(0).px(collapsed ? 0 : 8).pb(14).overflow_y_scrollbar().mode(collapsed ? "scrolling" : "always").track_scroll(this.scroll)
         // A block above (another mod's) growing, or the window resizing, shrinks this list and can push the active space out.
         .on_size_change((_size, cx) => { if (this.activeAt >= 0) { this.scroll.scroll_to_item(this.activeAt); cx.notify(); } })
