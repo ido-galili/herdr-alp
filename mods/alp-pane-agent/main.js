@@ -1,5 +1,5 @@
 // A pane's header, for layouts that frame their panes:
-//   { "tab": "active", "pane": { "header": { "content": { "mod": "pane-agent" } } } }
+//   { "tab": "active", "pane": { "header": { "content": { "mod": "alp-pane-agent" } } } }
 // Shows the program's icon (the app's program table; its name is the icon's tooltip, the tab
 // bar names the tab), its status, then one muted line: "folder · [branch icon] branch", or in a
 // linked worktree "[worktree icon] <worktree> · [branch icon] branch" (the worktree first,
@@ -8,7 +8,7 @@
 // Props from the app: { pane, terminal }. Click: focus the pane.
 // For agents that report to ~/.local/state/herdr-agents/<terminal>.json (see the
 // alp Claude Code plugin) it adds a model chip ("Opus 5.5 · high") and the context bar.
-// An Alp page opened as a tab of its own (tab.new {mod: "alpmeister"}) gets no header:
+// An Alp page opened as a tab of its own (tab.new {mod: "alp"}) gets no header:
 // the strip is drawn in the page's colour, so it looks like the pinned Alp view.
 
 import { View, div, svg, image } from "gpui-kit";
@@ -187,7 +187,7 @@ export default class Pane extends View {
    * @returns {boolean} True for a lone Alp page.
    */
   alpPage(p) {
-    return !p.terminal && p.mod === "alpmeister" && !panes().some((o) => o.tab === p.tab && o.pane !== p.pane);
+    return !p.terminal && p.mod === "alp" && !panes().some((o) => o.tab === p.tab && o.pane !== p.pane);
   }
 
   /**
@@ -243,7 +243,7 @@ export default class Pane extends View {
         cx.stop_propagation();
         run(command, args);
       })
-      .child(svg(`mods/pane-agent/${icon}.svg`).size(14));
+      .child(svg(`mods/alp-pane-agent/${icon}.svg`).size(14));
   }
 
   /**
@@ -280,7 +280,7 @@ export default class Pane extends View {
         .when(Boolean(tip), (el) => el.tooltip(tip))
         .when(Boolean(this.wt), (el) =>
           el
-            .child(svg("mods/pane-agent/worktree.svg").size(13).flex_none().text_color(t.dim))
+            .child(svg("mods/alp-pane-agent/worktree.svg").size(13).flex_none().text_color(t.dim))
             .child(div().min_w(0).truncate().child(this.wt)),
         )
         // the branch name gives way before the folder and the dots (they barely shrink)

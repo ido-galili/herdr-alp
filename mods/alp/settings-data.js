@@ -151,7 +151,7 @@ export function guessRoles(statuses) {
 
 /**
  * Writes the settings file over the version that was read, keeping the previous one as
- * `alpmeister.json.bak`.
+ * `settings.json.bak`.
  * @param {object} settings The settings, as the file holds them.
  * @param {string | null} snapshot The file's text when it was read; null when it did not exist.
  * @returns {Promise<string>} The text written, the new snapshot.

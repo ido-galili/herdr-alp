@@ -10,9 +10,13 @@ set -euo pipefail
 repo="$(cd "$(dirname "$0")" && pwd)"
 home="${HERDR_APP_HOME:-$HOME/.config/herdr-app}"
 alp="$HOME/.config/alp"
-mods=(alp-chrome usage-limits alp-spaces pane-agent alp-files alpmeister daypack alp-agents alp-tabs basecamp alp-runs alp-status)
+state="$HOME/.local/state/alp"
+mods=(alp-chrome alp-usage-limits alp-spaces alp-pane-agent alp-files alp alp-daypack alp-agents alp-tabs alp-basecamp alp-runs alp-status)
 # Mods an earlier version installed and this one doesn't: install removes them.
 retired=()
+# Mods renamed since an earlier version, as old:new. install removes the old one and moves its
+# Herdr data (localStorage, avatars) to the new name, so nothing it remembered is lost.
+renamed_mods=(alpmeister:alp usage-limits:alp-usage-limits pane-agent:alp-pane-agent daypack:alp-daypack basecamp:alp-basecamp)
 layouts=(alp)
 themes=(alp)
 case "${1:-}" in
@@ -20,6 +24,26 @@ case "${1:-}" in
   pull)    src="$home" dst="$repo" ;;
   *) echo "usage: $0 install|pull" >&2; exit 2 ;;
 esac
+
+# Files from before a rename move to their new names once: while the old one is there and the new
+# one isn't. Herdr's data folders move before the new mods load and make their own. The
+# `alpmeister` mod's own files were named for it too.
+renamed() {
+  if [[ -e "$1" && ! -e "$2" ]]; then mv "$1" "$2" && echo "renamed ${1/#"$HOME"/"~"} to ${2##*/}"; fi
+}
+if [[ "$1" == install ]]; then
+  renamed "$alp/alpmeister.json" "$alp/settings.json"
+  renamed "$alp/alpmeister.json.bak" "$alp/settings.json.bak"
+  renamed "$state/alpmeister-cache.json" "$state/cache.json"
+  for pair in "${renamed_mods[@]}"; do
+    renamed "$home/data/${pair%%:*}" "$home/data/${pair#*:}"
+    if [[ -d "$home/mods/${pair%%:*}" ]]; then rm -rf "${home:?}/mods/${pair%%:*}"; echo "removed ${pair%%:*}, now ${pair#*:}"; fi
+  done
+  for m in ${retired[@]+"${retired[@]}"}; do
+    if [[ -d "$home/mods/$m" ]]; then rm -rf "${home:?}/mods/$m"; echo "removed retired mod $m"; fi
+  done
+fi
+
 mkdir -p "$dst/layouts" "$dst/mods" "$dst/themes"
 for l in "${layouts[@]}"; do cp "$src/layouts/$l.json" "$dst/layouts/$l.json"; done
 for t in "${themes[@]}"; do cp "$src/themes/$t.json" "$dst/themes/$t.json"; done
@@ -28,10 +52,6 @@ for m in "${mods[@]}"; do
 done
 echo "synced ${layouts[*]} + themes ${themes[*]} + ${mods[*]}: $src -> $dst"
 [[ "$1" == install ]] || exit 0
-
-for m in ${retired[@]+"${retired[@]}"}; do
-  if [[ -d "$dst/mods/$m" ]]; then rm -rf "${dst:?}/mods/$m"; echo "removed retired mod $m"; fi
-done
 
 # A JSON string, with its quotes.
 json() { local s=${1//\\/\\\\}; s=${s//\"/\\\"}; printf '"%s"' "$s"; }

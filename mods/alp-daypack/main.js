@@ -2,9 +2,9 @@
 // it shows. It holds the issues and PRs you Pin to Today in Alp, each with the Claude button Alp
 // shows (dashed while its prompt is not set), and the todos you type here. A key says what the
 // icons do; the list can be narrowed to one repository or grouped by repository, both
-// remembered. It reads and writes the focus list Alpmeister keeps
-// (~/.local/state/alp/focus.json), and reloads when Alpmeister changes it. Basecamp's header (the
-// `basecamp` mod) shows how many items are open.
+// remembered. It reads and writes the focus list the Alp tab keeps
+// (~/.local/state/alp/focus.json), and reloads when the Alp tab changes it. Basecamp's header (the
+// `alp-basecamp` mod) shows how many items are open.
 
 import { View, div, image, svg } from "gpui-kit";
 import { h_flex, v_flex, Input, InputState, Popup } from "gpui-base";
@@ -12,16 +12,16 @@ import { exec, home, notify, panes, readTextFile, run, setShared, shared, spaces
 import { FocusFile, daysSinceAdded, today } from "./focus-file.js";
 
 const STAMP_KEY = "alp.focusStamp";
-/** Asks the pinned Alp to show Settings in place: keep in step with Alpmeister's main.js. */
+/** Asks the pinned Alp to show Settings in place: keep in step with mods/alp/main.js. */
 const OPEN_SETTINGS_KEY = "alp.openSettings";
 /** The Alp layout's work stack and the block Alp is pinned in. */
 const WORK_STACK = "work-stack";
-const ALPMEISTER_VIEW = "alpmeister-view";
+const ALP_VIEW = "alp-view";
 const CLAUDE_ICON = "icons/claude.svg";
 const TERMINAL_ICON = "mods/workspace-chrome/terminal.svg";
 const PIN_ICON = "mods/workspace-chrome/pin.svg";
 const CLOSE_ICON = "mods/workspace-chrome/x.svg";
-const EDIT_ICON = "mods/alpmeister/pencil.svg";
+const EDIT_ICON = "mods/alp/pencil.svg";
 const SETTINGS_ICON = "mods/workspace-chrome/settings.svg";
 /** What this tab remembers, in its own storage: the key hidden, grouping, and the repo filter. */
 const KEY_HIDDEN_KEY = "daypack.keyHidden";
@@ -44,9 +44,9 @@ const SECTIONS = [
 ];
 
 /** Opens a URL in the default browser. */
-const openUrl = (url) => exec("open", [url]).catch((error) => console.log(`daypack: open failed: ${error}`));
+const openUrl = (url) => exec("open", [url]).catch((error) => console.log(`alp-daypack: open failed: ${error}`));
 
-/** The prompts Alpmeister uses when the settings name none: keep in step with its config.js. */
+/** The prompts the Alp tab uses when the settings name none: keep in step with its config.js. */
 const DEFAULT_ISSUE_PROMPT = "Work on GitHub issue {repo}#{number}: read it, plan, then implement.";
 const DEFAULT_PR_PROMPT = "Review GitHub PR {repo}#{number} and summarize what needs attention.";
 
@@ -54,13 +54,13 @@ const DEFAULT_PR_PROMPT = "Review GitHub PR {repo}#{number} and summarize what n
 const expandHome = (path) => (path?.startsWith("~") ? home() + path.slice(1) : (path ?? "")).replace(/\/+$/, "");
 
 /**
- * The Claude button settings Alpmeister keeps in ~/.config/alp/alpmeister.json: the prompt for
+ * The Claude button settings the Alp tab keeps in ~/.config/alp/settings.json: the prompt for
  * an issue and for a PR, and each repository's local clone. Reads the current shape (`account`)
  * and the earlier one-repo shape (`repo` with `launch.folder`).
  * @returns {Promise<{ issue: string, pr: string, folders: Record<string, string> }>}
  */
 async function loadLaunch() {
-  const text = await readTextFile(`${home()}/.config/alp/alpmeister.json`);
+  const text = await readTextFile(`${home()}/.config/alp/settings.json`);
   try {
     const raw = text ? JSON.parse(text) : {};
     if (raw.repo || raw.launch) {
@@ -80,7 +80,7 @@ async function loadLaunch() {
       ),
     };
   } catch (error) {
-    console.log(`daypack: settings unreadable, no Claude buttons: ${error}`);
+    console.log(`alp-daypack: settings unreadable, no Claude buttons: ${error}`);
     return { issue: "", pr: "", folders: {} };
   }
 }
@@ -123,7 +123,7 @@ function remembered(key, fallback) {
     const text = localStorage.getItem(key);
     return text == null ? fallback : JSON.parse(text);
   } catch (error) {
-    console.log(`daypack: no remembered ${key}: ${error}`);
+    console.log(`alp-daypack: no remembered ${key}: ${error}`);
     return fallback;
   }
 }
@@ -138,7 +138,7 @@ function remember(key, value) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch (error) {
-    console.log(`daypack: ${key} not remembered: ${error}`);
+    console.log(`alp-daypack: ${key} not remembered: ${error}`);
   }
 }
 
@@ -153,7 +153,7 @@ const dashedMark = (t) => div().flex_none().w(13).h(11).rounded(3).border_1().bo
 /** An item's number as the list shows it: "repo#12". */
 const label = (item) => `${repoOf(item).split("/")[1] ?? ""}#${item.number}`;
 
-/** The name Alpmeister's `sessionName` gives a Claude tab on an issue or PR: keep the two in step. */
+/** The name the Alp tab's `sessionName` gives a Claude tab on an issue or PR: keep the two in step. */
 const sessionName = (item) => (item.kind === "pr" ? `PR ${label(item)}` : label(item));
 
 /** The open tab that carries an issue's or PR's session name, and its space, or null. */
@@ -174,7 +174,7 @@ function tabIdsNamed(spaceId, name) {
 }
 
 /**
- * Tells the person a Claude tab opened in the background, as Alpmeister's
+ * Tells the person a Claude tab opened in the background, as the Alp tab's
  * `announceBackgroundTab` does: keep the two in step. A click on the notification shows the tab.
  * `spaces()` lists a new tab only a moment after `tab.new`, so this waits (up to 2s) for a tab
  * with the session name that is not in `before`.
@@ -206,7 +206,7 @@ function announceBackgroundTab(item, spaceId, before, cx) {
  */
 function openAlpSettings() {
   setShared(OPEN_SETTINGS_KEY, Date.now());
-  run("layout.select", { stack: WORK_STACK, child: ALPMEISTER_VIEW });
+  run("layout.select", { stack: WORK_STACK, child: ALP_VIEW });
 }
 
 export default class Daypack extends View {
@@ -377,7 +377,7 @@ export default class Daypack extends View {
   }
 
   /**
-   * Where a PR stands, as of Alpmeister's last refresh: Merged or Closed, else its review decision.
+   * Where a PR stands, as of the Alp tab's last refresh: Merged or Closed, else its review decision.
    * @param {Record<string, string>} t The theme.
    * @param {object} item The focus-list item.
    * @returns {object | null} The chip, or null for an issue, a todo, or a PR not yet read.
@@ -414,7 +414,7 @@ export default class Daypack extends View {
   }
 
   /**
-   * Changes the list, saves it, and tells Alpmeister and Basecamp's count to reload. When the
+   * Changes the list, saves it, and tells the Alp tab and Basecamp's count to reload. When the
    * file changed elsewhere since it was read, the change is made again on the new list.
    * @param {() => void} change Changes `this.store`; run again after a reload.
    * @param {object} cx The view's context.

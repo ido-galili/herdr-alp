@@ -1,4 +1,4 @@
-// Alpmeister: the team lead's start-of-day view, in three views, and its settings, which the
+// The Alp tab: the team lead's start-of-day view, in three views, and its settings, which the
 // Settings button shows in place of the view (Back returns to it).
 //   Dashboard  one workspace at a time (tiles for open bugs by priority, triage bugs, customer
 //              issues and the nightly run, your review requests, PRs and issues there, the
@@ -6,9 +6,9 @@
 //              (Red checks, your review requests, PRs and issues, and the repositories).
 //   Board      a workspace's board items that match its Board tab filter, a column per status.
 //   Herds      your Claude Code sessions and how they are linked.
-// The Today list (pins and todos) is Basecamp's Today tab (the `daypack` mod); the pins here
+// The Today list (pins and todos) is Basecamp's Today tab (the `alp-daypack` mod); the pins here
 // add to it, in ~/.local/state/alp/focus.json.
-//   Settings   everything in ~/.config/alp/alpmeister.json, as a form: a copy opened with
+//   Settings   everything in ~/.config/alp/settings.json, as a form: a copy opened with
 //              props.tab "settings" shows only this.
 // It fetches when it opens, when it is shown with data over 2 hours old, and from Refresh.
 
@@ -109,19 +109,19 @@ const TAB_ALIASES = new Map([
   ["overview", TABS.dashboard],
   ["today", TABS.dashboard],
 ]);
-const TAB_KEY = "alpmeister.tab";
+const TAB_KEY = "alp.tab";
 /** Set after the settings file is saved, so every other copy fetches with the new settings. */
 const SETTINGS_STAMP_KEY = "alp.settingsStamp";
-const WORKSPACE_KEY = "alpmeister.workspace";
+const WORKSPACE_KEY = "alp.workspace";
 /** The Milestone card's pick, as a JSON object of workspace name to a milestone's title, or "" for No milestone; Next when absent. */
-const MILESTONE_PICK_KEY = "alpmeister.milestonePick";
+const MILESTONE_PICK_KEY = "alp.milestonePick";
 /** The Repos card's "With open work" switch on All repos: "true" when it is on. */
-const REPOS_ACTIVE_ONLY_KEY = "alpmeister.reposActiveOnly";
+const REPOS_ACTIVE_ONLY_KEY = "alp.reposActiveOnly";
 /** The Dashboard switch's value for your GitHub as a whole. */
 const ALL_REPOS = "";
 const FOCUS_STAMP_KEY = "alp.focusStamp";
 /** The first run's "Add a workspace" card on All repos: "true" once "Not now" hid it. */
-const ADD_WORKSPACE_DISMISSED_KEY = "alpmeister.addWorkspaceDismissed";
+const ADD_WORKSPACE_DISMISSED_KEY = "alp.addWorkspaceDismissed";
 /** Set by Basecamp's Today tab to ask the pinned Alp to show Settings in place. */
 const OPEN_SETTINGS_KEY = "alp.openSettings";
 /** The views' names, as the header's tabs and Settings' "Back to <view>" show them. */
@@ -132,12 +132,22 @@ const VIEW_ICONS = {
   [TABS.board]: ICONS.viewBoard,
   [TABS.herds]: ICONS.viewHerds,
 };
-/** The Alp layout's stack that shows the terminals or, pinned in their place, Alpmeister. */
+/** The Alp layout's stack that shows the terminals or, pinned in their place, the Alp tab. */
 const WORK_STACK = "work-stack";
 const WORK_BODY = "work-body";
-const ALPMEISTER_VIEW = "alpmeister-view";
+const ALP_VIEW = "alp-view";
 /** Bumped after a filter dialog saved, so the copy that opened it redraws. */
-const FILTER_STAMP_KEY = "alpmeister.filterStamp";
+const FILTER_STAMP_KEY = "alp.filterStamp";
+/** What the mod kept in localStorage while it was named `alpmeister`, under `alpmeister.<name>`. */
+const OLD_KEYS = [
+  "tab",
+  "workspace",
+  "milestonePick",
+  "reposActiveOnly",
+  "addWorkspaceDismissed",
+  "boardPeople",
+  "herds.canvas",
+];
 /** Where each of your lists' count sits in the account's `counts`, by its search's key. */
 const CARD_LISTS = { review: "reviews", myPrs: "myPrs", mine: "mine" };
 /** Each filtered card's name, as its title and the filter dialog's title say it. */
@@ -173,7 +183,7 @@ function workspaceCardCount(wsModel, key) {
  */
 const wsFilterId = (name, key) => `ws:${name}:${key}`;
 
-const cachePath = () => `${stateDir()}/alpmeister-cache.json`;
+const cachePath = () => `${stateDir()}/cache.json`;
 
 /**
  * A node of a layout tree, by its id.
@@ -221,7 +231,7 @@ function rememberedTab() {
     const tab = tabNamed(localStorage.getItem(TAB_KEY));
     return tab && tab !== TABS.settings ? tab : TABS.dashboard;
   } catch (error) {
-    console.log(`alpmeister: no remembered tab: ${error}`);
+    console.log(`alp: no remembered tab: ${error}`);
     return TABS.dashboard;
   }
 }
@@ -231,7 +241,7 @@ function rememberedWorkspace() {
   try {
     return localStorage.getItem(WORKSPACE_KEY) ?? ALL_REPOS;
   } catch (error) {
-    console.log(`alpmeister: no remembered workspace: ${error}`);
+    console.log(`alp: no remembered workspace: ${error}`);
     return ALL_REPOS;
   }
 }
@@ -247,7 +257,7 @@ function rememberedChoices(key) {
     if (!saved || typeof saved !== "object") return null;
     return Object.fromEntries(Object.entries(saved).filter(([, value]) => typeof value === "string"));
   } catch (error) {
-    console.log(`alpmeister: no remembered ${key}: ${error}`);
+    console.log(`alp: no remembered ${key}: ${error}`);
     return null;
   }
 }
@@ -262,7 +272,7 @@ function rememberChoices(key, choices) {
   try {
     localStorage.setItem(key, JSON.stringify(choices));
   } catch (error) {
-    console.log(`alpmeister: ${key} not remembered: ${error}`);
+    console.log(`alp: ${key} not remembered: ${error}`);
   }
 }
 
@@ -275,7 +285,7 @@ function rememberedFlag(key) {
   try {
     return localStorage.getItem(key) === "true";
   } catch (error) {
-    console.log(`alpmeister: ${key} not read: ${error}`);
+    console.log(`alp: ${key} not read: ${error}`);
     return false;
   }
 }
@@ -288,13 +298,28 @@ function rememberedReposActiveOnly() {
   try {
     return localStorage.getItem(REPOS_ACTIVE_ONLY_KEY) === "true";
   } catch (error) {
-    console.log(`alpmeister: no remembered repos switch: ${error}`);
+    console.log(`alp: no remembered repos switch: ${error}`);
     return false;
   }
 }
 
-export default class Alpmeister extends View {
+/**
+ * Moves what this copy remembered as `alpmeister.<name>` to `alp.<name>`, unless that's already
+ * set. sync.sh moved Herdr's data folder from the old mod's name; this renames the keys in it.
+ * @returns {void}
+ */
+function moveOldKeys() {
+  for (const name of OLD_KEYS) {
+    const old = localStorage.getItem(`alpmeister.${name}`);
+    if (old === null) continue;
+    if (localStorage.getItem(`alp.${name}`) === null) localStorage.setItem(`alp.${name}`, old);
+    localStorage.removeItem(`alpmeister.${name}`);
+  }
+}
+
+export default class AlpView extends View {
   init(_props, cx) {
+    moveOldKeys();
     // A copy opened with `props.part` "filter" is the filter dialog another copy opened.
     this.dialog = props()?.part === "filter" ? new FilterDialog(cx) : null;
     if (this.dialog) return;
@@ -321,7 +346,7 @@ export default class Alpmeister extends View {
     this.width = 1200;
     this.height = 800;
     this.cacheSnapshot = null;
-    // `props.tab` opens a copy on that tab: tab.new {mod: "alpmeister", props: {tab: "herds"}}.
+    // `props.tab` opens a copy on that tab: tab.new {mod: "alp", props: {tab: "herds"}}.
     // "overview" is another name for "dashboard".
     this.tab = tabNamed(props()?.tab) ?? rememberedTab();
     // `props.demo` shows made-up data on every tab, for demos and screenshots: a herd on Herds
@@ -407,7 +432,7 @@ export default class Alpmeister extends View {
           this.watchAgents(cx);
         } catch (error) {
           this.herdsFailure = String(error?.message ?? error);
-          console.log(`alpmeister: herds failed: ${this.herdsFailure}`);
+          console.log(`alp: herds failed: ${this.herdsFailure}`);
         }
       } while (this.herdsAgain);
       this.herdsLoading = false;
@@ -472,7 +497,7 @@ export default class Alpmeister extends View {
       try {
         await saveTabLink(sessionId, address);
       } catch (error) {
-        console.log(`alpmeister: tab link not saved: ${error}`);
+        console.log(`alp: tab link not saved: ${error}`);
       }
       this.reloadHerds(cx);
     });
@@ -602,12 +627,12 @@ export default class Alpmeister extends View {
 
   /**
    * Whether this copy is Alp pinned in place of the terminals and showing now: the Alp layout's
-   * work stack shows its Alpmeister block. A copy in a tab is never that one.
+   * work stack shows its Alp block. A copy in a tab is never that one.
    * @returns {boolean}
    */
   pinnedShown() {
     if (this.tab === TABS.settings || props()?.pane) return false;
-    return findNode(layout(), WORK_STACK)?.active === ALPMEISTER_VIEW;
+    return findNode(layout(), WORK_STACK)?.active === ALP_VIEW;
   }
 
   /** Draws the last result at once, before the first refresh returns. */
@@ -620,7 +645,7 @@ export default class Alpmeister extends View {
       // A cache from before workspaces has another shape: wait for the refresh instead.
       if (cached?.version === MODEL_VERSION && !this.model) this.model = cached;
     } catch (error) {
-      console.log(`alpmeister: cache unreadable, ignoring it: ${error}`);
+      console.log(`alp: cache unreadable, ignoring it: ${error}`);
     }
   }
 
@@ -632,7 +657,7 @@ export default class Alpmeister extends View {
     try {
       await writeTextFile(cachePath(), text, this.cacheSnapshot);
     } catch (error) {
-      console.log(`alpmeister: cache changed elsewhere, overwriting: ${error}`);
+      console.log(`alp: cache changed elsewhere, overwriting: ${error}`);
       await writeTextFile(cachePath(), text, await readTextFile(cachePath()));
     }
     this.cacheSnapshot = text;
@@ -664,7 +689,7 @@ export default class Alpmeister extends View {
           }
         } catch (error) {
           this.failure = String(error?.message ?? error);
-          console.log(`alpmeister: refresh failed: ${this.failure}`);
+          console.log(`alp: refresh failed: ${this.failure}`);
         }
       } while (this.refreshAgain);
       this.loading = false;
@@ -959,7 +984,7 @@ export default class Alpmeister extends View {
 
   /**
    * Writes one card's search to the settings file, through `saveSettings` (which keeps the old
-   * file as alpmeister.json.bak), or removes it so the card goes back to its default. Everything
+   * file as settings.json.bak), or removes it so the card goes back to its default. Everything
    * else in the file stays as it was.
    * @param {string} id The filter's id.
    * @param {string | null} query The search to save, or null to remove it.
@@ -1013,7 +1038,7 @@ export default class Alpmeister extends View {
     try {
       await this.searchCard(id, query);
     } catch (error) {
-      console.log(`alpmeister: ${id} not fetched after its filter was saved: ${error?.message ?? error}`);
+      console.log(`alp: ${id} not fetched after its filter was saved: ${error?.message ?? error}`);
     }
     return written;
   }
@@ -1240,7 +1265,7 @@ export default class Alpmeister extends View {
     try {
       localStorage.setItem(WORKSPACE_KEY, name);
     } catch (error) {
-      console.log(`alpmeister: workspace not remembered: ${error}`);
+      console.log(`alp: workspace not remembered: ${error}`);
     }
     cx.notify();
   }
@@ -1255,7 +1280,7 @@ export default class Alpmeister extends View {
     try {
       localStorage.setItem(REPOS_ACTIVE_ONLY_KEY, String(this.reposActiveOnly));
     } catch (error) {
-      console.log(`alpmeister: repos switch not remembered: ${error}`);
+      console.log(`alp: repos switch not remembered: ${error}`);
     }
     cx.notify();
   }
@@ -1352,7 +1377,7 @@ export default class Alpmeister extends View {
     try {
       localStorage.setItem(TAB_KEY, tab);
     } catch (error) {
-      console.log(`alpmeister: tab not remembered: ${error}`);
+      console.log(`alp: tab not remembered: ${error}`);
     }
     cx.notify();
   }
@@ -1676,7 +1701,7 @@ export default class Alpmeister extends View {
         try {
           localStorage.setItem(ADD_WORKSPACE_DISMISSED_KEY, "true");
         } catch (error) {
-          console.log(`alpmeister: "Not now" not remembered: ${error}`);
+          console.log(`alp: "Not now" not remembered: ${error}`);
         }
       }
       cx.notify();
@@ -2032,7 +2057,7 @@ export default class Alpmeister extends View {
     const config = this.config;
     const model = this.model;
     const root = v_flex()
-      .id("alpmeister")
+      .id("alp")
       .relative()
       .size_full()
       .bg(t.canvas)
@@ -2059,7 +2084,7 @@ export default class Alpmeister extends View {
         )
         .child(this.settingsView(cx));
     }
-    const page = v_flex().id("alpmeister-page").size_full().overflow_y_scrollbar().track_scroll(this.scroll);
+    const page = v_flex().id("alp-page").size_full().overflow_y_scrollbar().track_scroll(this.scroll);
     // The Herds canvas in full tab hides the header too: the canvas takes the whole tab.
     const fullCanvas = this.tab === TABS.herds && this.herdsCanvas.full;
     let content = v_flex()

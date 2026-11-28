@@ -1,5 +1,5 @@
-// The pieces every Alpmeister widget draws with, in Alp's look: the pane header's chips,
-// the usage-limits bar with its time tick, and the agents list's status colors.
+// The pieces every Alp tab widget draws with, in Alp's look: the pane header's chips,
+// the alp-usage-limits bar with its time tick, and the agents list's status colors.
 
 import { div, image, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
@@ -21,7 +21,7 @@ export const noPromptTooltip = (kind) =>
   `No Claude prompt for ${kind === "pr" ? "PRs" : "issues"} yet. Click to set it in Settings, under Claude buttons.`;
 
 /** Opens a URL in the default browser. */
-export const openUrl = (url) => exec("open", [url]).catch((error) => console.log(`alpmeister: open failed: ${error}`));
+export const openUrl = (url) => exec("open", [url]).catch((error) => console.log(`alp: open failed: ${error}`));
 
 /**
  * A GitHub item's key, unique across repositories: "owner/name#12".
@@ -148,7 +148,7 @@ export const NeedsYou = (text = "Needs you") => {
   return Chip(text, { color: t.blocked, fill: `${t.blocked}26` });
 };
 
-/** A filled bar with an optional tick, as usage-limits draws it. `fraction` and `tick` are 0..1. */
+/** A filled bar with an optional tick, as alp-usage-limits draws it. `fraction` and `tick` are 0..1. */
 export function Bar(fraction, color, tick = null, height = 8) {
   const t = theme();
   const percent = (value) => `${Math.max(0, Math.min(1, value)) * 100}%`;
@@ -267,27 +267,27 @@ export function LinkLabel(icon, text, size = 12) {
 
 /** Icons this mod draws: its own, Herdr's shipped pin and close, and the Claude program icon. */
 export const ICONS = {
-  github: "mods/alpmeister/github.svg",
-  zoomIn: "mods/alpmeister/zoom-in.svg",
-  zoomOut: "mods/alpmeister/zoom-out.svg",
-  fit: "mods/alpmeister/fit.svg",
-  fullTab: "mods/alpmeister/full-tab.svg",
-  exitFullTab: "mods/alpmeister/exit-full-tab.svg",
-  resetLayout: "mods/alpmeister/reset-layout.svg",
-  lineCurved: "mods/alpmeister/line-curved.svg",
-  lineStep: "mods/alpmeister/line-step.svg",
+  github: "mods/alp/github.svg",
+  zoomIn: "mods/alp/zoom-in.svg",
+  zoomOut: "mods/alp/zoom-out.svg",
+  fit: "mods/alp/fit.svg",
+  fullTab: "mods/alp/full-tab.svg",
+  exitFullTab: "mods/alp/exit-full-tab.svg",
+  resetLayout: "mods/alp/reset-layout.svg",
+  lineCurved: "mods/alp/line-curved.svg",
+  lineStep: "mods/alp/line-step.svg",
   pin: "mods/workspace-chrome/pin.svg",
   close: "mods/workspace-chrome/x.svg",
-  edit: "mods/alpmeister/pencil.svg",
-  filter: "mods/alpmeister/filter.svg",
+  edit: "mods/alp/pencil.svg",
+  filter: "mods/alp/filter.svg",
   claude: "icons/claude.svg",
   terminal: "mods/workspace-chrome/terminal.svg",
-  iteration: "mods/alpmeister/iteration.svg",
-  milestone: "mods/alpmeister/milestone.svg",
+  iteration: "mods/alp/iteration.svg",
+  milestone: "mods/alp/milestone.svg",
   settings: "mods/workspace-chrome/settings.svg",
-  viewOverview: "mods/alpmeister/view-overview.svg",
-  viewBoard: "mods/alpmeister/view-board.svg",
-  viewHerds: "mods/alpmeister/view-herds.svg",
+  viewOverview: "mods/alp/view-overview.svg",
+  viewBoard: "mods/alp/view-board.svg",
+  viewHerds: "mods/alp/view-herds.svg",
 };
 
 /**

@@ -1,4 +1,4 @@
-// Fetches Alpmeister's data through the `gh` CLI and shapes it for the widgets.
+// Fetches the Alp tab's data through the `gh` CLI and shapes it for the widgets.
 // Read-only: nothing here writes to GitHub.
 //
 // Two kinds of load: the account (every repository in scope and the @me searches, for the

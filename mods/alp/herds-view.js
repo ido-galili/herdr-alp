@@ -19,11 +19,11 @@ const SPINNER = "mods/workspace-chrome/spinner.svg";
  * member session, a lamb for a fork (a copy of its session), a herding dog for any other agent.
  */
 const ROLE_ICONS = {
-  herdsman: { icon: "mods/alpmeister/crook.svg", tooltip: "Herdsman: leads this herd" },
-  member: { icon: "mods/alpmeister/cow.svg", tooltip: "In the herd: a session of its own" },
-  grazing: { icon: "mods/alpmeister/cow.svg", tooltip: "Grazing: a session on its own" },
-  fork: { icon: "mods/alpmeister/lamb.svg", tooltip: "Fork: a copy of its session, with its context" },
-  agent: { icon: "mods/alpmeister/dog.svg", tooltip: "Agent: sent out by its session" },
+  herdsman: { icon: "mods/alp/crook.svg", tooltip: "Herdsman: leads this herd" },
+  member: { icon: "mods/alp/cow.svg", tooltip: "In the herd: a session of its own" },
+  grazing: { icon: "mods/alp/cow.svg", tooltip: "Grazing: a session on its own" },
+  fork: { icon: "mods/alp/lamb.svg", tooltip: "Fork: a copy of its session, with its context" },
+  agent: { icon: "mods/alp/dog.svg", tooltip: "Agent: sent out by its session" },
 };
 
 /** The key's row and the gap under it, taken off the map's height while the key shows. */

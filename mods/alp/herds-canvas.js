@@ -71,7 +71,7 @@ const VIEWS = [
 ];
 
 /** Where the canvas keeps your choices and the cards you moved, in this mod's own storage. */
-const STORE_KEY = "alpmeister.herds.canvas";
+const STORE_KEY = "alp.herds.canvas";
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 
@@ -314,7 +314,7 @@ export class HerdsCanvas {
         }),
       );
     } catch (error) {
-      console.log(`alpmeister: canvas not remembered: ${error}`);
+      console.log(`alp: canvas not remembered: ${error}`);
     }
   }
 

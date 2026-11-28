@@ -33,7 +33,7 @@ gh auth status >/dev/null 2>&1 || fail "gh is not signed in: gh auth login, then
 if gh auth status 2>&1 | grep -qE "'(read:)?project'"; then
   echo "gh is signed in, with access to project boards."
 else
-  echo "gh's token lacks the read:project scope Alpmeister needs to read project boards."
+  echo "gh's token lacks the read:project scope Alp needs to read project boards."
   if confirm "Add it now (opens the browser)?"; then gh auth refresh -s read:project; fi
 fi
 
