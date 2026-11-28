@@ -395,7 +395,7 @@ commit**. Once the PR is open and its title is final:
 
 ```sh
 npm run release-commit   # writes CHANGELOG.md and the plugin's version as chore(release): vX.Y.Z
-git push                 # --force-with-lease when it replaced an older one
+git push                 # each run adds a commit; only the squash merge's files count
 ```
 
 git-cliff picks the version (below 1.0, a feat or breaking change bumps the minor, a fix the

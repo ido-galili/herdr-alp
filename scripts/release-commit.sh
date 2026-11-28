@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# The release commit: the last commit of a pull request whose title is a feat, fix or perf, or
-# has a "!". It writes CHANGELOG.md and the plugin's version as they will be once the PR is
-# squash-merged, so main gets them with the merge and nothing is pushed to main afterwards. The
-# release workflow then tags that merge and publishes the GitHub Release.
+# The release commit of a pull request whose title is a feat, fix or perf, or has a "!": it
+# writes CHANGELOG.md and the plugin's version as they will be once the PR is squash-merged, so
+# main gets them with the merge and nothing is pushed to main afterwards. The release workflow
+# then tags that merge and publishes the GitHub Release.
 #
-#   scripts/release-commit.sh          write it as this branch's last commit (replacing an older
-#                                      one); run it after the PR is open and its title is final,
-#                                      and again after rebasing or retitling
+#   scripts/release-commit.sh          commit them; run it after the PR is open and its title is
+#                                      final, and again after rebasing, retitling or more work.
+#                                      Each run adds a commit and never rewrites one, so a plain
+#                                      git push does: only the squash merge's files count
 #   scripts/release-commit.sh --check  the PR check: fail when CHANGELOG.md or the version isn't
 #                                      what the PR's title makes them
 #
@@ -34,6 +35,23 @@ fi
 $check || git fetch -q origin "${BASE_REF:-main}" --tags
 
 version_of() { sed -nE 's/.*"version": *"([^"]*)".*/\1/p' | head -1; }
+set_version() {
+  sed -E "s/(\"version\": *\")[^\"]*\"/\1$1\"/" "$plugin" > "$plugin.tmp" && mv "$plugin.tmp" "$plugin"
+}
+ready_to_write() {
+  git merge-base --is-ancestor "$base" HEAD || fail "rebase on $base first: the changelog is made from it."
+  [ -z "$(git status --porcelain)" ] || fail "commit or stash your changes first."
+}
+# Commits CHANGELOG.md and the plugin's version with message $1, unless they're already so.
+commit_files() {
+  git add -A CHANGELOG.md "$plugin"
+  if git diff --cached --quiet; then
+    echo "Already up to date: nothing to commit."
+  else
+    git commit -q -m "$1"
+    echo "Committed \"$1\". Push it with: git push"
+  fi
+}
 base_version=$(git show "$base:$plugin" | version_of)
 head_version=$(version_of < "$plugin")
 
@@ -47,13 +65,16 @@ fi
 if [[ ! "$PR_TITLE" =~ ^(feat|fix|perf)(\([^\)]*\))?!?: && ! "$PR_TITLE" =~ ^[a-z]+(\([^\)]*\))?!: ]]; then
   if $check; then
     [ "$head_version" = "$base_version" ] && git diff --quiet "$base" HEAD -- CHANGELOG.md ||
-      fail "\"$PR_TITLE\" releases nothing, so CHANGELOG.md and the plugin's version stay as they are on main. Drop the release commit, or make the title a feat, fix or perf."
+      fail "\"$PR_TITLE\" releases nothing, so CHANGELOG.md and the plugin's version stay as they are on main. Run npm run release-commit and push, or make the title a feat, fix or perf."
     echo "\"$PR_TITLE\" releases nothing."
     exit 0
   fi
-  [ "$(git log -1 --format=%s)" != "chore(release): v$head_version" ] ||
-    fail "\"$PR_TITLE\" releases nothing, but the last commit is a release commit: drop it (git reset --keep HEAD~1)."
-  echo "\"$PR_TITLE\" releases nothing: no release commit needed."
+  echo "\"$PR_TITLE\" releases nothing."
+  # An earlier release commit is undone by a new commit: main's CHANGELOG.md and version again.
+  ready_to_write
+  if git cat-file -e "$base:CHANGELOG.md" 2> /dev/null; then git show "$base:CHANGELOG.md" > CHANGELOG.md; else rm -f CHANGELOG.md; fi
+  set_version "$base_version"
+  commit_files "chore(release): nothing to release"
   exit 0
 fi
 
@@ -78,20 +99,7 @@ if $check; then
   exit 0
 fi
 
-git merge-base --is-ancestor "$base" HEAD || fail "rebase on $base first: the changelog is made from it."
-[ -z "$(git status --porcelain)" ] || fail "commit or stash your changes first."
-replaced=false
-if [[ "$(git log -1 --format=%s)" == "chore(release): "* ]]; then
-  git reset -q --soft HEAD~1
-  replaced=true
-fi
+ready_to_write
 cp "$work/CHANGELOG.md" CHANGELOG.md
-sed -E "s/(\"version\": *\")[^\"]*\"/\1${version#v}\"/" "$plugin" > "$work/plugin.json"
-cat "$work/plugin.json" > "$plugin"
-git add CHANGELOG.md "$plugin"
-git commit -q -m "chore(release): $version"
-if $replaced; then
-  echo "Replaced the release commit with $version. Push it with: git push --force-with-lease"
-else
-  echo "Added the release commit for $version. Push it with: git push"
-fi
+set_version "${version#v}"
+commit_files "chore(release): $version"

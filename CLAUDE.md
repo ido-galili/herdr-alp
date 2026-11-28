@@ -23,9 +23,9 @@ type(scope): what changed, for the person using Alp
 
 A PR whose title is `feat`, `fix` or `perf`, or has a `!`, ends with its release commit. After
 opening the PR (its number goes in the changelog) and settling the title, run
-`npm run release-commit`, then `git push` (`git push --force-with-lease` when it says it replaced
-one). Run it again after every rebase on `main` and every title change, and keep it the last
-commit: commit other work before it and run it again. The "Release commit" PR check fails while
+`npm run release-commit`, then `git push`. Run it again after every rebase on `main`, every title
+change and any later work: each run adds a commit (never force-push; only the squash merge's
+files count), and a title that no longer releases gets main's `CHANGELOG.md` and version back. The "Release commit" PR check fails while
 it's missing or out of date. On merge, the release workflow tags the merge and publishes the
 GitHub Release from `CHANGELOG.md`.
 
