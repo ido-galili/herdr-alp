@@ -461,7 +461,7 @@ export class HerdsCanvas {
     return { x: this.pan.x + x * this.zoom, y: this.pan.y + y * this.zoom };
   }
 
-  /** The Map | Cards switch, in the toolbar where the line style used to be. */
+  /** The Map | Cards switch, in the toolbar after the Map's own controls. */
   switcher() {
     return [Segmented("herds-view", VIEWS, this.view, (view, cx) => this.setView(view, cx))];
   }

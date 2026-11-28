@@ -702,8 +702,8 @@ export function Herds(model, actions) {
     .child(div().w(4))
     .children(pills)
     .child(div().flex_1())
+    .children(onMap ? [...canvas.mapControls(t), div().w(1).h(16).mx(4).bg(t.border)] : [])
     .children(canvas.switcher())
-    .children(onMap ? [div().w(1).h(16).mx(4).bg(t.border), ...canvas.mapControls(t)] : [])
     .when(canvas.keyHidden, (el) =>
       el.child(
         TextButton("herds-key-show", "Key", (cx) => canvas.setKeyHidden(false, cx), { tooltip: "Show the key" }),

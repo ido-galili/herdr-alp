@@ -184,8 +184,6 @@ the Overview starts on all your repositories, with a card that offers to add a w
   again, and every other Alp tab fetches too.
 - **Refresh:** Alp fetches when the tab opens, when it shows data over 2 hours
   old, and from "Updated 3h ago · Refresh", which turns orange after 2 hours.
-- **Pinned:** shown in place of the terminals (the Alp layout's pinned tab), the header ends in
-  "Back to terminals".
 - **Today** lives in Basecamp's Today tab (the `alp-daypack` mod), its open count on the tab: the
   rows you Pin to Today here and the todos you type there ("Add a todo and press Enter"),
   carried over the next day. A key says what the Claude mark and the pin do ("set it in

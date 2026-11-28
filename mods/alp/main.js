@@ -17,7 +17,6 @@ import { h_flex, v_flex, Popup, ScrollHandle } from "gpui-base";
 import {
   checking,
   exec,
-  layout,
   panes,
   props,
   readTextFile,
@@ -132,10 +131,6 @@ const VIEW_ICONS = {
   [TABS.board]: ICONS.viewBoard,
   [TABS.herds]: ICONS.viewHerds,
 };
-/** The Alp layout's stack that shows the terminals or, pinned in their place, the Alp tab. */
-const WORK_STACK = "work-stack";
-const WORK_BODY = "work-body";
-const ALP_VIEW = "alp-view";
 /** Bumped after a filter dialog saved, so the copy that opened it redraws. */
 const FILTER_STAMP_KEY = "alp.filterStamp";
 /** What the mod kept in localStorage while it was named `alpmeister`, under `alpmeister.<name>`. */
@@ -184,21 +179,6 @@ function workspaceCardCount(wsModel, key) {
 const wsFilterId = (name, key) => `ws:${name}:${key}`;
 
 const cachePath = () => `${stateDir()}/cache.json`;
-
-/**
- * A node of a layout tree, by its id.
- * @param {any} node The tree, from `layout()`.
- * @param {string} id The node's id.
- * @returns {any | null} The node, or null when the tree has none.
- */
-function findNode(node, id) {
-  if (node?.id === id) return node;
-  for (const child of node?.children ?? []) {
-    const found = findNode(child, id);
-    if (found) return found;
-  }
-  return null;
-}
 
 /**
  * What a workspace covers, under its name in the workspace dropdown: "repo owner/name · board
@@ -623,16 +603,6 @@ export default class AlpView extends View {
       this.refresh(cx);
     }
     cx.notify();
-  }
-
-  /**
-   * Whether this copy is Alp pinned in place of the terminals and showing now: the Alp layout's
-   * work stack shows its Alp block. A copy in a tab is never that one.
-   * @returns {boolean}
-   */
-  pinnedShown() {
-    if (this.tab === TABS.settings || props()?.pane) return false;
-    return findNode(layout(), WORK_STACK)?.active === ALP_VIEW;
   }
 
   /** Draws the last result at once, before the first refresh returns. */
@@ -1486,8 +1456,8 @@ export default class AlpView extends View {
   }
 
   /**
-   * The header. In a view: "Alp", the views as underlined tabs, "Updated · Refresh", Settings,
-   * and "Back to terminals" when Alp is pinned in place of them. On Herds, Refresh reads the
+   * The header. In a view: "Alp", the views as underlined tabs, "Updated · Refresh" and
+   * Settings. On Herds, Refresh reads the
    * sessions again; elsewhere it fetches from GitHub. With Settings in place: "Back to <view>"
    * and "Alp settings". The settings copy shows its title alone.
    * @param {object} t The theme.
@@ -1546,17 +1516,7 @@ export default class AlpView extends View {
           .items_center()
           .gap(8)
           .child(this.updated(t, fetchedAt, busy, (cx) => (herds ? this.reloadHerds(cx) : this.refresh(cx))))
-          .child(this.settingsButton(t))
-          .when(this.pinnedShown(), (el) =>
-            el.child(
-              TextButton(
-                "back-terminals",
-                "Back to terminals",
-                () => run("layout.select", { stack: WORK_STACK, child: WORK_BODY }),
-                { icon: ICONS.terminal, tooltip: "Show the space's terminals again" },
-              ),
-            ),
-          ),
+          .child(this.settingsButton(t)),
       );
   }
 
