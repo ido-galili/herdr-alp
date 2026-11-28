@@ -340,16 +340,20 @@ To add another agent: make it write these files, then add its program key to `RE
 
 Alp's Settings › Updates shows the installed version of herdr-alp and of the alp plugin.
 **Check for updates** reads the [releases](https://github.com/ido-galili/herdr-alp/releases) on
-GitHub; nothing checks on its own. When one is newer, **Notes** shows what changed and
-**Update** installs it:
+GitHub; nothing checks on its own. When one is newer, **Notes** shows what changed, and an
+agent does the update, the way Herdr's own guide has agents add other people's mods:
 
-- **herdr-alp:** downloads that release's source, runs its `sync.sh install` into Herdr's home and
-  reloads Alp. Your clone is never touched. Files you edited in Herdr's home are listed before
-  they're overwritten: run `./sync.sh pull` first to keep them. An install from a clone with
-  `./sync.sh install` shows as a dev build, and Update replaces it with the release.
-- **Plugin:** `claude plugin marketplace update herdr-alp`, then `claude plugin update
-  alp@herdr-alp`. Restart running Claude sessions to load it. A plugin loaded from a folder
-  (`CLAUDE_CODE_PLUGIN_DIRS`) runs that folder, so it has nothing to update.
+- **Update with Claude** opens a Claude tab with the steps. **Copy prompt** puts the same steps
+  on the clipboard, for any agent.
+- The agent tells you what changes (Breaking first), lists files you edited in Herdr's home since
+  the last install and asks before overwriting them, downloads the release into a temporary
+  folder, runs its `sync.sh install` (which records the version), and runs `herdr-app check` on
+  every mod. Your clone is never touched. An install from a clone with `./sync.sh install` shows
+  as a dev build, and the release replaces it.
+- When the plugin comes from the marketplace and is behind, the same steps run
+  `claude plugin marketplace update herdr-alp` and `claude plugin update alp@herdr-alp`; restart
+  running Claude sessions to load it. A plugin loaded from a folder (`CLAUDE_CODE_PLUGIN_DIRS`)
+  runs that folder, so it has nothing to update.
 
 herdr-alp and the plugin share one version.
 

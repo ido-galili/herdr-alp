@@ -35,6 +35,8 @@ if [[ "$1" == install ]]; then
   renamed "$alp/alpmeister.json" "$alp/settings.json"
   renamed "$alp/alpmeister.json.bak" "$alp/settings.json.bak"
   renamed "$state/alpmeister-cache.json" "$state/cache.json"
+  # The Update button used to run a detached updater that left these: an agent updates now.
+  rm -f "$alp/update-result.json" "$alp/update.log"
   for pair in "${renamed_mods[@]}"; do
     renamed "$home/data/${pair%%:*}" "$home/data/${pair#*:}"
     if [[ -d "$home/mods/${pair%%:*}" ]]; then rm -rf "${home:?}/mods/${pair%%:*}"; echo "removed ${pair%%:*}, now ${pair#*:}"; fi

@@ -1,32 +1,18 @@
 // Settings > Updates: a row for herdr-alp (the layout, theme and mods in Herdr's home) and one
 // for the alp Claude plugin. Nothing is read from GitHub until you press Check for updates; the
-// last check is kept, so the page looks the same when you come back. Update asks first, in the
-// page, and herdr-alp's Update never touches your clone.
+// last check is kept, so the page looks the same when you come back. The update is an agent's:
+// Update with Claude opens a Claude tab with the steps, and Copy prompt puts them on the
+// clipboard for any agent. Neither touches your clone.
 
 import { div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { checking } from "herdr";
+import { appHome, home, run, spaces } from "herdr";
 import { tildePath } from "./config.js";
 import { Chip, Note, TextButton, formatDate, formatTime, openUrl, warningColor } from "./ui.js";
-import {
-  RELEASES_URL,
-  announceResult,
-  changedInPlace,
-  check,
-  isDevBuild,
-  isNewer,
-  readCheck,
-  readInstalled,
-  readPlugin,
-  readResult,
-  startUpdate,
-  updatePlugin,
-} from "./updates-data.js";
+import { RELEASES_URL, check, isDevBuild, isNewer, readCheck, readInstalled, updatePrompt } from "./updates-data.js";
 
-/** How many changed files the confirmation lists before "and N more". */
-const LISTED_FILES = 5;
-/** How long to wait for the updater's result when Alp doesn't reload, in milliseconds. */
-const RESULT_WAIT = 180000;
+/** The name of the Claude tab Update with Claude opens. */
+const TAB_NAME = "Update Alp";
 
 /**
  * What the page shows in the demo: an update waiting, with notes.
@@ -78,32 +64,22 @@ function when(iso) {
 
 export class UpdatesPage {
   constructor() {
-    /** Whether the saved check, install record and last result were read. */
+    /** Whether the saved check and install record were read. */
     this.loaded = false;
     this.installed = null;
     this.check = null;
-    this.result = null;
     this.checking = false;
     /** The release notes shown: herdr-alp's row toggles them. */
     this.notesOpen = false;
-    /** The row asking "Update?": "alp", "plugin" or null. */
-    this.armed = null;
-    /** Files edited in Herdr's home that Update would overwrite, read when Update is pressed. */
-    this.changed = [];
-    /** The row updating now: "alp", "plugin" or null. */
-    this.updating = null;
     /** The last line to show under a row: `{ row, text, error }`. */
     this.message = null;
-    /** The demo shows made-up state and changes nothing. */
+    /** The demo shows made-up state and opens nothing. */
     this.demo = false;
-    // Every Alp tab makes one of these as it starts, so an update that just ended (and reloaded
-    // Alp) gets its toast here, once.
-    if (!checking()) announceResult().catch(() => {});
   }
 
   /**
-   * Reads the saved state once: the install record, the last check and the last update. In the
-   * demo, made-up state instead.
+   * Reads the saved state once: the install record and the last check. In the demo, made-up
+   * state instead.
    * @param {object} cx The context, to redraw.
    * @param {boolean} demo Whether Settings shows the demo.
    * @returns {void}
@@ -117,7 +93,7 @@ export class UpdatesPage {
       return;
     }
     cx.spawn(async (cx) => {
-      [this.installed, this.check, this.result] = await Promise.all([readInstalled(), readCheck(), readResult()]);
+      [this.installed, this.check] = await Promise.all([readInstalled(), readCheck()]);
       cx.notify();
     });
   }
@@ -141,7 +117,6 @@ export class UpdatesPage {
     }
     this.checking = true;
     this.message = null;
-    this.armed = null;
     cx.notify();
     cx.spawn(async (cx) => {
       [this.check, this.installed] = await Promise.all([
@@ -157,93 +132,84 @@ export class UpdatesPage {
     });
   }
 
+  /** The plugin's version to update to, or null when it's up to date or not from the marketplace. */
+  pluginTarget() {
+    const plugin = this.check?.plugin;
+    const latest = this.check?.releases[0];
+    if (plugin?.state !== "marketplace" || !latest || !isNewer(latest.tag, plugin.version)) return null;
+    return latest.tag.replace(/^v/, "");
+  }
+
   /**
-   * Asks before updating a row; for herdr-alp it first reads which files were edited in place.
+   * The update's prompt: herdr-alp's newer releases (none for the plugin's row) and the plugin.
+   * @param {"alp" | "plugin"} row The row it's for.
+   * @returns {string}
+   */
+  prompt(row) {
+    return updatePrompt({
+      releases: row === "alp" ? this.newer() : [],
+      installed: this.installed,
+      plugin: this.check?.plugin ?? null,
+      pluginTarget: this.pluginTarget(),
+      herdrHome: appHome(),
+      userHome: home(),
+    });
+  }
+
+  /**
+   * Opens a Claude tab in the space you're in, with the update's prompt as its task.
    * @param {"alp" | "plugin"} row The row.
    * @param {object} cx The context.
    * @returns {void}
    */
-  arm(row, cx) {
-    this.armed = row;
-    this.message = null;
-    this.changed = [];
+  updateWithClaude(row, cx) {
+    if (this.demo) {
+      this.message = { row, text: "Demo: nothing was opened." };
+    } else {
+      const space = spaces().find((candidate) => candidate.active);
+      run("tab.new", {
+        name: TAB_NAME,
+        ...(space ? { space: space.id } : {}),
+        folder: home(),
+        argv: ["claude"],
+        task: this.prompt(row),
+        focus: true,
+      });
+      this.message = {
+        row,
+        text: `Opened the "${TAB_NAME}" Claude tab with the steps. It tells you what changes and asks before overwriting anything you edited.`,
+      };
+    }
     cx.notify();
-    if (row !== "alp" || this.demo) return;
-    cx.spawn(async (cx) => {
-      this.changed = await changedInPlace().catch(() => []);
-      cx.notify();
-    });
   }
 
   /**
-   * Installs the newest release into Herdr's home. Alp reloads partway through, and the
-   * reloaded page shows the result; if it doesn't reload, this waits for the result itself.
-   * @param {string} tag The release.
+   * Puts the update's prompt on the clipboard, for any agent.
+   * @param {"alp" | "plugin"} row The row.
    * @param {object} cx The context.
    * @returns {void}
    */
-  updateAlp(tag, cx) {
-    this.armed = null;
-    if (this.demo) {
-      this.message = { row: "alp", text: "Demo: nothing was installed." };
-      cx.notify();
-      return;
-    }
-    this.updating = "alp";
+  copyPrompt(row, cx) {
+    cx.write_to_clipboard(this.prompt(row));
+    this.message = { row, text: "Copied the update prompt. Paste it into your agent." };
     cx.notify();
-    const started = Date.now();
-    cx.spawn(async (cx) => {
-      try {
-        await startUpdate(tag);
-      } catch (error) {
-        this.updating = null;
-        this.message = { row: "alp", text: `Couldn't start the update: ${error?.message ?? error}`, error: true };
-        cx.notify();
-        return;
-      }
-      while (Date.now() - started < RESULT_WAIT) {
-        await cx.sleep(1000);
-        const result = await readResult();
-        if (result && Date.parse(result.at) >= started - 1000) {
-          this.result = result;
-          this.installed = await readInstalled();
-          break;
-        }
-      }
-      this.updating = null;
-      cx.notify();
-    });
   }
 
   /**
-   * Updates the plugin through Claude Code, then reads its version again.
-   * @param {object} cx The context.
-   * @returns {void}
+   * A row's two ways to update: Copy prompt, and Update with Claude when Claude Code is there.
+   * @param {object} t The theme.
+   * @param {object} form The settings form, for its buttons.
+   * @param {"alp" | "plugin"} row The row.
+   * @returns {object[]} The buttons.
    */
-  updatePlugin(cx) {
-    this.armed = null;
-    if (this.demo) {
-      this.message = { row: "plugin", text: "Demo: nothing was updated." };
-      cx.notify();
-      return;
+  updateButtons(t, form, row) {
+    const buttons = [TextButton(`up-copy-${row}`, "Copy prompt", (cx) => this.copyPrompt(row, cx))];
+    if (this.check?.plugin?.state !== "no-claude") {
+      buttons.push(
+        form.primaryButton(t, `up-claude-${row}`, "Update with Claude", true, (cx) => this.updateWithClaude(row, cx)),
+      );
     }
-    this.updating = "plugin";
-    cx.notify();
-    cx.spawn(async (cx) => {
-      try {
-        await updatePlugin();
-        const plugin = await readPlugin();
-        this.check = { ...this.check, plugin };
-        this.message = {
-          row: "plugin",
-          text: `Updated to ${plugin.version}. Restart running Claude sessions to load it.`,
-        };
-      } catch (error) {
-        this.message = { row: "plugin", text: `Couldn't update the plugin: ${error?.message ?? error}`, error: true };
-      }
-      this.updating = null;
-      cx.notify();
-    });
+    return buttons;
   }
 
   // --- drawing ---------------------------------------------------------------------------------
@@ -264,12 +230,8 @@ export class UpdatesPage {
         .child(form.pageTitle(t, "Updates", [Chip(checked, { color: t.dim })]))
         .child(div().flex_1())
         .child(
-          form.primaryButton(
-            t,
-            "up-check",
-            this.checking ? "Checking…" : "Check for updates",
-            !this.checking && !this.updating,
-            (cx) => this.runCheck(cx),
+          form.primaryButton(t, "up-check", this.checking ? "Checking…" : "Check for updates", !this.checking, (cx) =>
+            this.runCheck(cx),
           ),
         ),
       this.alpRow(t, form),
@@ -328,40 +290,7 @@ export class UpdatesPage {
     return [Note(this.message.text, this.message.error ? t.blocked : t.done)];
   }
 
-  /**
-   * The confirmation under a row: what will happen, then Cancel and the action.
-   * @param {object} t The theme.
-   * @param {object} form The settings form, for its buttons.
-   * @param {string[]} lines What will happen.
-   * @param {string} label The action's label.
-   * @param {(cx: object) => void} onConfirm The action.
-   * @returns {object} The box.
-   */
-  confirmBox(t, form, lines, label, onConfirm) {
-    return v_flex()
-      .w_full()
-      .p(10)
-      .gap(6)
-      .rounded(6)
-      .bg(t.hover)
-      .children(lines.map((line) => div().text_size(12).text_color(t.foreground).child(line)))
-      .child(
-        h_flex()
-          .pt(2)
-          .gap(8)
-          .items_center()
-          .child(div().flex_1())
-          .child(
-            TextButton("up-cancel", "Cancel", (cx) => {
-              this.armed = null;
-              cx.notify();
-            }),
-          )
-          .child(form.primaryButton(t, "up-confirm", label, true, onConfirm)),
-      );
-  }
-
-  /** herdr-alp's row: the installed version and where it came from, notes, Update. */
+  /** herdr-alp's row: the installed version and where it came from, notes, and the two ways to update. */
   alpRow(t, form) {
     const installed = this.installed;
     const dev = isDevBuild(installed);
@@ -394,48 +323,17 @@ export class UpdatesPage {
           cx.notify();
         }),
       );
-      if (this.updating !== "alp") {
-        buttons.push(
-          form.primaryButton(t, "up-alp", "Update", !this.updating && this.armed !== "alp", (cx) =>
-            this.arm("alp", cx),
-          ),
-        );
-      }
+      buttons.push(...this.updateButtons(t, form, "alp"));
     }
     const below = [];
     if (this.check?.error) below.push(Note(`GitHub said: ${this.check.error}`, t.blocked));
     if (latest && this.notesOpen) below.push(this.notes(t, newer));
-    if (latest && this.armed === "alp") {
-      const lines = [`Install ${latest.tag} into Herdr? Alp reloads when it's done. Your clone isn't touched.`];
-      if (dev) lines.push(`This replaces your dev build from ${tildePath(installed.from)}.`);
-      if (this.changed.length) {
-        const listed = this.changed.slice(0, LISTED_FILES).join(", ");
-        const more = this.changed.length - LISTED_FILES;
-        lines.push(
-          `These files were edited in Herdr's home and will be overwritten: ${listed}${more > 0 ? ` and ${more} more` : ""}. To keep them, run ./sync.sh pull in your clone first.`,
-        );
-      }
-      below.push(this.confirmBox(t, form, lines, `Update to ${latest.tag}`, (cx) => this.updateAlp(latest.tag, cx)));
-    }
-    if (this.updating === "alp")
-      below.push(Note(`Installing ${latest?.tag ?? "the release"}… Alp reloads when it's done.`));
-    below.push(...this.resultNote(t), ...this.messageFor(t, "alp"));
+    if (latest && dev)
+      below.push(
+        Note(`The release replaces your dev build from ${tildePath(installed.from)}; the clone isn't touched.`),
+      );
+    below.push(...this.messageFor(t, "alp"));
     return this.row(t, { name: "herdr-alp", pills, meta: `${source} · layout, theme and mods`, buttons, below });
-  }
-
-  /** The last update's outcome, until the next check. */
-  resultNote(t) {
-    const result = this.result;
-    if (!result || (this.check && Date.parse(result.at) < Date.parse(this.check.checkedAt))) return [];
-    if (result.ok) return [Note(`Updated to ${result.tag}, ${when(result.at)}.`, t.done)];
-    return [
-      Note(`Couldn't update to ${result.tag}. The end of its output:`, t.blocked),
-      div()
-        .text_size(11.5)
-        .text_color(t.muted)
-        .font_family("JetBrains Mono")
-        .child(result.log || "(no output)"),
-    ];
   }
 
   /**
@@ -492,7 +390,10 @@ export class UpdatesPage {
       );
   }
 
-  /** The plugin's row: where it loads from, its version, and Update when it came from the marketplace. */
+  /**
+   * The plugin's row: where it loads from and its version. When it's behind, herdr-alp's prompt
+   * updates it too; on its own, when herdr-alp is up to date, it gets the two buttons itself.
+   */
   pluginRow(t, form) {
     const plugin = this.check?.plugin;
     const latest = this.check?.releases[0];
@@ -507,32 +408,13 @@ export class UpdatesPage {
       meta = `version ${plugin.version}, loaded from ${tildePath(plugin.path ?? "a folder")}: it runs that folder, so there's nothing to update`;
     } else if (plugin?.state === "marketplace") {
       meta = `installed ${plugin.version} · from the herdr-alp marketplace`;
-      const available = latest && isNewer(latest.tag, plugin.version);
-      if (available) {
-        pills.push(Chip(`${latest.tag.replace(/^v/, "")} available`, { color: t.accent }));
-        if (this.updating !== "plugin") {
-          buttons.push(
-            form.primaryButton(t, "up-plugin", "Update", !this.updating && this.armed !== "plugin", (cx) =>
-              this.arm("plugin", cx),
-            ),
-          );
-        }
+      const target = this.pluginTarget();
+      if (target) {
+        pills.push(Chip(`${target} available`, { color: t.accent }));
+        if (this.newer().length) below.push(Note("herdr-alp's update above updates the plugin too."));
+        else buttons.push(...this.updateButtons(t, form, "plugin"));
       } else if (latest) pills.push(Chip("Up to date", { color: t.done }));
-      if (available && this.armed === "plugin") {
-        below.push(
-          this.confirmBox(
-            t,
-            form,
-            [
-              `Update the alp plugin to ${latest.tag.replace(/^v/, "")}? Running Claude sessions load it when they restart.`,
-            ],
-            "Update the plugin",
-            (cx) => this.updatePlugin(cx),
-          ),
-        );
-      }
     }
-    if (this.updating === "plugin") below.push(Note("Updating the plugin…"));
     below.push(...this.messageFor(t, "plugin"));
     return this.row(t, { name: "Claude plugin alp", pills, meta, buttons, below });
   }
