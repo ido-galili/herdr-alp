@@ -36,7 +36,7 @@ done
 # A JSON string, with its quotes.
 json() { local s=${1//\\/\\\\}; s=${s//\"/\\\"}; printf '"%s"' "$s"; }
 
-# The version is plugin.json's: the release workflow sets it on every release, so a release's
+# The version is plugin.json's: each release commit sets it, so a release's
 # files carry their own number. A clone also says how far it is from that release.
 version=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$repo/plugins/alp/.claude-plugin/plugin.json" | head -n 1)
 if git -C "$repo" rev-parse --is-inside-work-tree >/dev/null 2>&1; then

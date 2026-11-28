@@ -37,6 +37,12 @@ version_of() { sed -nE 's/.*"version": *"([^"]*)".*/\1/p' | head -1; }
 base_version=$(git show "$base:$plugin" | version_of)
 head_version=$(version_of < "$plugin")
 
+# A PR stacked on one whose release isn't tagged yet would get that same version.
+if git show "$base:CHANGELOG.md" 2> /dev/null | grep -q "^## \[$base_version\]" &&
+  ! git rev-parse -q --verify "refs/tags/v$base_version" > /dev/null; then
+  fail "$base's release v$base_version isn't tagged yet: merge it, rebase on main and run this again."
+fi
+
 # The same rule as cliff.toml: feat, fix and perf are released, and so is any type with a "!".
 if [[ ! "$PR_TITLE" =~ ^(feat|fix|perf)(\([^\)]*\))?!?: && ! "$PR_TITLE" =~ ^[a-z]+(\([^\)]*\))?!: ]]; then
   if $check; then
