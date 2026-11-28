@@ -3,6 +3,13 @@
 Every release of herdr-alp: the layout, theme and mods, and the `alp` Claude Code plugin, which
 share one version. Made by git-cliff from the titles of merged pull requests.
 
+## [0.8.0](https://github.com/ido-galili/herdr-alp/releases/tag/v0.8.0) - 2026-11-28
+
+### Added
+
+- **updates**: an agent does the update, from Update with Claude or Copy prompt ([#54](https://github.com/ido-galili/herdr-alp/pull/54))
+- **herds,alp**: the Map | Cards switch sits after the map controls, and the header drops Back to terminals ([#52](https://github.com/ido-galili/herdr-alp/pull/52))
+
 ## [0.7.0](https://github.com/ido-galili/herdr-alp/releases/tag/v0.7.0) - 2026-11-28
 
 ### Breaking
