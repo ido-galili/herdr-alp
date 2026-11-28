@@ -1,6 +1,6 @@
 // The Herds map: the herds as one graph you can pan, zoom and rearrange, like a flow editor.
 // Each herd is a tree, its herdsman on top, members and agents below, agents under the sessions
-// that started them, and the herds side by side. Under them, a labelled "Grazing" lane holds the
+// that started them, and the herds side by side. Under them, an unlabelled grazing lane holds the
 // sessions on their own, wrapped to the map's width. The lines are painted paths, curved or with
 // square corners (Lines ▾), each labelled with how the two are linked. Drag the background to
 // pan, drag a card to move it and everything under it (they stay where you put them), scroll to
@@ -23,9 +23,8 @@ const GAP_X = 24;
 const GAP_Y = 64;
 const HERD_GAP = 80;
 
-/** The grazing lane: its distance under the herds, the room for its label, the gap between cards. */
+/** The grazing lane: its distance under the herds, the gap between cards. */
 const LANE_GAP = 56;
-const LANE_LABEL = 26;
 const LANE_CARD_GAP = 12;
 
 /** How far you can zoom out and in. */
@@ -518,7 +517,7 @@ export class HerdsCanvas {
    * @param {object[]} herds herdsOf()'s herds.
    * @param {object[]} grazing The grazing sessions with a tab, in order.
    * @param {object} actions The Herds tab's actions.
-   * @returns {{ cards: object[], lines: object[], lane: object | null }}
+   * @returns {{ cards: object[], lines: object[] }}
    */
   layout(herds, grazing, actions) {
     const cards = [];
@@ -542,7 +541,6 @@ export class HerdsCanvas {
       card.y += offset.dy;
     }
     const herdBounds = boundsOf(cards);
-    let lane = null;
     if (grazing.length) {
       const laneLeft = herdBounds?.left ?? 0;
       const zoom = this.fitZoom(herdBounds);
@@ -553,7 +551,6 @@ export class HerdsCanvas {
       );
       // With no herds the lane starts at the top of the map.
       const top = herdBounds ? herdBounds.bottom + LANE_GAP : 0;
-      lane = { left: laneLeft, top, width, count: grazing.length };
       const perRow = Math.max(1, Math.floor((width + LANE_CARD_GAP) / (SESSION.w + LANE_CARD_GAP)));
       grazing.forEach((session, index) => {
         const key = `g:${session.id}`;
@@ -562,11 +559,11 @@ export class HerdsCanvas {
           node: { key, kind: "session", session, role: "grazing", size: SESSION, earlier: 0, children: [] },
           lane: true,
           x: laneLeft + (index % perRow) * (SESSION.w + LANE_CARD_GAP) + own.dx,
-          y: top + LANE_LABEL + Math.floor(index / perRow) * (SESSION.h + LANE_CARD_GAP) + own.dy,
+          y: top + Math.floor(index / perRow) * (SESSION.h + LANE_CARD_GAP) + own.dy,
         });
       });
     }
-    return { cards, lines, lane };
+    return { cards, lines };
   }
 
   /**
@@ -689,42 +686,6 @@ export class HerdsCanvas {
           .text_color(t.dim)
           .child(line.label);
       });
-  }
-
-  /**
-   * The grazing lane's label, and with sessions that have no tab
-   * (they are not on the map), a link to them on Cards.
-   * @param {object} t The theme.
-   * @param {{ left: number, top: number, width: number, count: number }} lane From layout().
-   * @param {number} background How many grazing sessions have no tab.
-   * @returns {object[]} The elements.
-   */
-  laneMarks(t, lane, background) {
-    const z = this.zoom;
-    const at = this.toScreen(lane.left - 16, lane.top);
-    const size = Math.max(8, 11.5 * z);
-    return [
-      h_flex()
-        .absolute()
-        .left(at.x + 8 * z)
-        .top(at.y - size * 0.75)
-        .gap(8)
-        .items_center()
-        .child(div().px(6).bg(t.canvas).text_size(size).font_semibold().text_color(t.dim).child(`Grazing · ${lane.count}`))
-        .when(background > 0, (el) =>
-          el.child(
-            div()
-              .on_mouse_down("left", (_event, cx) => cx.stop_propagation())
-              .bg(t.canvas)
-              .child(
-                TextButton("herds-lane-background", `Background, no tab · ${background}`, (cx) => {
-                  this.backgroundOpen = true;
-                  this.setView("cards", cx);
-                }, { tooltip: "Sessions with no tab are on Cards" }),
-              ),
-          ),
-        ),
-    ];
   }
 
   /**
@@ -892,8 +853,7 @@ export class HerdsCanvas {
    */
   render(t, groups, live, actions, height) {
     const withTab = groups.grazing.filter((session) => live.has(session.terminal));
-    const background = groups.grazing.length - withTab.length;
-    const { cards, lines, lane } = this.layout(groups.herds, sortedBySpace(withTab, live, actions.model), actions);
+    const { cards, lines } = this.layout(groups.herds, sortedBySpace(withTab, live, actions.model), actions);
     this.cards = cards;
     if (this.refit && this.size) {
       this.refit = false;
@@ -953,7 +913,6 @@ export class HerdsCanvas {
       })
       .children(this.paintedLines(t, lines))
       .children(this.labels(t, lines))
-      .children(lane ? this.laneMarks(t, lane, background) : [])
       .children(cards.map((card) => this.card(t, card, live, actions)))
       .child(
         div()

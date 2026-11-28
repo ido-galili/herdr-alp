@@ -282,6 +282,10 @@ export function SessionCard(t, session, live, actions, options) {
   ].filter(Boolean);
   // An outline is 2px: the padding gives up the extra pixel, so the text does not move.
   const border = outlined ? 2 : 1;
+  const radius = Math.max(4, 8 * z);
+  // The stripe is the card's own fill, showing left of the content: a child would square off
+  // the rounded corners, since overflow_hidden clips to a plain rectangle.
+  const stripe = agent ? spaceColor(t, agent.space, spaceColors(actions.model)) : t.border;
   return h_flex()
     .id(id)
     .w(width * z)
@@ -289,11 +293,10 @@ export function SessionCard(t, session, live, actions, options) {
     .flex_none()
     .items_stretch()
     .overflow_hidden()
-    .rounded(Math.max(4, 8 * z))
+    .rounded(radius)
     .border(border)
     .border_color(outlined ? ring : blocked ? t.blocked : herdsman ? (t.ansi8 ?? t.dim) : t.border)
-    .bg(t.background)
-    .hover((style) => style.bg(t.hover))
+    .bg(stripe)
     .when(Boolean(tooltip), (el) => el.tooltip(tooltip))
     .when(Boolean(canvas), (el) =>
       el.on_hover((hovered, cx) => {
@@ -301,11 +304,14 @@ export function SessionCard(t, session, live, actions, options) {
         else if (canvas.hot === session.id) canvas.setHot(null, cx);
       }),
     )
-    .child(div().w(Math.max(2, 3 * z)).flex_none().bg(agent ? spaceColor(t, agent.space, spaceColors(actions.model)) : t.border))
     .child(
       v_flex()
         .flex_1()
         .min_w(0)
+        .ml(Math.max(2, 3 * z))
+        .rounded_r(Math.max(0, radius - border))
+        .bg(t.background)
+        .hover((style) => style.bg(t.hover))
         .pl(Math.max(3, 9 * z) - (border - 1))
         .pr(Math.max(3, 9 * z) - (border - 1))
         .justify_center()
