@@ -379,8 +379,10 @@ type(scope): what changed, for the person using Alp
 type(scope)!: a breaking change
 ```
 
-- **Types:** `feat` (Added), `fix` (Fixed), `perf` (Faster) make a release; `refactor`, `docs`,
-  `chore`, `ci` and `test` don't, and stay out of the changelog.
+- **Types:** every change to shipped code (`mods/`, `layouts/`, `themes/`, `plugins/`, `sync.sh`,
+  `setup.sh`) is a release: `feat` (Added), `fix` (Fixed), `perf` (Faster) or `refactor`
+  (Changed). `docs`, `test`, `ci` and `chore` release nothing, stay out of the changelog, and
+  can't change shipped code: the PR check fails them if they do.
 - **Scopes:** a mod folder (`alpmeister`, `alp-runs`, …), a part people know by name (`overview`,
   `board`, `herds`, `today`, `settings`, `updates`, `files`, `runs`, `tabs`, `sidebar`,
   `filters`, `pane-header`, `demo`, `alp`), or `plugin`, `layout`, `theme`, `setup`, `deps`.
@@ -390,7 +392,7 @@ type(scope)!: a breaking change
 
 A PR check runs commitlint on the title, and again when you edit it.
 
-Every `feat`, `fix`, `perf` or breaking PR is released by itself, and ends with its **release
+Every `feat`, `fix`, `perf`, `refactor` or breaking PR is released by itself, and ends with its **release
 commit**. Once the PR is open and its title is final:
 
 ```sh
@@ -398,7 +400,7 @@ npm run release-commit   # writes CHANGELOG.md and the plugin's version as chore
 git push                 # each run adds a commit; only the squash merge's files count
 ```
 
-git-cliff picks the version (below 1.0, a feat or breaking change bumps the minor, a fix the
+git-cliff picks the version (below 1.0, a feat or breaking change bumps the minor, anything else the
 patch) from `main` and the PR's title. Run it again after rebasing on `main` or changing the
 title; a PR check fails while it's missing or out of date, and fails a PR that releases nothing
 but changes either file. On merge, the release workflow tags the merge and creates the GitHub

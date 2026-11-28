@@ -10,8 +10,10 @@ doesn't follow this:
 type(scope): what changed, for the person using Alp
 ```
 
-- `type`: `feat`, `fix` or `perf` when the person using Alp gets something (each one is released
-  by itself, see below); `refactor`, `docs`, `chore`, `ci` or `test` when they don't.
+- `type`: every change to shipped code (`mods/`, `layouts/`, `themes/`, `plugins/`, `sync.sh`,
+  `setup.sh`) is a release, each one by itself (see below): `feat` (Added), `fix` (Fixed), `perf`
+  (Faster) or `refactor` (Changed: shipped code that works the same). `docs`, `test`, `ci` and
+  `chore` (repo tooling, dev dependencies) release nothing and can't touch shipped code.
 - `scope`: one from `commitlint.config.js`: a mod folder, a part like `overview`, `board`,
   `herds`, `settings` or `updates`, or `plugin`, `layout`, `theme`, `setup`, `deps`.
   Comma-separate several, or leave it out.
@@ -21,7 +23,7 @@ type(scope): what changed, for the person using Alp
 
 ## The release commit
 
-A PR whose title is `feat`, `fix` or `perf`, or has a `!`, ends with its release commit. After
+A PR whose title is `feat`, `fix`, `perf` or `refactor`, or has a `!`, ends with its release commit. After
 opening the PR (its number goes in the changelog) and settling the title, run
 `npm run release-commit`, then `git push`. Run it again after every rebase on `main`, every title
 change and any later work: each run adds a commit (never force-push; only the squash merge's

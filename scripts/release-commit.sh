@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The release commit of a pull request whose title is a feat, fix or perf, or has a "!": it
+# The release commit of a pull request whose title is a feat, fix, perf or refactor, or has a "!": it
 # writes CHANGELOG.md and the plugin's version as they will be once the PR is squash-merged, so
 # main gets them with the merge and nothing is pushed to main afterwards. The release workflow
 # then tags that merge and publishes the GitHub Release.
@@ -61,11 +61,16 @@ if git show "$base:CHANGELOG.md" 2> /dev/null | grep -q "^## \[$base_version\]" 
   fail "$base's release v$base_version isn't tagged yet: merge it, rebase on main and run this again."
 fi
 
-# The same rule as cliff.toml: feat, fix and perf are released, and so is any type with a "!".
-if [[ ! "$PR_TITLE" =~ ^(feat|fix|perf)(\([^\)]*\))?!?: && ! "$PR_TITLE" =~ ^[a-z]+(\([^\)]*\))?!: ]]; then
+# The same rule as cliff.toml: feat, fix, perf and refactor are released, and so is any type with
+# a "!". docs, test, ci and chore aren't, so they can't change what ships.
+shipped=(mods layouts themes plugins sync.sh setup.sh)
+if [[ ! "$PR_TITLE" =~ ^(feat|fix|perf|refactor)(\([^\)]*\))?!?: && ! "$PR_TITLE" =~ ^[a-z]+(\([^\)]*\))?!: ]]; then
+  changed=$(git diff --name-only "$base" HEAD -- "${shipped[@]}" ":!plugins/alp/.claude-plugin/plugin.json")
+  [ -z "$changed" ] ||
+    fail "\"$PR_TITLE\" releases nothing, but it changes what ships: $(echo $changed). Every change to shipped code is a release: make the title a feat, fix, perf or refactor."
   if $check; then
     [ "$head_version" = "$base_version" ] && git diff --quiet "$base" HEAD -- CHANGELOG.md ||
-      fail "\"$PR_TITLE\" releases nothing, so CHANGELOG.md and the plugin's version stay as they are on main. Run npm run release-commit and push, or make the title a feat, fix or perf."
+      fail "\"$PR_TITLE\" releases nothing, so CHANGELOG.md and the plugin's version stay as they are on main. Run npm run release-commit and push, or make the title a feat, fix, perf or refactor."
     echo "\"$PR_TITLE\" releases nothing."
     exit 0
   fi

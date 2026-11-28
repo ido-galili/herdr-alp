@@ -1,8 +1,8 @@
-# Publishes the release a merged pull request prepared. A PR titled feat, fix or perf (or with a
-# "!") ends with a release commit (scripts/release-commit.sh) that sets CHANGELOG.md and the
-# plugin's version, so its squash merge lands on main already released in name. This tags that
-# merge and creates the GitHub Release from its CHANGELOG.md section. Nothing is pushed to main,
-# so the "Protect main" rule needs no way around it.
+# Publishes the release a merged pull request prepared. A PR titled feat, fix, perf or refactor
+# (or with a "!") ends with a release commit (scripts/release-commit.sh) that sets CHANGELOG.md
+# and the plugin's version, so its squash merge lands on main already released in name. This tags
+# that merge and creates the GitHub Release from its CHANGELOG.md section. Nothing is pushed to
+# main, so the "Protect main" rule needs no way around it.
 name: Release
 
 on:

@@ -10,7 +10,7 @@ header = """
 Every release of herdr-alp: the layout, theme and mods, and the `alp` Claude Code plugin, which
 share one version. Made by git-cliff from the titles of merged pull requests.\n
 """
-# One release: Breaking first, then Added, Fixed and Faster. A breaking change is listed under
+# One release: Breaking first, then Added, Fixed, Faster and Changed. A breaking change is listed under
 # Breaking only.
 body = """
 {% if version %}\
@@ -54,8 +54,9 @@ commit_parsers = [
   { message = "^feat", group = "<!-- 0 -->Added" },
   { message = "^fix", group = "<!-- 1 -->Fixed" },
   { message = "^perf", group = "<!-- 2 -->Faster" },
+  { message = "^refactor", group = "<!-- 3 -->Changed" },
   { message = "^chore\\(release\\)", skip = true },
-  { message = "^(refactor|docs|chore|ci|test|style|build|revert)", skip = true },
+  { message = "^(docs|chore|ci|test|style|build|revert)", skip = true },
   { message = ".*", skip = true },
 ]
 
