@@ -1,0 +1,65 @@
+# git-cliff turns the squash commits on main (one per merged PR, its title) into CHANGELOG.md and
+# each GitHub Release's notes. The release workflow (.github/workflows/release.yml) runs it on
+# every merge. Titles follow Conventional Commits; commitlint.config.js checks them on the PR.
+
+[changelog]
+header = """
+# Changelog
+
+Every release of herdr-alp: the layout, theme and mods, and the `alp` Claude Code plugin, which
+share one version. Made by git-cliff from the titles of merged pull requests.\n
+"""
+# One release: Breaking first, then Added, Fixed and Faster. A breaking change is listed under
+# Breaking only.
+body = """
+{% if version %}\
+## [{{ version | trim_start_matches(pat="v") }}](https://github.com/ido-galili/herdr-alp/releases/tag/{{ version }}) - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}\
+## Unreleased
+{% endif %}\
+{% set breaking = commits | filter(attribute="breaking", value=true) %}\
+{% if breaking | length > 0 %}
+### Breaking
+{% for commit in breaking %}
+- {% if commit.scope %}**{{ commit.scope }}**: {% endif %}{{ commit.message }}\
+{% endfor %}
+{% endif %}\
+{% for group, commits in commits | filter(attribute="breaking", value=false) | group_by(attribute="group") %}
+### {{ group | striptags | trim }}
+{% for commit in commits %}
+- {% if commit.scope %}**{{ commit.scope }}**: {% endif %}{{ commit.message }}\
+{% endfor %}
+{% endfor %}\n
+"""
+footer = ""
+trim = true
+postprocessors = [
+  # "(#18)" becomes a link to the pull request.
+  { pattern = '\(#([0-9]+)\)', replace = "([#${1}](https://github.com/ido-galili/herdr-alp/pull/${1}))" },
+]
+
+[git]
+conventional_commits = true
+# Commits from before the format (the first "Merge pull request" and plain-sentence ones) are left out.
+filter_unconventional = true
+split_commits = false
+protect_breaking_commits = true
+filter_commits = true
+tag_pattern = "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+topo_order = false
+sort_commits = "newest"
+# The number in each group's name orders the groups and is stripped from the heading.
+commit_parsers = [
+  { message = "^feat", group = "<!-- 0 -->Added" },
+  { message = "^fix", group = "<!-- 1 -->Fixed" },
+  { message = "^perf", group = "<!-- 2 -->Faster" },
+  { message = "^chore\\(release\\)", skip = true },
+  { message = "^(refactor|docs|chore|ci|test|style|build|revert)", skip = true },
+  { message = ".*", skip = true },
+]
+
+[bump]
+# Below 1.0: a feat bumps the minor version, and a breaking change does too (not the major).
+features_always_bump_minor = true
+breaking_always_bump_major = false
+initial_tag = "v0.6.0"

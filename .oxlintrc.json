@@ -1,0 +1,13 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["eslint", "oxc", "unicorn", "typescript", "jsdoc"],
+  "categories": { "correctness": "error" },
+  "env": { "es2024": true },
+  "rules": {
+    "no-unused-expressions": ["error", { "allowTernary": true, "allowShortCircuit": true }],
+    "no-unused-vars": ["warn", { "args": "none", "varsIgnorePattern": "^_" }],
+    "unicorn/no-useless-spread": "warn",
+    "unicorn/no-useless-fallback-in-spread": "warn"
+  },
+  "ignorePatterns": ["node_modules", "**/gpui-kit.d.ts", "**/herdr.d.ts", "**/.claude-plugin/types"]
+}

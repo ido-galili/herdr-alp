@@ -1,0 +1,30 @@
+{
+  "name": "herdr-alp",
+  "private": true,
+  "description": "Dev tools for herdr-alp: lint, format, PR titles and the changelog. Nothing here ships to Herdr.",
+  "type": "module",
+  "scripts": {
+    "lint": "oxlint",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "21.2.4",
+    "@commitlint/config-conventional": "21.2.4",
+    "git-cliff": "2.14.2",
+    "husky": "9.1.7",
+    "lint-staged": "17.6.2",
+    "oxfmt": "0.80.0",
+    "oxlint": "1.95.0"
+  },
+  "lint-staged": {
+    "*.{js,mjs,ts}": [
+      "oxlint",
+      "oxfmt"
+    ],
+    "*.json": [
+      "oxfmt"
+    ]
+  }
+}

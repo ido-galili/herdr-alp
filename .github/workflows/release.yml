@@ -1,0 +1,82 @@
+# A release on every merge to main that has something for the people using Alp: a feat, fix or
+# perf commit, or a breaking change. git-cliff decides whether to release and the next version
+# (cliff.toml), then this writes CHANGELOG.md and plugin.json's version, commits, tags and
+# creates the GitHub Release. A merge of only chore, docs, refactor, ci or test releases nothing.
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# One release at a time; a merge that lands mid-run waits for the next run.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  # husky only sets up git hooks on your machine.
+  HUSKY: 0
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The newest main, not the commit that started the run, so a queued run releases
+          # everything merged since.
+          ref: main
+          fetch-depth: 0
+          # "Protect main" lets only pull requests change main, except for deploy keys. RELEASE_KEY
+          # is this repo's write deploy key, so the release commit can be pushed with it.
+          ssh-key: ${{ secrets.RELEASE_KEY }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+
+      - name: Decide
+        id: decide
+        run: |
+          if git tag --points-at HEAD | grep -qE '^v[0-9]'; then
+            echo "HEAD is already released: $(git tag --points-at HEAD)"; echo "release=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          count=$(npx git-cliff --unreleased --context | jq '[.[].commits[]] | length')
+          if [ "$count" = "0" ]; then
+            echo "Nothing to release: no feat, fix, perf or breaking commits since the last tag."
+            echo "release=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          version=$(npx git-cliff --bumped-version)
+          echo "Releasing $version ($count commits)."
+          echo "release=true" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Commit, tag and push
+        if: steps.decide.outputs.release == 'true'
+        env:
+          VERSION: ${{ steps.decide.outputs.version }}
+        run: |
+          plugin=plugins/alp/.claude-plugin/plugin.json
+          jq --arg v "${VERSION#v}" '.version = $v' "$plugin" > "$plugin.tmp" && mv "$plugin.tmp" "$plugin"
+          npx git-cliff --tag "$VERSION" -o CHANGELOG.md
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md "$plugin"
+          git commit -m "chore(release): $VERSION"
+          git tag -a "$VERSION" -m "$VERSION"
+          # Both or neither: a release commit on main without its tag would be released again.
+          git push --atomic origin HEAD:main "$VERSION"
+
+      - name: GitHub Release
+        if: steps.decide.outputs.release == 'true'
+        env:
+          VERSION: ${{ steps.decide.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          npx git-cliff --latest --strip header > notes.md
+          gh release create "$VERSION" --verify-tag --title "$VERSION" --notes-file notes.md
