@@ -1,5 +1,5 @@
 # Checks on every pull request: its title (it becomes the squash commit and a changelog line),
-# lint, and the format of the files it changes.
+# its release commit, lint, and the format of the files it changes.
 name: PR
 
 on:
@@ -29,6 +29,27 @@ jobs:
         env:
           TITLE: ${{ github.event.pull_request.title }}
         run: printf '%s\n' "$TITLE" | npx commitlint
+
+  release:
+    name: Release commit
+    # Runs on a title edit too: the title is the changelog line and picks the version.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Main's history and tags make the changelog.
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: CHANGELOG.md and the version match the title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_REF: ${{ github.base_ref }}
+        run: scripts/release-commit.sh --check
 
   lint:
     name: Lint and format

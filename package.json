@@ -7,7 +7,8 @@
     "lint": "oxlint",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
-    "prepare": "husky"
+    "prepare": "husky",
+    "release-commit": "scripts/release-commit.sh"
   },
   "devDependencies": {
     "@commitlint/cli": "21.2.4",

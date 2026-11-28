@@ -35,7 +35,7 @@ What's inside:
 | `icon.png` | Alp's logo |
 | `sync.sh` | copy the layout and mods into Herdr's home (and record what it installed, for Updates), or pull live edits back |
 | `CHANGELOG.md`, `cliff.toml` | every release's notes, made by git-cliff from merged PR titles |
-| `.github/workflows/` | checks on each PR, and a release on each merge to `main` |
+| `.github/workflows/`, `scripts/release-commit.sh` | checks on each PR; the release commit a PR ends with, and its GitHub Release on merge |
 | `package.json` | dev tools only (oxlint, oxfmt, commitlint, git-cliff); nothing in it ships to Herdr |
 | `setup.sh` | one-step install: checks `gh`, syncs, installs the plugin and switches to the alp layout |
 
@@ -388,10 +388,21 @@ type(scope)!: a breaking change
 - **The text after the colon starts with a lowercase letter**, even before a name: "pin Alp
   before the tabs", not "Alp pinned before the tabs".
 
-A PR check runs commitlint on the title, and again when you edit it. Every merge to `main` with a
-`feat`, `fix`, `perf` or breaking change is released by itself: git-cliff picks the next version
-(below 1.0, a feat or breaking change bumps the minor, a fix the patch), and the workflow updates
-`CHANGELOG.md` and `plugin.json`, tags it and creates the GitHub Release.
+A PR check runs commitlint on the title, and again when you edit it.
+
+Every `feat`, `fix`, `perf` or breaking PR is released by itself, and ends with its **release
+commit**. Once the PR is open and its title is final:
+
+```sh
+npm run release-commit   # writes CHANGELOG.md and the plugin's version as chore(release): vX.Y.Z
+git push                 # --force-with-lease when it replaced an older one
+```
+
+git-cliff picks the version (below 1.0, a feat or breaking change bumps the minor, a fix the
+patch) from `main` and the PR's title. Run it again after rebasing on `main` or changing the
+title; a PR check fails while it's missing or out of date, and fails a PR that releases nothing
+but changes either file. On merge, the release workflow tags the merge and creates the GitHub
+Release from its `CHANGELOG.md` section. Nothing is pushed to `main` but the merge.
 
 ## Planned
 
