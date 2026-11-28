@@ -1,16 +1,11 @@
 # Checks on every pull request: its title (it becomes the squash commit and a changelog line),
-# lint, and the format of the files it changes. "Prepare release" starts them on its release PR
-# by hand (workflow_dispatch): a PR the workflow's own token opens doesn't start them.
+# lint, and the format of the files it changes. On the release PR "Prepare release" opens, GitHub
+# holds them until someone approves them on the PR.
 name: PR
 
 on:
   pull_request:
     types: [opened, edited, synchronize, reopened]
-  workflow_dispatch:
-    inputs:
-      title:
-        description: The pull request's title
-        required: true
 
 env:
   # husky only sets up git hooks on your machine.
@@ -28,8 +23,7 @@ jobs:
     steps:
       # As Vite checks it: a Conventional Commits title of these types, its text not starting
       # with a capital ("pin Alp before the tabs"). A breaking change has "!" before the colon.
-      - if: github.event_name == 'pull_request'
-        uses: amannn/action-semantic-pull-request@66e72920af32222769c386d81f89656ebcb6d6d5 # v6.1.4
+      - uses: amannn/action-semantic-pull-request@66e72920af32222769c386d81f89656ebcb6d6d5 # v6.1.4
         with:
           types: |
             feat
@@ -47,12 +41,6 @@ jobs:
             before a name: "pin Alp before the tabs".
         env:
           GITHUB_TOKEN: ${{ github.token }}
-      # The release PR, whose checks Prepare release starts by hand: its title is the workflow's.
-      - if: github.event_name == 'workflow_dispatch'
-        env:
-          TITLE: ${{ inputs.title }}
-        run: |
-          [[ "$TITLE" =~ ^release:\ v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Not a release PR title: $TITLE"; exit 1; }
 
   lint:
     name: Lint and format
@@ -73,7 +61,7 @@ jobs:
       # Only the files this PR changes, until the one-time format of every file lands.
       - name: oxfmt on the changed files
         env:
-          BASE: ${{ github.event.pull_request.base.sha || 'origin/main' }}
+          BASE: ${{ github.event.pull_request.base.sha }}
         run: |
           git diff --name-only --diff-filter=ACMR "$BASE"...HEAD -- '*.js' '*.mjs' '*.ts' '*.json' ':!package-lock.json' > changed.txt
           if [ -s changed.txt ]; then xargs -d '\n' npx oxfmt --check < changed.txt; else echo "No JS, TS or JSON changed."; fi
