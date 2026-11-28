@@ -575,8 +575,8 @@ function Key(t, canvas) {
  * expandedAgents: Set<sessionId>, toggleAgents(sessionId, cx), canvas: HerdsCanvas, canvasHeight,
  * fullHeight }`. One toolbar for both views: the counts as pills ("N need you" first, red; a
  * click outlines those cards), the Map | Cards switch, then on the Map Fit, zoom and Lines ▾,
- * then full tab, and the key under it. With no herds there is nothing to draw: Cards alone, and
- * no canvas controls. The map is `canvasHeight` tall, or `fullHeight` in full tab.
+ * then full tab, and the key under it. With no herds the switch stays: the Map then holds only
+ * the grazing lane. The map is `canvasHeight` tall, or `fullHeight` in full tab.
  * @param {object | null} model loadHerds()'s result.
  * @param {object} actions The actions above.
  * @returns {object} The tab's content.
@@ -593,7 +593,7 @@ export function Herds(model, actions) {
   const agentsWorking = shown.flatMap((session) => session.agents ?? []).filter((agent) => agent.status === "working").length;
   const canvas = actions.canvas;
   const full = canvas.full;
-  const onMap = herds.length > 0 && canvas.view === "map";
+  const onMap = canvas.view === "map";
   const picking = shown.find((session) => session.id === actions.picking);
   const name = (id) => model.sessions.find((session) => session.id === id)?.name ?? id;
   // On the map, the links between members (not from the herdsman) are listed under it.
@@ -626,16 +626,18 @@ export function Herds(model, actions) {
     .child(div().w(4))
     .children(pills)
     .child(div().flex_1())
-    .children(herds.length ? canvas.switcher() : [])
+    .children(canvas.switcher())
     .children(onMap ? [div().w(1).h(16).mx(4).bg(t.border), ...canvas.mapControls(t)] : [])
     .when(canvas.keyHidden, (el) =>
       el.child(TextButton("herds-key-show", "Key", (cx) => canvas.setKeyHidden(false, cx), { tooltip: "Show the key" })),
     )
-    .children(herds.length || full ? [canvas.fullButton()] : []);
+    .child(canvas.fullButton());
 
+  const noHerds = Note("No herds: no session has messaged another, made a worktree for one, or started agents lately.");
   const body = onMap
     ? v_flex()
         .gap(8)
+        .when(!herds.length, (el) => el.child(noHerds))
         .child(
           canvas.render(
             t,
@@ -663,9 +665,7 @@ export function Herds(model, actions) {
         )
     : v_flex()
         .gap(10)
-        .when(!herds.length, (el) =>
-          el.child(Note("No herds: no session has messaged another, made a worktree for one, or started agents lately.")),
-        )
+        .when(!herds.length, (el) => el.child(noHerds))
         .child(CardsView(t, model, groups, live, actions));
 
   const content = v_flex()

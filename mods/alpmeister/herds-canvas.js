@@ -361,7 +361,7 @@ export class HerdsCanvas {
    */
   toggleOutline(herds, live, actions, cx) {
     this.outlineBlocked = !this.outlineBlocked;
-    if (this.outlineBlocked && this.view === "map" && herds.length) {
+    if (this.outlineBlocked && this.view === "map") {
       const first = this.cards.find((card) => card.node.kind === "session" && statusOf(card.node.session, live) === "blocked");
       if (first) this.scrollTo(first);
     }
@@ -551,7 +551,8 @@ export class HerdsCanvas {
         this.size ? (this.size.width - FIT_PAD * 2) / zoom : 800,
         SESSION.w,
       );
-      const top = (herdBounds?.bottom ?? 0) + LANE_GAP;
+      // With no herds the lane starts at the top of the map.
+      const top = herdBounds ? herdBounds.bottom + LANE_GAP : 0;
       lane = { left: laneLeft, top, width, count: grazing.length };
       const perRow = Math.max(1, Math.floor((width + LANE_CARD_GAP) / (SESSION.w + LANE_CARD_GAP)));
       grazing.forEach((session, index) => {
@@ -691,7 +692,7 @@ export class HerdsCanvas {
   }
 
   /**
-   * The grazing lane's label and the dashed rule it sits on, and with sessions that have no tab
+   * The grazing lane's label, and with sessions that have no tab
    * (they are not on the map), a link to them on Cards.
    * @param {object} t The theme.
    * @param {{ left: number, top: number, width: number, count: number }} lane From layout().
@@ -702,12 +703,7 @@ export class HerdsCanvas {
     const z = this.zoom;
     const at = this.toScreen(lane.left - 16, lane.top);
     const size = Math.max(8, 11.5 * z);
-    const rule = PathBuilder.stroke(1)
-      .dash_array([4, 4])
-      .move_to(at.x, at.y)
-      .line_to(at.x + (lane.width + 32) * z, at.y);
     return [
-      window.paint_path(rule.build(), t.border).absolute().inset_0(),
       h_flex()
         .absolute()
         .left(at.x + 8 * z)
